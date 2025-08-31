@@ -1,0 +1,54 @@
+[tool.poetry]
+name = "expense-tracker-backend"
+version = "0.1.0"
+description = "LLM-powered personal expense tracker backend (FastAPI + LangChain + PostgreSQL)"
+authors = ["Chaitanya"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.111.0"
+uvicorn = "^0.30.0"
+sqlalchemy = "^2.0.30"
+asyncpg = "^0.29.0"
+alembic = "^1.13.2"
+loguru = "^0.7.2"
+orjson = "^3.10.3"
+pydantic = "^2.7.1"
+pydantic-settings = "^2.3.4"
+python-dotenv = "^1.0.1"
+python-multipart = "^0.0.9"
+httpx = "^0.27.0"
+tenacity = "^8.3.0"
+langchain = "^0.2.6"
+langchain-core = "^0.2.11"
+langchain-community = "^0.2.5"
+langchain-openai = "^0.1.8"
+openai = "^1.37.1"
+pytesseract = "^0.3.10"
+pillow = "^10.3.0"
+google-api-python-client = "^2.136.0"
+google-auth = "^2.31.0"
+google-auth-oauthlib = "^1.2.0"
+google-auth-httplib2 = "^0.2.0"
+redis = "^5.0.6"
+fastapi-pagination = "^0.12.26"
+fastapi-limiter = "^0.1.6"
+apscheduler = "^3.10.4"
+sentry-sdk = "^2.3.1"
+pandas = "^2.2.2"
+beautifulsoup4 = "^4.12.3"
+lxml = "^5.2.2"
+aiofiles = "^23.2.1"
+greenlet = "^3.2.4"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.5.0"
+pytest = "^8.2.0"
+pytest-asyncio = "^0.23.7"
+
+[build-system]
+requires = ["poetry-core>=1.9.0"]
+build-backend = "poetry.core.masonry.api"
+
+

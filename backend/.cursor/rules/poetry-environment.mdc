@@ -1,0 +1,22 @@
+---
+alwaysApply: true
+description: Always run Python tooling and the app inside the Poetry virtual environment
+---
+
+### Poetry environment and commands
+
+- Always activate and use Poetry's virtual environment for any Python command.
+- Run commands from the `backend/` directory.
+
+Examples (run these in `backend/`):
+
+- Install deps: `poetry install`
+- Start API: `poetry run uvicorn main:app --reload`
+- Lint: `poetry run ruff check . --fix`
+- Tests: `poetry run pytest -q`
+- Alembic: `poetry run alembic revision --autogenerate -m "msg" && poetry run alembic upgrade head`
+
+Environment
+
+- Python is managed via pyenv (3.11.x). Ensure the Poetry env points to pyenv's 3.11.
+
