@@ -33,13 +33,3 @@ async def upload_file(
             raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/gmail/sync", response_model=IngestResponse)
-async def gmail_sync():
-    from src.services.database_manager.operations import get_db_session
-
-    async with get_db_session() as db:
-        service = ExpenseIngestionService(db)
-        result = await service.ingest_gmail_recent()
-        return IngestResponse(**result)
-
-
