@@ -33,6 +33,7 @@ env/
 
 # Project-specific
 backend/configs/.env
+backend/configs/secrets/
 backend/logs/
 backend/logs/*.log
 backend/logs/*.json
