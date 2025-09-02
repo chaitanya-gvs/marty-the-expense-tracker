@@ -41,6 +41,8 @@ beautifulsoup4 = "^4.12.3"
 lxml = "^5.2.2"
 aiofiles = "^23.2.1"
 greenlet = "^3.2.4"
+PyPDF2 = "^3.0.1"
+PyMuPDF = "^1.24.0"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.5.0"
