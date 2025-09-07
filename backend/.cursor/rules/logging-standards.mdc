@@ -1,0 +1,33 @@
+---
+alwaysApply: true
+description: Centralized logging standards and configuration
+globs: *.py
+---
+
+# Centralized Logging Standards
+
+## Logger Usage
+- Use the logger from `src.utils.logger`
+- Create named loggers: `from src.utils.logger import get_logger`; then `logger = get_logger(__name__)`
+- Log messages with standard Python formatting (no `{}` placeholders); e.g., `logger.info(f"Processed {n} items")`
+
+## Logging Configuration
+- The module `src/utils/logger.py` already loads `configs/.env` for logging config
+- Avoid duplicating environment loading unless needed
+- Use appropriate log levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+## Example Usage
+```python
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+def process_data(data):
+    logger.info(f"Processing {len(data)} items")
+    try:
+        # processing logic
+        logger.debug("Data processing completed successfully")
+    except Exception as e:
+        logger.error(f"Failed to process data: {e}")
+        raise
+```

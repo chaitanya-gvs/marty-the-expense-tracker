@@ -1,0 +1,39 @@
+---
+alwaysApply: true
+description: Python import standards and module organization
+globs: *.py
+---
+
+# Python Import Standards
+
+## Import Organization
+- Always place imports at the top of files
+- Use standard imports without try/except blocks per user preference
+- Assume packages are installed and don't wrap imports in try/except
+- Follow PEP 8 import ordering: standard library, third-party, local imports
+
+## Import Patterns
+- Use absolute imports when possible
+- Import from `src` modules using the backend directory as the working directory
+- The `backend/` directory is added to PYTHONPATH in scripts to enable `src` imports
+
+## Example Import Structure
+```python
+# Standard library imports
+import os
+import sys
+from pathlib import Path
+
+# Third-party imports
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+# Local imports
+from src.utils.logger import get_logger
+from src.services.database_manager import DatabaseManager
+```
+
+## Error Prevention
+- Avoid relative imports when possible
+- Ensure all imports are available in the Poetry environment
+- Use `poetry run` to execute scripts with proper environment

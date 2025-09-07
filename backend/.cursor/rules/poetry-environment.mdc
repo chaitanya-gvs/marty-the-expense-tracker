@@ -1,0 +1,38 @@
+---
+alwaysApply: true
+description: Poetry environment and command execution rules
+globs: *.py
+---
+
+# Poetry Environment and Commands
+
+## Poetry Environment Rules
+- Always activate and use Poetry's virtual environment for any Python command
+- Run commands from the `backend/` directory
+- Python is managed via pyenv (3.11.x). Ensure the Poetry env points to pyenv's 3.11
+
+## Common Poetry Commands
+Examples (run these in `backend/`):
+- Install deps: `poetry install`
+- Start API: `poetry run uvicorn main:app --reload`
+- Lint: `poetry run ruff check . --fix`
+- Tests: `poetry run pytest -q`
+- Alembic: `poetry run alembic revision --autogenerate -m "msg" && poetry run alembic upgrade head`
+- Run scripts: `poetry run python scripts/fetch_emails.py`
+- Run main: `poetry run python main.py`
+
+## Python Script Execution Rule
+- **ALL Python scripts/programs in backend MUST only run from the `backend/` directory**
+- The `backend/` directory is added to PYTHONPATH in scripts to enable `src` imports
+- This prevents common errors:
+  - "Poetry could not find a pyproject.toml file" (when run from project root)
+  - "No module named 'src'" (when scripts can't find the backend directory)
+  - Import errors in our scripts
+- Scripts use `sys.path.insert(0, str(backend_path))` to add backend to Python path
+
+## Error Prevention
+If you see errors like:
+- "No module named 'google_auth_oauthlib'" (missing dependencies)
+- Import errors in scripts
+
+**First check**: Are we in the `backend/` directory and using `poetry run`?

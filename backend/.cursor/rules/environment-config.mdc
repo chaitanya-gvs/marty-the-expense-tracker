@@ -1,0 +1,36 @@
+---
+alwaysApply: true
+description: Environment variables and configuration management
+globs: *.py
+---
+
+# Environment Variables and Configuration
+
+## Configuration Files
+- Env values are in `backend/configs/.env` and secrets in `backend/configs/secrets/` (env-style files)
+- Load via `python-dotenv` or Pydantic Settings as appropriate
+- The module `src/utils/logger.py` already loads `configs/.env` for logging config; avoid duplicating loading unless needed
+
+## Configuration Loading
+- Use Pydantic Settings for type-safe configuration
+- Load environment variables from appropriate config files
+- Keep sensitive data in `backend/configs/secrets/` directory
+- Use `.env` files for non-sensitive configuration
+
+## Example Usage
+```python
+from pydantic_settings import BaseSettings
+from dotenv import load_dotenv
+
+class Settings(BaseSettings):
+    database_url: str
+    api_key: str
+    
+    class Config:
+        env_file = "configs/.env"
+        env_file_encoding = "utf-8"
+
+# Load environment
+load_dotenv("configs/.env")
+settings = Settings()
+```

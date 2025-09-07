@@ -1,0 +1,45 @@
+---
+alwaysApply: true
+description: Test script organization and placement standards
+globs: *test*.py,*_test.py,test_*.py
+---
+
+# Test Script Organization
+
+## Test Directory Structure
+- **ALL test scripts MUST be written in the `tests/` directory**
+- Use descriptive test file names that match the module being tested
+- Follow the pattern: `test_<module_name>.py` or `<module_name>_test.py`
+
+## Test File Naming Conventions
+- Unit tests: `test_<module_name>.py`
+- Integration tests: `test_<service>_integration.py`
+- End-to-end tests: `test_<feature>_e2e.py`
+- Test utilities: `conftest.py` or `test_utils.py`
+
+## Test Organization Examples
+```
+tests/
+├── conftest.py                    # Shared fixtures and configuration
+├── test_database_manager.py       # Database manager unit tests
+├── test_email_ingestion.py        # Email service unit tests
+├── test_statement_processor.py    # Statement processing tests
+├── test_api_routes.py             # API endpoint tests
+├── integration/
+│   ├── test_database_integration.py
+│   └── test_email_integration.py
+└── e2e/
+    └── test_expense_tracking_e2e.py
+```
+
+## Test Execution
+- Run tests from the `backend/` directory using Poetry
+- Use `poetry run pytest tests/` to run all tests
+- Use `poetry run pytest tests/test_specific_module.py` for specific tests
+- Use `poetry run pytest -v` for verbose output
+
+## Test Requirements
+- All test files must be importable from the `tests/` directory
+- Use proper imports following the import standards
+- Include proper logging in tests using the centralized logger
+- Follow the backend directory requirements when running tests
