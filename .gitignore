@@ -1,44 +1,7 @@
 # macOS
 .DS_Store
 
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.so
-*.egg-info/
-*.egg
-dist/
-build/
-.pytest_cache/
-.coverage
-coverage.xml
-.mypy_cache/
-.ruff_cache/
-
-# Environments
-.venv/
-venv/
-env/
-.env
-.env.*
-*.env
-.envrc
-
-# Editor/IDE
-.idea/
-.vscode/
-.history/
-
-# Project-specific
-backend/configs/.env
-backend/configs/secrets/
-backend/logs/
-backend/logs/*.log
-backend/logs/*.json
-backend/uploads/
-backend/.cache/
+# Backend-specific ignores are in backend/.gitignore
 
 # Node (if added later)
 node_modules/

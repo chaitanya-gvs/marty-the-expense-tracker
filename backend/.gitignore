@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.pytest_cache/
+.coverage
+coverage.xml
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+
+# Environments
+.venv/
+venv/
+env/
+.envrc
+
+# Editor/IDE
+.idea/
+.vscode/
+.history/
+
+# Configs
+configs/secrets/
+
+# Logs
+logs/
+*.log
+
+# Data
+data/
+
+# Uploads
+uploads/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Alembic
+alembic/versions/*.pyc
+
+# Docker
+.docker/
+*.pid
+
+# Misc
+*.swp
+*.swo
