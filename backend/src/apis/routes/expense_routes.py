@@ -8,8 +8,9 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from src.services.database_manager.models import Expense
-from src.services.database_manager.operations import get_db_session
+# TODO: Create database models file
+# from src.services.database_manager.models import Expense
+from src.services.database_manager.connection import get_db_session
 
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])

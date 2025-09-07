@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
+
+from src.services.database_manager.connection import get_db_session
 from src.services.expense_manager.manager import ExpenseIngestionService
 
 
@@ -20,7 +21,6 @@ async def upload_file(
 ):
     content = await file.read()
     # Lazy import to avoid circular import during app bootstrap
-    from src.services.database_manager.operations import get_db_session
 
     async with get_db_session() as db:
         service = ExpenseIngestionService(db)

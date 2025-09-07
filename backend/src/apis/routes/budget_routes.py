@@ -7,8 +7,9 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel
 from sqlalchemy import and_, select
 
-from src.services.database_manager.models import Budget, Expense
-from src.services.database_manager.operations import get_db_session
+# TODO: Create database models file
+# from src.services.database_manager.models import Budget, Expense
+from src.services.database_manager.connection import get_db_session
 
 
 router = APIRouter(prefix="/budgets", tags=["budgets"])
