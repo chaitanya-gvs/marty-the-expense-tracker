@@ -1,20 +1,23 @@
 from __future__ import annotations
 
 import asyncio
-from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
 import re
+from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional
 
 from src.services.email_ingestion.client import EmailClient
 from src.services.llm_parser.parser import LLMExpenseParser
+from src.services.ocr_engine.engine import OCREngine
 from src.utils.logger import get_logger
+from src.utils.settings import get_settings
 
 logger = get_logger(__name__)
 
 
 class EmailIngestionService:
-    def __init__(self):
-        self.email_client = EmailClient()
+    def __init__(self, account_id: str = "primary"):
+        self.account_id = account_id
+        self.email_client = EmailClient(account_id=account_id)
         self.llm_parser = LLMExpenseParser()
 
     async def ingest_recent_transaction_emails(self, max_results: int = 25, days_back: int = 7) -> Dict[str, Any]:
@@ -204,7 +207,6 @@ class EmailIngestionService:
             
             if mime_type.startswith("image/"):
                 # Use OCR to extract text from images
-                from src.services.ocr_engine.engine import OCREngine
                 ocr_engine = OCREngine()
                 extracted_text = await ocr_engine.extract_text_from_image(file_data)
                 
@@ -255,4 +257,66 @@ class EmailIngestionService:
             
         except Exception as e:
             logger.error(f"Error getting email statistics: {e}")
+            raise
+
+    async def ingest_from_all_accounts(self, max_results: int = 25, days_back: int = 7) -> Dict[str, Any]:
+        """Ingest emails from all configured accounts"""
+        try:
+            logger.info(f"Starting email ingestion from all accounts for last {days_back} days")
+            
+            all_results = {
+                "total_processed": 0,
+                "total_extracted": 0,
+                "total_errors": 0,
+                "all_expenses": [],
+                "account_results": {}
+            }
+            
+            # List of available accounts
+            available_accounts = ["primary"]
+            
+            # Check if secondary account is configured
+            settings = get_settings()
+            if settings.GOOGLE_REFRESH_TOKEN_2:
+                available_accounts.append("secondary")
+            
+            logger.info(f"Found {len(available_accounts)} configured accounts: {available_accounts}")
+            
+            # Process each account
+            for account_id in available_accounts:
+                try:
+                    logger.info(f"Processing account: {account_id}")
+                    
+                    # Create service instance for this account
+                    account_service = EmailIngestionService(account_id=account_id)
+                    
+                    # Ingest emails from this account
+                    account_result = await account_service.ingest_recent_transaction_emails(max_results, days_back)
+                    
+                    # Update totals
+                    all_results["total_processed"] += account_result["processed"]
+                    all_results["total_extracted"] += account_result["extracted"]
+                    all_results["total_errors"] += account_result["errors"]
+                    all_results["all_expenses"].extend(account_result["expenses"])
+                    all_results["account_results"][account_id] = account_result
+                    
+                    logger.info(f"Account {account_id}: {account_result['processed']} processed, {account_result['extracted']} extracted")
+                    
+                except Exception as e:
+                    logger.error(f"Error processing account {account_id}: {e}")
+                    all_results["account_results"][account_id] = {
+                        "processed": 0,
+                        "extracted": 0,
+                        "errors": 1,
+                        "expenses": [],
+                        "error": str(e)
+                    }
+                    all_results["total_errors"] += 1
+            
+            logger.info(f"Multi-account ingestion completed. Total: {all_results['total_processed']} processed, {all_results['total_extracted']} extracted, {all_results['total_errors']} errors")
+            
+            return all_results
+            
+        except Exception as e:
+            logger.error(f"Error in multi-account email ingestion: {e}")
             raise
