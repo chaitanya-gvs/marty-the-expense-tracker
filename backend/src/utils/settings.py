@@ -8,11 +8,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 ENV_PATH = Path(__file__).resolve().parents[2] / "configs/.env"
+SECRETS_ENV_PATH = Path(__file__).resolve().parents[2] / "configs/secrets/.env"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=str(ENV_PATH), env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
+        env_file=[str(SECRETS_ENV_PATH), str(ENV_PATH)], 
+        env_file_encoding="utf-8", 
+        case_sensitive=False, 
+        extra="ignore"
     )
 
     # App
@@ -26,19 +30,31 @@ class Settings(BaseSettings):
     # Database
     DB_HOST: str = "localhost"
     DB_PORT: int = 5432
-    DB_NAME: str = "expense_db"
-    DB_USER: str = "postgres"
-    DB_PASSWORD: str = "postgres"
+    DB_NAME: str = "expense_tracker"
+    DB_USER: str = "chaitanya"
+    DB_PASSWORD: str = ""
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # Gmail API
+    # Gmail API - Primary Account
     GOOGLE_CLIENT_ID: str | None = None
     GOOGLE_CLIENT_SECRET: str | None = None
     GOOGLE_REFRESH_TOKEN: str | None = None
     GOOGLE_PROJECT_ID: str | None = None
     GOOGLE_REDIRECT_URI: str | None = None
+    GOOGLE_CLIENT_SECRET_FILE: str | None = None
+    
+    # Gmail API - Secondary Account (Optional)
+    GOOGLE_CLIENT_ID_2: str | None = None
+    GOOGLE_CLIENT_SECRET_2: str | None = None
+    GOOGLE_REFRESH_TOKEN_2: str | None = None
+    GOOGLE_CLIENT_SECRET_FILE_2: str | None = None
+
+    # Google Cloud Storage
+    GOOGLE_CLOUD_PROJECT_ID: str | None = None
+    GOOGLE_CLOUD_BUCKET_NAME: str | None = None
+    GOOGLE_APPLICATION_CREDENTIALS: str | None = None
 
     # Sentry
     SENTRY_DSN: str | None = None
