@@ -694,6 +694,320 @@ class TransactionStandardizer:
             }
         }
 
+    def standardize_splitwise_data(self, splitwise_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Standardize Splitwise transaction data to match bank transaction format exactly
+        
+        Args:
+            splitwise_df: DataFrame containing Splitwise transaction data
+            
+        Returns:
+            DataFrame with standardized bank transaction format + is_shared column
+        """
+        try:
+            logger.info(f"Standardizing {len(splitwise_df)} Splitwise transactions")
+            
+            # Create a copy to avoid modifying original
+            df = splitwise_df.copy()
+            
+            # Map Splitwise columns to bank transaction format
+            column_mapping = {
+                'date': 'transaction_date',
+                'description': 'description', 
+                'amount': 'amount',
+                'category': 'category',
+                'external_id': 'reference_number',
+                'raw_data': 'raw_data'
+            }
+            
+            # Rename columns
+            df = df.rename(columns=column_mapping)
+            
+            # Add required bank transaction columns (exact same as bank format)
+            df['transaction_time'] = ''  # Splitwise doesn't have time
+            df['transaction_type'] = 'debit'  # All Splitwise expenses are debits
+            df['account'] = 'Splitwise'  # Set account as Splitwise
+            df['source_file'] = 'splitwise_data'  # Set source file
+            
+            # Add the is_shared column (True for all Splitwise transactions)
+            df['is_shared'] = True
+            
+            # Ensure all required columns exist (exact same as bank format + is_shared)
+            required_columns = [
+                'transaction_date', 'transaction_time', 'description', 'amount',
+                'transaction_type', 'account', 'category', 'reference_number',
+                'source_file', 'raw_data', 'is_shared'
+            ]
+            
+            for col in required_columns:
+                if col not in df.columns:
+                    if col == 'transaction_time':
+                        df[col] = ''
+                    elif col == 'transaction_type':
+                        df[col] = 'debit'
+                    elif col == 'account':
+                        df[col] = 'Splitwise'
+                    elif col == 'reference_number':
+                        df[col] = ''
+                    elif col == 'source_file':
+                        df[col] = 'splitwise_data'
+                    elif col == 'raw_data':
+                        df[col] = '{}'
+                    elif col == 'is_shared':
+                        df[col] = True
+                    else:
+                        df[col] = None
+            
+            # Clean and validate data
+            df = self._clean_splitwise_data(df)
+            
+            # Select only the required columns (exact same as bank format + is_shared)
+            final_columns = [
+                'transaction_date', 'transaction_time', 'description', 'amount',
+                'transaction_type', 'account', 'category', 'reference_number',
+                'source_file', 'raw_data', 'is_shared'
+            ]
+            
+            df = df[final_columns]
+            
+            logger.info(f"Successfully standardized {len(df)} Splitwise transactions")
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error standardizing Splitwise data: {e}")
+            return pd.DataFrame()
+    
+    def _clean_splitwise_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Clean and validate Splitwise data"""
+        try:
+            # Remove rows with missing critical data
+            critical_columns = ['transaction_date', 'description', 'amount']
+            initial_count = len(df)
+            
+            for col in critical_columns:
+                if col in df.columns:
+                    df = df.dropna(subset=[col])
+            
+            removed_count = initial_count - len(df)
+            if removed_count > 0:
+                logger.warning(f"Removed {removed_count} rows with missing critical data")
+            
+            # Clean description field
+            if 'description' in df.columns:
+                df['description'] = df['description'].str.strip()
+                df = df[df['description'].str.len() > 0]
+            
+            # Clean amount field
+            if 'amount' in df.columns:
+                df['amount'] = pd.to_numeric(df['amount'], errors='coerce')
+                df = df[df['amount'] != 0]  # Remove zero-amount transactions
+            
+            # Clean category field
+            if 'category' in df.columns:
+                df['category'] = df['category'].fillna('Uncategorized')
+            
+            # Ensure transaction_date is properly formatted
+            if 'transaction_date' in df.columns:
+                df['transaction_date'] = pd.to_datetime(df['transaction_date'])
+            
+            # Sort by transaction date
+            df = df.sort_values('transaction_date', ascending=False)
+            
+            # Reset index
+            df = df.reset_index(drop=True)
+            
+            logger.info(f"Splitwise data cleaning completed. Final count: {len(df)} transactions")
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error cleaning Splitwise data: {e}")
+            return df
+
+    def combine_all_transactions(self, include_splitwise: bool = True) -> pd.DataFrame:
+        """
+        Combine all standardized transaction CSVs and sort by date
+        
+        Args:
+            include_splitwise: Whether to include Splitwise transactions
+            
+        Returns:
+            Combined DataFrame with all transactions sorted by date
+        """
+        try:
+            logger.info("Combining all standardized transaction CSVs")
+            
+            all_dataframes = []
+            
+            # Find all standardized transaction CSV files
+            csv_files = list(self.data_dir.glob("standardized_transactions_*.csv"))
+            logger.info(f"Found {len(csv_files)} standardized transaction CSV files")
+            
+            # Load bank transaction CSVs
+            for csv_file in csv_files:
+                try:
+                    logger.info(f"Loading bank transactions from: {csv_file.name}")
+                    df = pd.read_csv(csv_file)
+                    
+                    # Add is_shared column (False for bank transactions)
+                    df['is_shared'] = False
+                    
+                    # Ensure all required columns exist
+                    required_columns = [
+                        'transaction_date', 'transaction_time', 'description', 'amount',
+                        'transaction_type', 'account', 'category', 'reference_number',
+                        'source_file', 'raw_data', 'is_shared'
+                    ]
+                    
+                    for col in required_columns:
+                        if col not in df.columns:
+                            if col == 'is_shared':
+                                df[col] = False
+                            else:
+                                df[col] = None
+                    
+                    all_dataframes.append(df)
+                    logger.info(f"Loaded {len(df)} transactions from {csv_file.name}")
+                    
+                except Exception as e:
+                    logger.error(f"Error loading {csv_file.name}: {e}")
+                    continue
+            
+            # Load Splitwise transactions if requested
+            if include_splitwise:
+                splitwise_files = list(self.data_dir.glob("splitwise_exact_format_*.csv"))
+                logger.info(f"Found {len(splitwise_files)} Splitwise CSV files")
+                
+                for splitwise_file in splitwise_files:
+                    try:
+                        logger.info(f"Loading Splitwise transactions from: {splitwise_file.name}")
+                        df = pd.read_csv(splitwise_file)
+                        
+                        # Ensure is_shared column exists and is True
+                        df['is_shared'] = True
+                        
+                        all_dataframes.append(df)
+                        logger.info(f"Loaded {len(df)} Splitwise transactions from {splitwise_file.name}")
+                        
+                    except Exception as e:
+                        logger.error(f"Error loading {splitwise_file.name}: {e}")
+                        continue
+            
+            if not all_dataframes:
+                logger.warning("No transaction data found to combine")
+                return pd.DataFrame()
+            
+            # Combine all dataframes
+            logger.info(f"Combining {len(all_dataframes)} dataframes")
+            combined_df = pd.concat(all_dataframes, ignore_index=True)
+            
+            # Remove duplicates based on reference_number and description
+            initial_count = len(combined_df)
+            combined_df = combined_df.drop_duplicates(
+                subset=['reference_number', 'description', 'amount', 'transaction_date'], 
+                keep='first'
+            )
+            final_count = len(combined_df)
+            
+            if initial_count != final_count:
+                logger.info(f"Removed {initial_count - final_count} duplicate transactions")
+            
+            # Sort by transaction date (newest first)
+            combined_df['transaction_date'] = pd.to_datetime(combined_df['transaction_date'])
+            combined_df = combined_df.sort_values('transaction_date', ascending=False)
+            
+            # Reset index
+            combined_df = combined_df.reset_index(drop=True)
+            
+            logger.info(f"Successfully combined {len(combined_df)} transactions")
+            
+            # Display summary
+            self._display_combination_summary(combined_df)
+            
+            return combined_df
+            
+        except Exception as e:
+            logger.error(f"Error combining transactions: {e}")
+            return pd.DataFrame()
+    
+    def _display_combination_summary(self, df: pd.DataFrame):
+        """Display summary of combined transactions"""
+        try:
+            logger.info("📊 Combined Transactions Summary:")
+            logger.info(f"Total transactions: {len(df)}")
+            
+            # Account breakdown
+            account_counts = df['account'].value_counts()
+            logger.info("Account breakdown:")
+            for account, count in account_counts.items():
+                logger.info(f"  - {account}: {count} transactions")
+            
+            # Transaction type breakdown
+            type_counts = df['transaction_type'].value_counts()
+            logger.info("Transaction type breakdown:")
+            for txn_type, count in type_counts.items():
+                logger.info(f"  - {txn_type}: {count} transactions")
+            
+            # Shared vs non-shared breakdown
+            if 'is_shared' in df.columns:
+                shared_counts = df['is_shared'].value_counts()
+                logger.info("Shared vs non-shared breakdown:")
+                for is_shared, count in shared_counts.items():
+                    status = "Shared (Splitwise)" if is_shared else "Non-shared (Bank)"
+                    logger.info(f"  - {status}: {count} transactions")
+            
+            # Date range
+            if 'transaction_date' in df.columns:
+                date_range = f"{df['transaction_date'].min()} to {df['transaction_date'].max()}"
+                logger.info(f"Date range: {date_range}")
+            
+            # Total amounts
+            total_debit = df[df['transaction_type'] == 'debit']['amount'].sum()
+            total_credit = df[df['transaction_type'] == 'credit']['amount'].sum()
+            logger.info(f"Total amounts - Debit: {total_debit:.2f}, Credit: {total_credit:.2f}")
+            
+        except Exception as e:
+            logger.error(f"Error displaying combination summary: {e}")
+    
+    def save_combined_transactions(self, output_filename: str = None) -> str:
+        """
+        Combine all transactions and save to a single CSV file
+        
+        Args:
+            output_filename: Optional custom filename. If None, generates timestamp-based name
+            
+        Returns:
+            Path to the saved file
+        """
+        try:
+            # Combine all transactions
+            combined_df = self.combine_all_transactions(include_splitwise=True)
+            
+            if combined_df.empty:
+                logger.warning("No transactions to save")
+                return None
+            
+            # Generate filename if not provided
+            if output_filename is None:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_filename = f"combined_transactions_{timestamp}.csv"
+            
+            # Ensure filename has .csv extension
+            if not output_filename.endswith('.csv'):
+                output_filename += '.csv'
+            
+            # Save to data directory
+            output_path = self.data_dir / output_filename
+            
+            logger.info(f"Saving combined transactions to: {output_path}")
+            combined_df.to_csv(output_path, index=False)
+            
+            logger.info(f"✅ Successfully saved {len(combined_df)} transactions to {output_filename}")
+            return str(output_path)
+            
+        except Exception as e:
+            logger.error(f"Error saving combined transactions: {e}")
+            return None
+
 
 # Global instance for easy access
 transaction_standardizer = TransactionStandardizer()

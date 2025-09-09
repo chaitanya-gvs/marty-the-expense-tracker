@@ -24,7 +24,7 @@ from src.services.database_manager.operations import AccountOperations
 from src.services.email_ingestion.client import EmailClient
 from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
 from src.services.statement_processor.document_extractor import DocumentExtractor
-from src.services.statement_processor.transaction_standardizer import TransactionStandardizer
+from .transaction_standardizer import TransactionStandardizer
 from src.services.statement_processor.pdf_unlocker import PDFUnlocker
 from src.utils.logger import get_logger
 from src.utils.password_manager import BankPasswordManager
@@ -150,12 +150,59 @@ class StatementWorkflow:
             # Fallback to current month
             return datetime.now().strftime("%B_%Y")
     
+    def _get_previous_month_folder(self, email_date: str) -> str:
+        """
+        Get the previous month folder name in YYYY-MM format from email date
+        If statement was sent in September, it's for August data
+        """
+        try:
+            # Parse email date (handle Gmail format)
+            try:
+                # Try Gmail format first: "Wed, 03 Sep 2025 06:48:41 +0530"
+                email_datetime = datetime.strptime(email_date, "%a, %d %b %Y %H:%M:%S %z")
+            except ValueError:
+                try:
+                    # Try Gmail format without timezone: "Wed, 03 Sep 2025 11:47:18 GMT"
+                    email_datetime = datetime.strptime(email_date, "%a, %d %b %Y %H:%M:%S %Z")
+                except ValueError:
+                    try:
+                        # Try ISO format: "2025-09-04T10:00:00Z"
+                        email_datetime = datetime.strptime(email_date.split('T')[0], "%Y-%m-%d")
+                    except ValueError:
+                        # Fallback to current date
+                        email_datetime = datetime.now()
+                        logger.warning(f"Could not parse email date '{email_date}', using current date")
+            
+            # Get previous month
+            if email_datetime.month == 1:
+                prev_month = 12
+                prev_year = email_datetime.year - 1
+            else:
+                prev_month = email_datetime.month - 1
+                prev_year = email_datetime.year
+            
+            # Format as YYYY-MM (e.g., "2025-08")
+            return f"{prev_year}-{prev_month:02d}"
+            
+        except Exception as e:
+            logger.error(f"Error parsing email date {email_date}: {e}")
+            # Fallback to current month
+            return datetime.now().strftime("%Y-%m")
+    
     def _generate_cloud_path(self, sender_email: str, email_date: str, filename: str) -> str:
-        """Generate cloud storage path for the statement - organized by month only"""
-        previous_month = self._get_previous_month_name(email_date)
+        """Generate cloud storage path for the statement - organized by month and type"""
+        previous_month = self._get_previous_month_folder(email_date)
         
-        # All statements for a month go into a single directory
-        cloud_path = f"statements/{previous_month}/{filename}"
+        # Determine if this is a PDF or CSV based on filename
+        if filename.endswith('.pdf'):
+            # PDFs go to unlocked_statements folder
+            cloud_path = f"{previous_month}/unlocked_statements/{filename}"
+        elif filename.endswith('.csv'):
+            # CSVs go to extracted_data folder
+            cloud_path = f"{previous_month}/extracted_data/{filename}"
+        else:
+            # Fallback to unlocked_statements for unknown file types
+            cloud_path = f"{previous_month}/unlocked_statements/{filename}"
         
         return cloud_path
     
@@ -347,7 +394,8 @@ class StatementWorkflow:
             extraction_result = self.document_extractor.extract_from_pdf(
                 pdf_path=unlocked_path,
                 account_nickname=account_nickname,
-                save_results=True
+                save_results=True,
+                email_date=statement_data.get("email_date")
             )
             
             if extraction_result.get("success"):
@@ -405,6 +453,7 @@ class StatementWorkflow:
         except Exception as e:
             logger.error(f"Error uploading unlocked statement to cloud storage: {e}")
             return None
+    
     
     async def _standardize_and_store_data(self, extraction_result: Dict[str, Any], statement_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Standardize extracted data using dynamic method lookup"""
@@ -626,7 +675,8 @@ class StatementWorkflow:
                                 workflow_results["processed_statements"].append({
                                     "sender_email": statement_data["sender_email"],
                                     "filename": statement_data["normalized_filename"],
-                                    "cloud_path": cloud_path,
+                                    "pdf_cloud_path": cloud_path,
+                                    "csv_cloud_path": extraction_result.get("csv_cloud_path"),
                                     "extraction_success": True,
                                     "standardization_success": len(standardized_data) > 0 if standardized_data else False
                                 })
