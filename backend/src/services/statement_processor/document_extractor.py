@@ -25,6 +25,7 @@ sys.path.insert(0, str(backend_path))
 
 from src.schemas.extraction import BANK_STATEMENT_MODELS
 from src.services.database_manager.operations import AccountOperations
+from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -45,6 +46,9 @@ class DocumentExtractor:
         
         # Assign parse function
         self.parse = parse
+        
+        # Initialize GCS service for CSV uploads
+        self.cloud_storage = GoogleCloudStorageService()
         
 
     
@@ -161,7 +165,7 @@ class DocumentExtractor:
             logger.error(f"Error parsing HTML table: {e}")
             return pd.DataFrame()
     
-    def extract_from_pdf(self, pdf_path: str, account_nickname: str = None, save_results: bool = True) -> Dict[str, Any]:
+    def extract_from_pdf(self, pdf_path: str, account_nickname: str = None, save_results: bool = True, email_date: str = None) -> Dict[str, Any]:
         """
         Extract structured data from a PDF bank statement using agentic-doc
         
@@ -169,6 +173,7 @@ class DocumentExtractor:
             pdf_path: Path to the PDF file
             account_nickname: The account nickname from database for schema selection
             save_results: Whether to save results to file
+            email_date: Email date for determining the correct month folder
         
         Returns:
             Dictionary containing extracted data and metadata
@@ -189,7 +194,7 @@ class DocumentExtractor:
             
             # Save results if requested (only CSV in temp directory)
             if save_results:
-                saved_path = self._save_extraction_csv_only(extraction_result, pdf_path, account_nickname)
+                saved_path = self._save_extraction_csv_only(extraction_result, pdf_path, account_nickname, email_date)
                 extraction_result["saved_path"] = saved_path
             
             # Add metadata
@@ -253,8 +258,8 @@ class DocumentExtractor:
             logger.error(f"Error in agentic-doc extraction: {e}")
             raise
     
-    def _save_extraction_csv_only(self, extraction_result: Dict[str, Any], pdf_path: Path, account_nickname: str = None) -> Optional[str]:
-        """Save extraction results as CSV only in extracted_data directory"""
+    def _save_extraction_csv_only(self, extraction_result: Dict[str, Any], pdf_path: Path, account_nickname: str = None, email_date: str = None) -> Optional[str]:
+        """Save extraction results as CSV only in extracted_data directory and upload to GCS"""
         try:
             # Create extracted_data directory for CSV files
             output_dir = Path("data/extracted_data")
@@ -282,6 +287,14 @@ class DocumentExtractor:
                     csv_file = output_dir / csv_filename
                     df.to_csv(csv_file, index=False, encoding='utf-8')
                     logger.info(f"Saved CSV table to: {csv_file}")
+                    
+                    # Upload CSV to GCS bucket
+                    csv_cloud_path = self._upload_csv_to_gcs(csv_file, account_nickname, pdf_path, email_date)
+                    if csv_cloud_path:
+                        logger.info(f"☁️ Uploaded CSV to GCS: {csv_cloud_path}")
+                        extraction_result["csv_cloud_path"] = csv_cloud_path
+                    else:
+                        logger.warning(f"Failed to upload CSV to GCS: {csv_filename}")
                     
                     # Add file path to result
                     extraction_result["csv_file"] = str(csv_file)
@@ -378,6 +391,91 @@ class DocumentExtractor:
         except Exception as e:
             logger.error(f"Error extracting date from filename: {e}")
             return datetime.now().strftime("%Y%m%d")
+    
+    def _upload_csv_to_gcs(self, csv_file: Path, account_nickname: str = None, pdf_path: Path = None, email_date: str = None) -> Optional[str]:
+        """Upload CSV file to GCS bucket with new directory structure"""
+        try:
+            if not csv_file.exists():
+                logger.error(f"CSV file does not exist: {csv_file}")
+                return None
+            
+            # Generate cloud path for CSV file with new structure: previous_month/extracted_data/filename.csv
+            csv_filename = csv_file.name
+            month_folder = self._get_previous_month_folder(email_date)
+            cloud_path = f"{month_folder}/extracted_data/{csv_filename}"
+            
+            # Upload CSV to GCS
+            upload_result = self.cloud_storage.upload_file(
+                local_file_path=str(csv_file),
+                cloud_path=cloud_path,
+                content_type="text/csv",
+                metadata={
+                    "account_nickname": account_nickname or "unknown",
+                    "source_pdf": str(pdf_path) if pdf_path else "unknown",
+                    "upload_timestamp": self._get_timestamp(),
+                    "file_type": "extracted_csv"
+                }
+            )
+            
+            if upload_result.get("success"):
+                logger.info(f"Successfully uploaded CSV to GCS: {cloud_path}")
+                return cloud_path
+            else:
+                logger.error(f"Failed to upload CSV to GCS: {upload_result.get('error')}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error uploading CSV to GCS: {e}")
+            return None
+    
+    def _get_previous_month_folder(self, email_date: str = None) -> str:
+        """Get the previous month folder name in YYYY-MM format"""
+        try:
+            from datetime import datetime, timedelta
+            
+            if email_date:
+                # Parse email date (handle Gmail format)
+                try:
+                    # Try Gmail format first: "Wed, 03 Sep 2025 06:48:41 +0530"
+                    email_datetime = datetime.strptime(email_date, "%a, %d %b %Y %H:%M:%S %z")
+                except ValueError:
+                    try:
+                        # Try Gmail format without timezone: "Wed, 03 Sep 2025 11:47:18 GMT"
+                        email_datetime = datetime.strptime(email_date, "%a, %d %b %Y %H:%M:%S %Z")
+                    except ValueError:
+                        try:
+                            # Try ISO format: "2025-09-04T10:00:00Z"
+                            email_datetime = datetime.strptime(email_date.split('T')[0], "%Y-%m-%d")
+                        except ValueError:
+                            # Fallback to current date
+                            email_datetime = datetime.now()
+                            logger.warning(f"Could not parse email date '{email_date}', using current date")
+                
+                # Get previous month from email date
+                if email_datetime.month == 1:
+                    previous_month = 12
+                    previous_year = email_datetime.year - 1
+                else:
+                    previous_month = email_datetime.month - 1
+                    previous_year = email_datetime.year
+            else:
+                # Get current date and subtract one month
+                current_date = datetime.now()
+                
+                # Calculate previous month
+                if current_date.month == 1:
+                    previous_month = 12
+                    previous_year = current_date.year - 1
+                else:
+                    previous_month = current_date.month - 1
+                    previous_year = current_date.year
+            
+            return f"{previous_year}-{previous_month:02d}"
+            
+        except Exception as e:
+            logger.error(f"Error calculating previous month folder: {e}")
+            # Fallback to current month if there's an error
+            return datetime.now().strftime("%Y-%m")
 
 
 # Global instance for easy access
