@@ -308,16 +308,59 @@ class TransactionStandardizer:
         logger.info(f"Processing Cashback SBI data: {filename}")
         
         standardized_data = []
+        last_valid_date = None
+        
         for _, row in df.iterrows():
-            if pd.isna(row.get("Date")) or str(row.get("Date")).strip() == "":
+            date_value = row.get("Date")
+            description = str(row.get("Transaction Details for Statement Period: 02 Aug 25 to 01 Sep 25", "")).strip()
+            
+            # Skip summary rows
+            if any(keyword in description.lower() for keyword in ['transactions for', 'summary', 'total']):
+                logger.warning(f"Skipping summary row: {description}")
                 continue
+            
+            # Handle rows without dates (likely forex charges or fees)
+            if pd.isna(date_value) or str(date_value).strip() == "":
+                if any(keyword in description.lower() for keyword in ['forex', 'markup', 'igst', 'tax', 'charge', 'fee']):
+                    # Use the first of the month for forex charges/fees
+                    if last_valid_date:
+                        # Convert to date object if it's a pandas Timestamp or string
+                        if hasattr(last_valid_date, 'date'):
+                            date_obj = last_valid_date.date()
+                        elif isinstance(last_valid_date, str):
+                            # Parse the string date to get a date object
+                            try:
+                                from datetime import datetime
+                                date_obj = datetime.strptime(last_valid_date, "%Y-%m-%d").date()
+                            except ValueError:
+                                # Fallback to current month first day
+                                from datetime import date
+                                transaction_date = date.today().replace(day=1)
+                                logger.info(f"Using current month first day {transaction_date} for forex charge: {description}")
+                                continue
+                        else:
+                            date_obj = last_valid_date
+                        # Get the first day of the month from the last valid date
+                        transaction_date = date_obj.replace(day=1)
+                    else:
+                        # Fallback to current month first day if no valid date found
+                        from datetime import date
+                        today = date.today()
+                        transaction_date = today.replace(day=1)
+                    logger.info(f"Using first of month {transaction_date} for forex charge: {description}")
+                else:
+                    logger.warning(f"Skipping row without date: {description}")
+                    continue
+            else:
+                transaction_date = self.parse_date(date_value)
+                last_valid_date = transaction_date
                 
             amount, transaction_type = self.clean_amount(row.get("Amount (₹)", ""), is_credit_card=True)
             
             standardized_data.append({
-                'transaction_date': self.parse_date(row.get("Date")),
+                'transaction_date': transaction_date,
                 'transaction_time': None,
-                'description': str(row.get("Transaction Details for Statement Period: 02 Aug 25 to 01 Sep 25", "")).strip(),
+                'description': description,
                 'amount': amount,
                 'transaction_type': transaction_type,
                 'account': account_name or "Cashback SBI Credit Card",
@@ -336,6 +379,18 @@ class TransactionStandardizer:
         standardized_data = []
         for _, row in df.iterrows():
             if pd.isna(row.get("Transaction Date")) or str(row.get("Transaction Date")).strip() == "":
+                continue
+            
+            # Skip summary/balance rows
+            date_str = str(row.get("Transaction Date")).strip()
+            description = str(row.get("Description", "")).strip()
+            
+            if any(keyword in date_str.lower() for keyword in ['closing balance', 'opening balance', 'total', 'summary', 'b/f', 'brought forward']):
+                logger.warning(f"Skipping summary row: {date_str} - {description}")
+                continue
+            
+            if any(keyword in description.lower() for keyword in ['closing balance', 'opening balance', 'total', 'summary', 'b/f', 'brought forward']):
+                logger.warning(f"Skipping summary row: {date_str} - {description}")
                 continue
                 
             # For savings account, we need to determine amount from withdrawals/deposits
@@ -374,6 +429,18 @@ class TransactionStandardizer:
         standardized_data = []
         for _, row in df.iterrows():
             if pd.isna(row.get("Date")) or str(row.get("Date")).strip() == "":
+                continue
+            
+            # Skip summary/balance rows
+            date_str = str(row.get("Date")).strip()
+            description = str(row.get("Transaction Details", "")).strip()
+            
+            if any(keyword in date_str.lower() for keyword in ['closing balance', 'opening balance', 'total', 'summary']):
+                logger.warning(f"Skipping summary row: {date_str} - {description}")
+                continue
+            
+            if any(keyword in description.lower() for keyword in ['closing balance', 'opening balance', 'total', 'summary']):
+                logger.warning(f"Skipping summary row: {date_str} - {description}")
                 continue
                 
             # For savings account, we need to determine amount from withdrawals/deposits
@@ -724,7 +791,7 @@ class TransactionStandardizer:
             df = df.rename(columns=column_mapping)
             
             # Add required bank transaction columns (exact same as bank format)
-            df['transaction_time'] = ''  # Splitwise doesn't have time
+            df['transaction_time'] = None  # Splitwise doesn't have time
             df['transaction_type'] = 'debit'  # All Splitwise expenses are debits
             df['account'] = 'Splitwise'  # Set account as Splitwise
             df['source_file'] = 'splitwise_data'  # Set source file
@@ -810,8 +877,8 @@ class TransactionStandardizer:
             if 'transaction_date' in df.columns:
                 df['transaction_date'] = pd.to_datetime(df['transaction_date'])
             
-            # Sort by transaction date
-            df = df.sort_values('transaction_date', ascending=False)
+            # Sort by transaction date (chronological order - oldest first)
+            df = df.sort_values('transaction_date', ascending=True)
             
             # Reset index
             df = df.reset_index(drop=True)
@@ -911,9 +978,9 @@ class TransactionStandardizer:
             if initial_count != final_count:
                 logger.info(f"Removed {initial_count - final_count} duplicate transactions")
             
-            # Sort by transaction date (newest first)
+            # Sort by transaction date (chronological order - oldest first)
             combined_df['transaction_date'] = pd.to_datetime(combined_df['transaction_date'])
-            combined_df = combined_df.sort_values('transaction_date', ascending=False)
+            combined_df = combined_df.sort_values('transaction_date', ascending=True)
             
             # Reset index
             combined_df = combined_df.reset_index(drop=True)
