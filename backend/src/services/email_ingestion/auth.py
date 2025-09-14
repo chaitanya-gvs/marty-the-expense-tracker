@@ -149,7 +149,7 @@ class EmailAuthHandler:
         """Validate if the credentials are still valid"""
         try:
             credentials = Credentials(
-                access_token,
+                token=access_token,
                 refresh_token=refresh_token,
                 client_id=self.settings.GOOGLE_CLIENT_ID,
                 client_secret=self.settings.GOOGLE_CLIENT_SECRET,

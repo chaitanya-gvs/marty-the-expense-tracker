@@ -14,6 +14,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
 from src.services.database_manager.operations import AccountOperations
+from src.services.email_ingestion.token_manager import TokenManager
 from src.utils.logger import get_logger
 from src.utils.settings import get_settings
 
@@ -25,6 +26,7 @@ class EmailClient:
         self.settings = get_settings()
         self.account_id = account_id
         self.client_config = self._load_client_config()
+        self.token_manager = TokenManager(account_id)
         self.creds = self._get_credentials()
         self.service = build("gmail", "v1", credentials=self.creds, cache_discovery=False)
 
@@ -87,16 +89,22 @@ class EmailClient:
         )
 
     def _refresh_credentials(self) -> bool:
-        """Refresh Gmail credentials if needed"""
+        """Refresh Gmail credentials if needed using advanced token management"""
         try:
-            if self.creds.expired:
-                self.creds.refresh(None)
-                logger.info("Gmail credentials refreshed successfully")
+            # Use the token manager for proactive refresh
+            new_creds = self.token_manager.get_valid_credentials()
+            if new_creds:
+                self.creds = new_creds
+                # Rebuild the service with new credentials
+                self.service = build("gmail", "v1", credentials=self.creds, cache_discovery=False)
+                logger.info(f"Gmail credentials refreshed successfully for {self.account_id} account")
                 return True
-        except RefreshError as e:
-            logger.error(f"Failed to refresh Gmail credentials: {e}")
+            else:
+                logger.error(f"Failed to get valid credentials for {self.account_id} account")
+                return False
+        except Exception as e:
+            logger.error(f"Failed to refresh Gmail credentials for {self.account_id}: {e}")
             return False
-        return True
 
     def list_recent_transaction_emails(self, max_results: int = 25, days_back: int = 7) -> List[dict[str, Any]]:
         """List recent transaction-related emails using simple keyword search"""
