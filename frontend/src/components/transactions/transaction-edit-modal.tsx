@@ -1,0 +1,426 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useUpdateTransaction, useTransaction } from "@/hooks/use-transactions";
+import { useCategories } from "@/hooks/use-categories";
+import { useTags } from "@/hooks/use-tags";
+import { Transaction } from "@/lib/types";
+import { format } from "date-fns";
+import { X, Save, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+
+interface TransactionEditModalProps {
+  transactionId: string;
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export function TransactionEditModal({
+  transactionId,
+  isOpen,
+  onClose,
+}: TransactionEditModalProps) {
+  const [formData, setFormData] = useState<Partial<Transaction>>({});
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
+
+  const { data: transactionData, isLoading: transactionLoading } = useTransaction(transactionId);
+  const { data: categoriesData } = useCategories();
+  const { data: tagsData } = useTags();
+  const updateTransaction = useUpdateTransaction();
+
+  const transaction = transactionData?.data;
+  const categories = categoriesData?.data || [];
+  const tags = tagsData?.data || [];
+
+  // Initialize form data when transaction loads
+  useEffect(() => {
+    if (transaction) {
+      setFormData({
+        date: transaction.date,
+        account: transaction.account,
+        description: transaction.description,
+        category: transaction.category,
+        subcategory: transaction.subcategory,
+        direction: transaction.direction,
+        amount: transaction.amount,
+        split_share_amount: transaction.split_share_amount,
+        notes: transaction.notes,
+        is_shared: transaction.is_shared,
+        is_refund: transaction.is_refund,
+        is_transfer: transaction.is_transfer,
+      });
+      setSelectedTags(transaction.tags || []);
+    }
+  }, [transaction]);
+
+  const handleInputChange = (
+    field: keyof Transaction,
+    value: string | number | boolean | string[]
+  ) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleTagAdd = (tag: string) => {
+    if (tag.trim() && !selectedTags.includes(tag.trim())) {
+      setSelectedTags(prev => [...prev, tag.trim()]);
+      setTagInput("");
+    }
+  };
+
+  const handleTagRemove = (tagToRemove: string) => {
+    setSelectedTags(prev => prev.filter(tag => tag !== tagToRemove));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      await updateTransaction.mutateAsync({
+        id: transactionId,
+        updates: {
+          ...formData,
+          tags: selectedTags,
+        },
+      });
+      
+      toast.success("Transaction updated successfully");
+      onClose();
+    } catch (error) {
+      toast.error("Failed to update transaction");
+      console.error("Update error:", error);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && tagInput.trim()) {
+      e.preventDefault();
+      handleTagAdd(tagInput);
+    }
+  };
+
+  if (transactionLoading) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="max-w-2xl">
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin" />
+            <span className="ml-2">Loading transaction...</span>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  if (!transaction) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="max-w-2xl">
+          <div className="text-center py-8">
+            <p className="text-gray-500">Transaction not found</p>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Transaction</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-6 p-1">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Basic Information */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-semibold">Basic Information</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 pt-0">
+                <div>
+                  <Label htmlFor="date">Date</Label>
+                  <Input
+                    id="date"
+                    type="date"
+                    value={formData.date || ""}
+                    onChange={(e) => handleInputChange("date", e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="description">Description</Label>
+                  <Input
+                    id="description"
+                    value={formData.description || ""}
+                    onChange={(e) => handleInputChange("description", e.target.value)}
+                    placeholder="Transaction description"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="account">Account</Label>
+                  <Input
+                    id="account"
+                    value={formData.account || ""}
+                    onChange={(e) => handleInputChange("account", e.target.value)}
+                    placeholder="Account name"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="amount">Amount</Label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    step="0.01"
+                    value={formData.amount || ""}
+                    onChange={(e) => handleInputChange("amount", parseFloat(e.target.value))}
+                    placeholder="0.00"
+                    required
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Category & Direction */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-semibold">Category & Direction</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 pt-0">
+                <div>
+                  <Label htmlFor="direction">Direction</Label>
+                  <Select
+                    value={formData.direction || ""}
+                    onValueChange={(value) => handleInputChange("direction", value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select direction" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="debit">Debit (Money Out)</SelectItem>
+                      <SelectItem value="credit">Credit (Money In)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="category">Category</Label>
+                  <Select
+                    value={formData.category || ""}
+                    onValueChange={(value) => handleInputChange("category", value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((category) => (
+                        <SelectItem key={category.id} value={category.name}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="subcategory">Subcategory</Label>
+                  <Input
+                    id="subcategory"
+                    value={formData.subcategory || ""}
+                    onChange={(e) => handleInputChange("subcategory", e.target.value)}
+                    placeholder="Optional subcategory"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="split_share_amount">Split Share Amount</Label>
+                  <Input
+                    id="split_share_amount"
+                    type="number"
+                    step="0.01"
+                    value={formData.split_share_amount || ""}
+                    onChange={(e) => handleInputChange("split_share_amount", parseFloat(e.target.value))}
+                    placeholder="Your share of the transaction"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Tags */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">Tags</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              <div>
+                <Label htmlFor="tag-input">Add Tags</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="tag-input"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder="Type a tag and press Enter"
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => handleTagAdd(tagInput)}
+                    disabled={!tagInput.trim()}
+                  >
+                    Add
+                  </Button>
+                </div>
+              </div>
+
+              <div>
+                <Label>Available Tags</Label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {tags.map((tag) => (
+                    <Badge
+                      key={tag.id}
+                      variant={selectedTags.includes(tag.name) ? "default" : "outline"}
+                      className="cursor-pointer"
+                      onClick={() => {
+                        if (selectedTags.includes(tag.name)) {
+                          handleTagRemove(tag.name);
+                        } else {
+                          handleTagAdd(tag.name);
+                        }
+                      }}
+                    >
+                      {tag.name}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <Label>Selected Tags</Label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {selectedTags.map((tag) => (
+                    <Badge
+                      key={tag}
+                      variant="default"
+                      className="cursor-pointer"
+                      onClick={() => handleTagRemove(tag)}
+                    >
+                      {tag}
+                      <X className="ml-1 h-3 w-3" />
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Notes & Flags */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">Notes & Flags</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              <div>
+                <Label htmlFor="notes">Notes</Label>
+                <Textarea
+                  id="notes"
+                  value={formData.notes || ""}
+                  onChange={(e) => handleInputChange("notes", e.target.value)}
+                  placeholder="Additional notes about this transaction"
+                  rows={3}
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center space-x-3">
+                  <input
+                    type="checkbox"
+                    id="is_shared"
+                    checked={formData.is_shared || false}
+                    onChange={(e) => handleInputChange("is_shared", e.target.checked)}
+                    className="rounded h-4 w-4"
+                  />
+                  <Label htmlFor="is_shared" className="text-sm">Shared Transaction</Label>
+                </div>
+
+                <div className="flex items-center space-x-3">
+                  <input
+                    type="checkbox"
+                    id="is_refund"
+                    checked={formData.is_refund || false}
+                    onChange={(e) => handleInputChange("is_refund", e.target.checked)}
+                    className="rounded h-4 w-4"
+                  />
+                  <Label htmlFor="is_refund" className="text-sm">Refund</Label>
+                </div>
+
+                <div className="flex items-center space-x-3">
+                  <input
+                    type="checkbox"
+                    id="is_transfer"
+                    checked={formData.is_transfer || false}
+                    onChange={(e) => handleInputChange("is_transfer", e.target.checked)}
+                    className="rounded h-4 w-4"
+                  />
+                  <Label htmlFor="is_transfer" className="text-sm">Transfer</Label>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <DialogFooter className="flex justify-end gap-3 pt-4">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={updateTransaction.isPending}
+              className="min-w-[120px]"
+            >
+              {updateTransaction.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Save Changes
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
