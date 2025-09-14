@@ -1,0 +1,35 @@
+---
+alwaysApply: true
+description: Backend directory requirements and working directory rules
+globs: *.py
+---
+
+# Backend Directory Requirements
+
+## Critical Directory Rule
+- **ALWAYS** run commands from the `backend/` directory, not from the project root
+- Before executing any Python command, script, or program, verify we're in the correct directory
+- Use `cd backend/` or ensure the working directory is `/path/to/expense-tracker/backend/`
+
+## Why This Matters
+This is critical because:
+- `pyproject.toml` is located in `backend/`
+- Poetry commands must be run from where `pyproject.toml` exists
+- All Python imports assume the backend directory as the working directory
+- Scripts in `backend/scripts/` expect to be run from `backend/`
+
+## Directory Verification
+Before running any command, check:
+```bash
+# Verify we're in the right place
+pwd  # Should show: /path/to/expense-tracker/backend
+ls pyproject.toml  # Should exist
+```
+
+## Error Prevention
+If you see errors like:
+- "Poetry could not not find a pyproject.toml file"
+- "No module named 'src'"
+- Import errors in scripts
+
+**First check**: Are we in the `backend/` directory?

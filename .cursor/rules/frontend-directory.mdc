@@ -1,0 +1,45 @@
+---
+alwaysApply: true
+description: Frontend directory requirements and working directory rules
+globs: *.ts,*.tsx,*.js,*.jsx,*.json
+---
+
+# Frontend Directory Requirements
+
+## Critical Directory Rule
+- **ALWAYS** run commands from the `frontend/` directory, not from the project root
+- Before executing any Node.js, npm, or Next.js command, verify we're in the correct directory
+- Use `cd frontend/` or ensure the working directory is `/path/to/expense-tracker/frontend/`
+
+## Why This Matters
+This is critical because:
+- `package.json` is located in `frontend/`
+- npm/yarn commands must be run from where `package.json` exists
+- Next.js configuration expects to be run from the frontend directory
+- All frontend imports and build processes assume the frontend directory as the working directory
+
+## Directory Verification
+Before running any command, check:
+```bash
+# Verify we're in the right place
+pwd  # Should show: /path/to/expense-tracker/frontend
+ls package.json  # Should exist
+ls next.config.ts  # Should exist
+```
+
+## Error Prevention
+If you see errors like:
+- "Could not find package.json"
+- "Next.js build failed"
+- Import resolution errors
+- Build configuration not found
+
+**First check**: Are we in the `frontend/` directory?
+
+## Common Frontend Commands
+Always run these from the `frontend/` directory:
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run lint` - Run linting
+- `npm install` - Install dependencies
+- `npx next build` - Build Next.js application
