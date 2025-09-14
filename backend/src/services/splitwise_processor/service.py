@@ -33,7 +33,9 @@ class SplitwiseService:
     def get_transactions_for_past_month(
         self, 
         exclude_created_by_me: bool = True,
-        include_only_my_transactions: bool = True
+        include_only_my_transactions: bool = True,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
     ) -> List[ProcessedSplitwiseTransaction]:
         """
         Get transactions from the past month where the user is involved.
@@ -45,9 +47,10 @@ class SplitwiseService:
         Returns:
             List of processed transactions
         """
-        # Calculate date range for past month
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=30)
+        # Use provided date range or calculate default past month
+        if start_date is None or end_date is None:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=30)
         
         logger.info(f"Fetching Splitwise transactions from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
         
