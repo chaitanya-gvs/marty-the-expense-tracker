@@ -61,7 +61,7 @@ async def process_and_combine_csvs():
     """Process all CSV files from temp directory, standardize and combine them"""
     try:
         import pandas as pd
-        from src.services.statement_processor.transaction_standardizer import TransactionStandardizer
+        from src.services.orchestrator.transaction_standardizer import TransactionStandardizer
         
         extracted_data_dir = Path("data/extracted_data")
         if not extracted_data_dir.exists():
