@@ -24,10 +24,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useUpdateTransaction, useTransaction } from "@/hooks/use-transactions";
 import { useCategories } from "@/hooks/use-categories";
 import { useTags } from "@/hooks/use-tags";
-import { Transaction } from "@/lib/types";
+import { Transaction, Tag } from "@/lib/types";
 import { format } from "date-fns";
 import { X, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { CategorySelector } from "./category-selector";
+import { MultiTagSelector } from "./multi-tag-selector";
 
 interface TransactionEditModalProps {
   transactionId: string;
@@ -41,17 +43,15 @@ export function TransactionEditModal({
   onClose,
 }: TransactionEditModalProps) {
   const [formData, setFormData] = useState<Partial<Transaction>>({});
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [tagInput, setTagInput] = useState("");
+  const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
 
   const { data: transactionData, isLoading: transactionLoading } = useTransaction(transactionId);
-  const { data: categoriesData } = useCategories();
+  const { data: categories = [] } = useCategories();
   const { data: tagsData } = useTags();
   const updateTransaction = useUpdateTransaction();
 
   const transaction = transactionData?.data;
-  const categories = categoriesData?.data || [];
-  const tags = tagsData?.data || [];
+  const allTags = tagsData || [];
 
   // Initialize form data when transaction loads
   useEffect(() => {
@@ -70,9 +70,18 @@ export function TransactionEditModal({
         is_refund: transaction.is_refund,
         is_transfer: transaction.is_transfer,
       });
-      setSelectedTags(transaction.tags || []);
+      
+      // Convert string tags to Tag objects
+      if (transaction.tags && transaction.tags.length > 0 && allTags.length > 0) {
+        const tagObjects = transaction.tags
+          .map(tagName => allTags.find(tag => tag.name === tagName))
+          .filter((tag): tag is Tag => tag !== undefined);
+        setSelectedTags(tagObjects);
+      } else {
+        setSelectedTags([]);
+      }
     }
-  }, [transaction]);
+  }, [transaction, allTags]);
 
   const handleInputChange = (
     field: keyof Transaction,
@@ -84,15 +93,8 @@ export function TransactionEditModal({
     }));
   };
 
-  const handleTagAdd = (tag: string) => {
-    if (tag.trim() && !selectedTags.includes(tag.trim())) {
-      setSelectedTags(prev => [...prev, tag.trim()]);
-      setTagInput("");
-    }
-  };
-
-  const handleTagRemove = (tagToRemove: string) => {
-    setSelectedTags(prev => prev.filter(tag => tag !== tagToRemove));
+  const handleTagsChange = (tags: Tag[]) => {
+    setSelectedTags(tags);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -103,7 +105,7 @@ export function TransactionEditModal({
         id: transactionId,
         updates: {
           ...formData,
-          tags: selectedTags,
+          tags: selectedTags.map(tag => tag.name),
         },
       });
       
@@ -115,12 +117,6 @@ export function TransactionEditModal({
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && tagInput.trim()) {
-      e.preventDefault();
-      handleTagAdd(tagInput);
-    }
-  };
 
   if (transactionLoading) {
     return (
@@ -234,21 +230,12 @@ export function TransactionEditModal({
 
                 <div>
                   <Label htmlFor="category">Category</Label>
-                  <Select
+                  <CategorySelector
                     value={formData.category || ""}
                     onValueChange={(value) => handleInputChange("category", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((category) => (
-                        <SelectItem key={category.id} value={category.name}>
-                          {category.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder="Select category"
+                    className="w-full"
+                  />
                 </div>
 
                 <div>
@@ -282,64 +269,11 @@ export function TransactionEditModal({
               <CardTitle className="text-base font-semibold">Tags</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 pt-0">
-              <div>
-                <Label htmlFor="tag-input">Add Tags</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="tag-input"
-                    value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="Type a tag and press Enter"
-                  />
-                  <Button
-                    type="button"
-                    onClick={() => handleTagAdd(tagInput)}
-                    disabled={!tagInput.trim()}
-                  >
-                    Add
-                  </Button>
-                </div>
-              </div>
-
-              <div>
-                <Label>Available Tags</Label>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {tags.map((tag) => (
-                    <Badge
-                      key={tag.id}
-                      variant={selectedTags.includes(tag.name) ? "default" : "outline"}
-                      className="cursor-pointer"
-                      onClick={() => {
-                        if (selectedTags.includes(tag.name)) {
-                          handleTagRemove(tag.name);
-                        } else {
-                          handleTagAdd(tag.name);
-                        }
-                      }}
-                    >
-                      {tag.name}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <Label>Selected Tags</Label>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {selectedTags.map((tag) => (
-                    <Badge
-                      key={tag}
-                      variant="default"
-                      className="cursor-pointer"
-                      onClick={() => handleTagRemove(tag)}
-                    >
-                      {tag}
-                      <X className="ml-1 h-3 w-3" />
-                    </Badge>
-                  ))}
-                </div>
-              </div>
+              <MultiTagSelector
+                selectedTags={selectedTags}
+                onTagsChange={handleTagsChange}
+                placeholder="Select or create tags..."
+              />
             </CardContent>
           </Card>
 

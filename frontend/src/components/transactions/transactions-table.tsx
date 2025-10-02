@@ -24,35 +24,51 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { useInfiniteTransactions } from "@/hooks/use-transactions";
-import { Transaction, TransactionFilters, TransactionSort } from "@/lib/types";
+import { useInfiniteTransactions, useUpdateTransactionSplit, useClearTransactionSplit, useUpdateTransaction } from "@/hooks/use-transactions";
+import { useTags } from "@/hooks/use-tags";
+import { useCategories } from "@/hooks/use-categories";
+import { Transaction, TransactionFilters, TransactionSort, SplitBreakdown, Tag, Category } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import { 
   ArrowUpDown, 
   ArrowUp, 
   ArrowDown, 
-  Tag, 
+  Tag as TagIcon, 
   Users,
   Edit3,
   CreditCard,
   Wallet,
   Calendar,
   ShoppingCart,
-  DollarSign,
   Building2,
-  MoreHorizontal,
+  MoreVertical,
   Link2,
   GitBranch
 } from "lucide-react";
 import { format } from "date-fns";
 import { TransactionEditModal } from "./transaction-edit-modal";
 import { TransactionInlineEdit } from "./transaction-inline-edit";
+import { SplitEditor } from "./split-editor";
+import { TagPill } from "./tag-pill";
+import { InlineTagDropdown } from "./inline-tag-dropdown";
+import { InlineCategoryDropdown } from "./inline-category-dropdown";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
 
 const columnHelper = createColumnHelper<Transaction>();
 
 // Helper function to process account names and get icons
 const processAccountInfo = (accountName: string) => {
+  // Handle Splitwise accounts specially
+  if (accountName.toLowerCase().includes('splitwise')) {
+    return {
+      processedName: 'Splitwise',
+      icon: <Users className="h-3 w-3 mr-1" />,
+      isCreditCard: false,
+      isSplitwise: true
+    };
+  }
+  
   // Remove last 2 words (e.g., "Savings Account", "Credit Card")
   const words = accountName.split(' ');
   const processedName = words.slice(0, -2).join(' ');
@@ -61,29 +77,14 @@ const processAccountInfo = (accountName: string) => {
   const isCreditCard = accountName.toLowerCase().includes('credit');
   const icon = isCreditCard ? <CreditCard className="h-3 w-3 mr-1" /> : <Wallet className="h-3 w-3 mr-1" />;
   
-  return { processedName, icon, isCreditCard };
+  return { processedName, icon, isCreditCard, isSplitwise: false };
 };
 
-
-// Helper function to get category colors
-const getCategoryColor = (category: string) => {
-  const cat = category.toLowerCase();
-  if (cat.includes('food') || cat.includes('restaurant') || cat.includes('grocery')) {
-    return 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-700';
-  }
-  if (cat.includes('travel') || cat.includes('transport')) {
-    return 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-700';
-  }
-  if (cat.includes('medical') || cat.includes('health')) {
-    return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-700';
-  }
-  if (cat.includes('entertainment')) {
-    return 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-700';
-  }
-  if (cat.includes('shopping')) {
-    return 'bg-pink-100 text-pink-800 border-pink-200 dark:bg-pink-900/20 dark:text-pink-300 dark:border-pink-700';
-  }
-  return 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-900/20 dark:text-gray-300 dark:border-gray-700';
+// Helper function to convert string tags to Tag objects
+const convertStringTagsToObjects = (tagNames: string[], allTags: Tag[]): Tag[] => {
+  return tagNames
+    .map(tagName => allTags.find(tag => tag.name === tagName))
+    .filter(Boolean) as Tag[];
 };
 
 interface TransactionsTableProps {
@@ -97,7 +98,17 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const [editingField, setEditingField] = useState<keyof Transaction | null>(null);
   const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedTransactionForSplit, setSelectedTransactionForSplit] = useState<Transaction | null>(null);
+  const [isSplitEditorOpen, setIsSplitEditorOpen] = useState(false);
+  const [editingTagsForTransaction, setEditingTagsForTransaction] = useState<string | null>(null);
+  const [editingCategoryForTransaction, setEditingCategoryForTransaction] = useState<string | null>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  const updateTransactionSplit = useUpdateTransactionSplit();
+  const clearTransactionSplit = useClearTransactionSplit();
+  const updateTransaction = useUpdateTransaction();
+  const { data: allTags = [] } = useTags();
+  const { data: allCategories = [] } = useCategories();
 
   const {
     data,
@@ -107,6 +118,13 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteTransactions(filters, sort);
+  
+  // Debug logging for transaction data
+  useEffect(() => {
+    if (data?.pages) {
+      console.warn('🔍 Transaction data updated:', data.pages[0]?.data?.slice(0, 3));
+    }
+  }, [data]);
 
   // Flatten all transactions from all pages
   const allTransactions = useMemo(() => {
@@ -130,7 +148,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     fetchMoreOnBottomReached(tableContainerRef.current);
   }, [fetchMoreOnBottomReached]);
 
-  const columns = useMemo<ColumnDef<Transaction>[]>(
+  const columns = useMemo(
     () => [
       // Date column
       columnHelper.accessor("date", {
@@ -152,12 +170,16 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           </Button>
         ),
         cell: ({ getValue }) => {
-          return formatDate(getValue());
-        },
-        size: 80,
-      }),
-      
-      // Description column
+          return (
+            <div className="text-left whitespace-nowrap">
+              {formatDate(getValue())}
+            </div>
+          );
+         },
+         size: 100,
+       }),
+       
+       // Description column
       columnHelper.accessor("description", {
         header: () => (
           <div className="flex items-center gap-1 text-sm font-medium">
@@ -185,26 +207,29 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             );
           }
           
+          const description = getValue();
+          const fullText = row.original.notes ? `${description} - ${row.original.notes}` : description;
+          
           return (
             <div 
-              className="max-w-[300px] cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded"
+              className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded"
               onClick={() => {
                 setEditingRow(row.original.id);
                 setEditingField("description");
               }}
             >
-              <div className="font-medium text-sm truncate">
-                {getValue()}
+              <div className="font-medium text-sm truncate max-w-[320px] md:max-w-[300px]" title={fullText}>
+                {description}
               </div>
               {row.original.notes && (
-                <div className="text-xs text-gray-500 truncate">
+                <div className="text-xs text-gray-500 truncate max-w-[320px] md:max-w-[300px]" title={row.original.notes}>
                   {row.original.notes}
                 </div>
               )}
             </div>
           );
         },
-        size: 500,
+        size: 350,
       }),
       
       // Amount column with color coding
@@ -213,9 +238,9 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-8 px-2 gap-1 text-sm font-medium"
+            className="h-8 px-2 gap-1 text-sm font-medium justify-end w-full"
           >
-            <DollarSign className="h-4 w-4" />
+            <span className="text-lg font-bold">₹</span>
             Amount
             {column.getIsSorted() === "asc" ? (
               <ArrowUp className="ml-1 h-3 w-3 text-blue-600" />
@@ -232,9 +257,9 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           const direction = row.original.direction;
           
            return (
-             <div className="flex flex-col items-center">
+             <div className="flex flex-col items-end whitespace-nowrap">
                <div className={cn(
-                 "font-semibold text-sm inline-flex items-center px-3 py-1 rounded-full w-fit",
+                 "font-semibold text-sm inline-flex items-center px-3 py-1 rounded-full",
                  direction === "debit" 
                    ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200" 
                    : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
@@ -242,17 +267,17 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                  {direction === "debit" ? "↓" : "↑"} {formatCurrency(amount)}
                </div>
                {row.original.is_shared && splitAmount && splitAmount !== amount && (
-                 <div className="text-xs text-gray-500 mt-1 text-center">
+                 <div className="text-xs text-gray-500 mt-1 text-right">
                    Your share: {formatCurrency(splitAmount)}
                  </div>
                )}
              </div>
            );
-        },
-        size: 100,
-      }),
-      
-      // Account column (moved after amount)
+         },
+         size: 120,
+       }),
+       
+       // Account column (moved after amount)
       columnHelper.accessor("account", {
         header: () => (
           <div className="flex items-center gap-1 text-sm font-medium">
@@ -261,76 +286,93 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           </div>
         ),
         cell: ({ getValue }) => {
-          const { processedName, icon, isCreditCard } = processAccountInfo(getValue());
+          const { processedName, icon, isCreditCard, isSplitwise } = processAccountInfo(getValue());
           return (
-             <Badge 
-               variant="outline" 
-               className={cn(
-                 "text-xs font-medium flex items-center",
-                 isCreditCard 
-                   ? "border-blue-500 text-blue-700 bg-blue-50 dark:border-blue-400 dark:text-blue-300 dark:bg-blue-900/20" 
-                   : "border-green-500 text-green-700 bg-green-50 dark:border-green-400 dark:text-green-300 dark:bg-green-900/20"
-               )}
-             >
-              {icon}
-              {processedName}
-            </Badge>
-          );
-        },
-        size: 100,
-      }),
-      
-      // Category column (moved after amount)
+            <div className="whitespace-nowrap" title={getValue()}>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-xs font-medium inline-flex items-center max-w-[120px]",
+                  isSplitwise
+                    ? "border-purple-500 text-purple-700 bg-purple-50 dark:border-purple-400 dark:text-purple-300 dark:bg-purple-900/20"
+                    : isCreditCard
+                      ? "border-blue-500 text-blue-700 bg-blue-50 dark:border-blue-400 dark:text-blue-300 dark:bg-blue-900/20"
+                      : "border-green-500 text-green-700 bg-green-50 dark:border-green-400 dark:text-green-300 dark:bg-green-900/20"
+                )}
+              >
+                {icon}
+                <span className="truncate">{processedName}</span>
+              </Badge>
+            </div>
+         );
+       },
+       size: 130,
+     }),
+     
+     // Category column (moved after amount)
       columnHelper.accessor("category", {
         header: () => (
           <div className="flex items-center gap-1 text-sm font-medium">
-            <Tag className="h-4 w-4" />
+            <TagIcon className="h-4 w-4" />
             Category
           </div>
         ),
         cell: ({ getValue, row }) => {
-          const isEditing = editingRow === row.original.id && editingField === "category";
+          const transaction = row.original;
+          const categoryName = getValue();
+          const category = allCategories.find(cat => cat.name === categoryName);
+          const isEditingCategory = editingCategoryForTransaction === transaction.id;
           
-          if (isEditing) {
+          if (isEditingCategory) {
             return (
-              <TransactionInlineEdit
-                transaction={row.original}
-                field="category"
-                onCancel={() => {
-                  setEditingRow(null);
-                  setEditingField(null);
-                }}
-                onSuccess={() => {
-                  setEditingRow(null);
-                  setEditingField(null);
-                }}
+              <InlineCategoryDropdown
+                transactionId={transaction.id}
+                currentCategory={categoryName || ""}
+                onCancel={() => setEditingCategoryForTransaction(null)}
+                onSuccess={() => setEditingCategoryForTransaction(null)}
               />
             );
           }
           
           return (
             <div 
-              className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded"
-              onClick={() => {
-                setEditingRow(row.original.id);
-                setEditingField("category");
-              }}
+              className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded whitespace-nowrap"
+              onClick={() => setEditingCategoryForTransaction(transaction.id)}
+              title="Click to edit category"
             >
-              <Badge 
-                variant="outline" 
-                className={cn("text-xs font-medium", getCategoryColor(getValue()))}
-              >
-                {getValue()}
-              </Badge>
+              {category ? (
+                <Badge 
+                  variant="secondary"
+                  className="text-xs font-medium inline-flex items-center max-w-[120px]"
+                  style={{
+                    backgroundColor: category.color ? `${category.color}20` : undefined,
+                    borderColor: category.color ? `${category.color}40` : undefined,
+                    color: category.color || undefined,
+                  }}
+                >
+                  <span className="truncate">{category.name}</span>
+                </Badge>
+              ) : categoryName ? (
+                <span 
+                  className="text-xs text-gray-500 italic"
+                  title={`${categoryName} (deleted)`}
+                >
+                  {categoryName} (deleted)
+                </span>
+              ) : (
+                <span className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                  Click to add category
+                </span>
+              )}
               {row.original.subcategory && (
-                <div className="text-xs text-gray-500 mt-1">
+                <div className="text-xs text-gray-500 mt-1 truncate max-w-[120px]">
                   {row.original.subcategory}
                 </div>
               )}
             </div>
           );
         },
-        size: 100,
+        size: 130,
       }),
       
        // Shared toggle column
@@ -345,19 +387,19 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
          cell: ({ row }) => {
            const transaction = row.original;
            return (
-             <div className="flex justify-center">
+             <div className="flex justify-center items-center">
                <Button
                  variant="ghost"
                  size="sm"
                  className={cn(
                    "h-8 w-8 p-0 rounded-full transition-all duration-200",
-                   transaction.is_shared 
-                     ? "bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-400 dark:hover:bg-blue-800" 
+                   transaction.is_shared
+                     ? "bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-400 dark:hover:bg-blue-800"
                      : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700"
                  )}
                  onClick={() => {
-                   // TODO: Implement overlay functionality for shared transactions
-                   console.log("Toggle shared for transaction:", transaction.id, "Current state:", transaction.is_shared);
+                   setSelectedTransactionForSplit(transaction);
+                   setIsSplitEditorOpen(true);
                  }}
                  title={transaction.is_shared ? "Mark as personal" : "Mark as shared"}
                >
@@ -366,57 +408,125 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
              </div>
            );
          },
-         size: 70,
+         size: 80,
        }),
        
-       // Actions column
-      columnHelper.display({
-        id: "actions",
-        header: () => (
-          <div className="flex items-center justify-center gap-1 text-sm font-medium">
-            <MoreHorizontal className="h-4 w-4" />
-            Actions
-          </div>
-        ),
-        cell: ({ row }) => {
-          const transaction = row.original;
-          return (
-            <div className="flex justify-center">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => {
-                    setSelectedTransactionId(transaction.id);
-                    setIsEditModalOpen(true);
-                  }}>
-                    <Edit3 className="h-4 w-4 mr-2" />
-                    Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Tag className="h-4 w-4 mr-2" />
-                    Tag
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Link2 className="h-4 w-4 mr-2" />
-                    Link refund
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <GitBranch className="h-4 w-4 mr-2" />
-                    Group transfer
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          );
-        },
-        size: 70,
-      }),
+       // Tags column
+       columnHelper.accessor("tags", {
+         header: () => (
+           <div className="flex items-center gap-1 text-sm font-medium">
+             <TagIcon className="h-4 w-4" />
+             Tags
+           </div>
+         ),
+         cell: ({ getValue, row }) => {
+           const tagNames = getValue();
+           const transaction = row.original;
+           const tagObjects = convertStringTagsToObjects(tagNames || [], allTags);
+           const isEditingTags = editingTagsForTransaction === transaction.id;
+           
+           // Always log for the first few transactions to debug
+           if (row.index < 3) {
+             console.warn(`🔍 Transaction ${row.index}:`, {
+               id: transaction.id,
+               tagNames,
+               allTagsCount: allTags.length,
+               tagObjectsCount: tagObjects.length
+             });
+           }
+           
+           // Debug logging
+           if (tagNames && tagNames.length > 0) {
+             console.warn(`🔍 Transaction ${transaction.id} has tags:`, tagNames);
+             console.warn('🔍 All tags available:', allTags);
+             console.warn('🔍 Converted tag objects:', tagObjects);
+           }
+           
+           if (isEditingTags) {
+             return (
+               <InlineTagDropdown
+                 transactionId={transaction.id}
+                 currentTags={tagNames || []}
+                 onCancel={() => setEditingTagsForTransaction(null)}
+                 onSuccess={() => setEditingTagsForTransaction(null)}
+               />
+             );
+           }
+           
+           return (
+             <div className="flex items-center justify-between max-w-[180px]">
+               <div 
+                 className="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-thumb]:bg-gray-700 dark:hover:[&::-webkit-scrollbar-thumb]:bg-gray-600 flex-shrink min-w-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-1 rounded"
+                 onClick={() => setEditingTagsForTransaction(transaction.id)}
+                 title="Click to edit tags"
+               >
+                 {tagObjects && tagObjects.length > 0 ? (
+                   <div className="flex gap-1 whitespace-nowrap">
+                     {tagObjects.map((tag) => (
+                       <TagPill
+                         key={tag.id}
+                         tag={tag}
+                         variant="compact"
+                         className="text-xs flex-shrink-0"
+                         onRemove={async (tagId) => {
+                           try {
+                             const remainingTags = tagObjects.filter(t => t.id !== tagId);
+                             await updateTransaction.mutateAsync({
+                               id: transaction.id,
+                               updates: {
+                                 tags: remainingTags.map(t => t.name),
+                               },
+                             });
+                             toast.success("Tag removed successfully");
+                           } catch (error) {
+                             toast.error("Failed to remove tag");
+                             console.error("Remove tag error:", error);
+                           }
+                         }}
+                       />
+                     ))}
+                   </div>
+                 ) : (
+                   <span className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 whitespace-nowrap">Click to add tags</span>
+                 )}
+               </div>
+               <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 ml-1 flex-shrink-0">
+                 <DropdownMenu>
+                   <DropdownMenuTrigger asChild>
+                     <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                       <MoreVertical className="h-4 w-4" />
+                     </Button>
+                   </DropdownMenuTrigger>
+                   <DropdownMenuContent align="end">
+                     <DropdownMenuItem onClick={() => {
+                       setSelectedTransactionId(transaction.id);
+                       setIsEditModalOpen(true);
+                     }}>
+                       <Edit3 className="h-4 w-4 mr-2" />
+                       Edit
+                     </DropdownMenuItem>
+                     <DropdownMenuItem onClick={() => setEditingTagsForTransaction(transaction.id)}>
+                       <TagIcon className="h-4 w-4 mr-2" />
+                       Edit Tags
+                     </DropdownMenuItem>
+                     <DropdownMenuItem>
+                       <Link2 className="h-4 w-4 mr-2" />
+                       Link refund
+                     </DropdownMenuItem>
+                     <DropdownMenuItem>
+                       <GitBranch className="h-4 w-4 mr-2" />
+                       Group transfer
+                     </DropdownMenuItem>
+                   </DropdownMenuContent>
+                 </DropdownMenu>
+               </div>
+             </div>
+           );
+         },
+         size: 200,
+       }),
     ],
-    [editingRow, editingField]
+    [editingRow, editingField, allTags, allCategories, editingTagsForTransaction, editingCategoryForTransaction]
   );
 
   const table = useReactTable({
@@ -479,18 +589,26 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           parentRef.current = node;
           tableContainerRef.current = node;
         }}
-        style={{ maxHeight: "70vh", width: "100%", minWidth: "1000px" }}
+        style={{ maxHeight: "70vh", width: "100%" }}
         onScroll={(e) => fetchMoreOnBottomReached(e.target as HTMLDivElement)}
       >
-        <Table className="w-full" style={{ tableLayout: 'fixed' }}>
+        <Table className="w-full min-w-[900px] table-auto md:table-fixed">
+          <colgroup>
+            <col className="w-[100px]" />
+            <col className="w-[350px] md:w-[320px]" />
+            <col className="w-[120px]" />
+            <col className="w-[130px]" />
+            <col className="w-[130px]" />
+            <col className="w-[80px]" />
+            <col className="w-[200px]" />
+          </colgroup>
           <TableHeader className="sticky top-0 bg-white dark:bg-gray-900 z-30 border-b border-gray-200 dark:border-gray-700 shadow-sm">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
                   <TableHead 
                     key={header.id} 
-                    className="px-2 py-2 text-left font-medium text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-900"
-                    style={{ width: `${header.getSize()}px` }}
+                    className="px-3 py-2 text-left font-semibold text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-800 h-12 align-middle"
                   >
                     {header.isPlaceholder
                       ? null
@@ -508,15 +626,18 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               <TableRow
                 key={row.id}
                 className={cn(
-                  "hover:bg-gray-50 dark:hover:bg-gray-800 border-b border-gray-100 dark:border-gray-800",
+                  "group hover:bg-gray-50 dark:hover:bg-gray-800 border-b border-gray-100 dark:border-gray-800 transition-colors duration-150 h-12",
                   editingRow === row.original.id && "bg-blue-50 dark:bg-blue-900/20"
                 )}
               >
                 {row.getVisibleCells().map((cell) => (
                   <TableCell 
                     key={cell.id} 
-                    className="px-2 py-1 text-sm"
-                    style={{ width: `${cell.column.getSize()}px` }}
+                    className={cn(
+                      "px-3 py-2 text-sm align-middle",
+                      editingTagsForTransaction === row.original.id && cell.column.id === "tags" && "relative",
+                      editingCategoryForTransaction === row.original.id && cell.column.id === "category" && "relative"
+                    )}
                   >
                     {flexRender(
                       cell.column.columnDef.cell,
@@ -546,6 +667,45 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           onClose={() => {
             setIsEditModalOpen(false);
             setSelectedTransactionId(null);
+          }}
+        />
+      )}
+
+      {/* Split Editor Modal */}
+      {selectedTransactionForSplit && (
+        <SplitEditor
+          transaction={selectedTransactionForSplit}
+          isOpen={isSplitEditorOpen}
+          isLoading={updateTransactionSplit.isPending || clearTransactionSplit.isPending}
+          onClose={() => {
+            setIsSplitEditorOpen(false);
+            setSelectedTransactionForSplit(null);
+          }}
+          onSave={async (splitBreakdown: SplitBreakdown, myShareAmount: number) => {
+            try {
+              await updateTransactionSplit.mutateAsync({
+                id: selectedTransactionForSplit.id,
+                splitBreakdown,
+                myShareAmount
+              });
+              console.log("Split breakdown saved successfully");
+              setIsSplitEditorOpen(false);
+              setSelectedTransactionForSplit(null);
+            } catch (error) {
+              console.error("Failed to save split breakdown:", error);
+              // TODO: Show error message to user
+            }
+          }}
+          onClearSplit={async () => {
+            try {
+              await clearTransactionSplit.mutateAsync(selectedTransactionForSplit.id);
+              console.log("Split cleared successfully");
+              setIsSplitEditorOpen(false);
+              setSelectedTransactionForSplit(null);
+            } catch (error) {
+              console.error("Failed to clear split:", error);
+              // TODO: Show error message to user
+            }
           }}
         />
       )}

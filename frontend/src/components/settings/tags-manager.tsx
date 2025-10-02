@@ -7,12 +7,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { useTags, useCreateTag } from "@/hooks/use-tags";
-import { Plus, Hash } from "lucide-react";
+import { useTags, useCreateTag, useDeleteTag } from "@/hooks/use-tags";
+import { Plus, Hash, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 export function TagsManager() {
   const { data: tagsData, isLoading } = useTags();
   const createTag = useCreateTag();
+  const deleteTag = useDeleteTag();
   
   const tags = tagsData?.data || [];
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -25,6 +28,16 @@ export function TagsManager() {
     await createTag.mutateAsync(newTag);
     setNewTag({ name: "", color: "#6b7280" });
     setIsCreateDialogOpen(false);
+  };
+
+  const handleDeleteTag = async (tagId: string, tagName: string) => {
+    try {
+      await deleteTag.mutateAsync(tagId);
+      toast.success(`Tag "${tagName}" deleted successfully`);
+    } catch (error) {
+      toast.error(`Failed to delete tag "${tagName}"`);
+      console.error("Delete tag error:", error);
+    }
   };
 
   if (isLoading) {
@@ -111,14 +124,50 @@ export function TagsManager() {
               {tags.map((tag) => (
                 <div
                   key={tag.id}
-                  className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                  className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                 >
-                  <div className="flex items-center gap-3 mb-2">
-                    <div
-                      className="w-4 h-4 rounded-full"
-                      style={{ backgroundColor: tag.color }}
-                    />
-                    <h3 className="font-medium">{tag.name}</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-4 h-4 rounded-full"
+                        style={{ backgroundColor: tag.color }}
+                      />
+                      <h3 className="font-medium text-gray-900 dark:text-gray-100">{tag.name}</h3>
+                    </div>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Tag</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete the tag "{tag.name}"? 
+                            {tag.usage_count > 0 && (
+                              <span className="block mt-2 text-amber-600 dark:text-amber-400 font-medium">
+                                ⚠️ This tag is currently used in {tag.usage_count} transaction{tag.usage_count === 1 ? '' : 's'}. 
+                                Deleting it will remove the tag from all those transactions.
+                              </span>
+                            )}
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDeleteTag(tag.id, tag.name)}
+                            className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+                          >
+                            Delete Tag
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                   <div className="flex items-center justify-between">
                     <Badge variant="outline" className="text-xs">
