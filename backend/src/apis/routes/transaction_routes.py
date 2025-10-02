@@ -98,6 +98,12 @@ class TransactionUpdate(BaseModel):
     raw_data: Optional[Dict[str, Any]] = None
 
 
+class BulkTransactionUpdate(BaseModel):
+    """Request model for bulk updating multiple transactions."""
+    transaction_ids: List[str] = Field(..., min_items=1, description="List of transaction IDs to update")
+    updates: TransactionUpdate = Field(..., description="Updates to apply to all selected transactions")
+
+
 class TransactionResponse(BaseModel):
     """Response model for transaction data."""
     id: str
@@ -1137,4 +1143,89 @@ async def get_suggestions_summary():
         
     except Exception as e:
         logger.error(f"Failed to get suggestions summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/bulk-update", response_model=ApiResponse)
+async def bulk_update_transactions(request: BulkTransactionUpdate):
+    """Bulk update multiple transactions with the same changes."""
+    try:
+        updated_transactions = []
+        failed_updates = []
+        
+        for transaction_id in request.transaction_ids:
+            try:
+                # Convert updates to database format
+                update_data = {}
+                for field, value in request.updates.model_dump(exclude_unset=True).items():
+                    if field == "date":
+                        update_data["transaction_date"] = value
+                    elif field == "subcategory":
+                        update_data["sub_category"] = value
+                    elif field == "is_refund":
+                        update_data["is_partial_refund"] = value
+                    elif field == "is_transfer":
+                        # This would need special handling for transfer groups
+                        continue
+                    else:
+                        update_data[field] = value
+                
+                # Handle tags separately - remove from update_data to handle via TagOperations
+                tag_names = None
+                if "tags" in update_data:
+                    tag_names = update_data.pop("tags")
+                
+                # Update the transaction
+                success = await TransactionOperations.update_transaction(
+                    transaction_id,
+                    **update_data
+                )
+                
+                if success:
+                    # Handle tags if provided
+                    if tag_names is not None:
+                        tag_ids = []
+                        for tag_name in tag_names:
+                            tag = await TagOperations.get_tag_by_name(tag_name)
+                            if tag:
+                                tag_ids.append(tag["id"])
+                            else:
+                                # Create tag if it doesn't exist
+                                new_tag_id = await TagOperations.create_tag(tag_name)
+                                if new_tag_id:
+                                    tag_ids.append(new_tag_id)
+                        
+                        # Set tags for the transaction
+                        await TagOperations.set_transaction_tags(transaction_id, tag_ids)
+                    
+                    # Fetch the updated transaction
+                    updated_transaction = await TransactionOperations.get_transaction_by_id(transaction_id)
+                    if updated_transaction:
+                        response_transaction = _convert_db_transaction_to_response(updated_transaction)
+                        updated_transactions.append(response_transaction)
+                else:
+                    failed_updates.append(transaction_id)
+                    
+            except Exception as e:
+                logger.error(f"Failed to update transaction {transaction_id}: {e}")
+                failed_updates.append(transaction_id)
+        
+        if failed_updates:
+            return ApiResponse(
+                data={
+                    "updated_transactions": updated_transactions,
+                    "failed_transaction_ids": failed_updates,
+                    "success_count": len(updated_transactions),
+                    "failure_count": len(failed_updates)
+                },
+                message=f"Bulk update completed with {len(updated_transactions)} successes and {len(failed_updates)} failures"
+            )
+        else:
+            return ApiResponse(
+                data=updated_transactions,
+                message=f"Successfully updated {len(updated_transactions)} transactions"
+            )
+        
+    except Exception as e:
+        logger.error(f"Failed to bulk update transactions: {e}")
         raise HTTPException(status_code=500, detail=str(e))

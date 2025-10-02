@@ -44,7 +44,10 @@ import {
   Building2,
   MoreVertical,
   Link2,
-  GitBranch
+  GitBranch,
+  CheckSquare,
+  Square,
+  Edit
 } from "lucide-react";
 import { format } from "date-fns";
 import { TransactionEditModal } from "./transaction-edit-modal";
@@ -53,6 +56,7 @@ import { SplitEditor } from "./split-editor";
 import { TagPill } from "./tag-pill";
 import { InlineTagDropdown } from "./inline-tag-dropdown";
 import { InlineCategoryDropdown } from "./inline-category-dropdown";
+import { BulkEditModal } from "./bulk-edit-modal";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
 
 const columnHelper = createColumnHelper<Transaction>();
@@ -102,6 +106,9 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const [isSplitEditorOpen, setIsSplitEditorOpen] = useState(false);
   const [editingTagsForTransaction, setEditingTagsForTransaction] = useState<string | null>(null);
   const [editingCategoryForTransaction, setEditingCategoryForTransaction] = useState<string | null>(null);
+  const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(new Set());
+  const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
   const updateTransactionSplit = useUpdateTransactionSplit();
@@ -131,6 +138,34 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     return data?.pages.flatMap(page => page.data) || [];
   }, [data]);
 
+  // Selection helpers
+  const selectedTransactions = useMemo(() => {
+    return allTransactions.filter(t => selectedTransactionIds.has(t.id));
+  }, [allTransactions, selectedTransactionIds]);
+
+  const isAllSelected = allTransactions.length > 0 && selectedTransactionIds.size === allTransactions.length;
+  const isIndeterminate = selectedTransactionIds.size > 0 && selectedTransactionIds.size < allTransactions.length;
+
+  const handleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedTransactionIds(new Set());
+    } else {
+      setSelectedTransactionIds(new Set(allTransactions.map(t => t.id)));
+    }
+  };
+
+  const handleSelectTransaction = (transactionId: string) => {
+    setSelectedTransactionIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(transactionId)) {
+        newSet.delete(transactionId);
+      } else {
+        newSet.add(transactionId);
+      }
+      return newSet;
+    });
+  };
+
   // Infinite scroll effect
   const fetchMoreOnBottomReached = useCallback(
     (containerRefElement?: HTMLDivElement | null) => {
@@ -149,7 +184,52 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   }, [fetchMoreOnBottomReached]);
 
   const columns = useMemo(
-    () => [
+    () => {
+      const baseColumns = [];
+      
+      // Only add selection column when in multi-select mode
+      if (isMultiSelectMode) {
+        baseColumns.push(
+          columnHelper.display({
+            id: "select",
+            header: ({ table }) => (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleSelectAll}
+                className="h-8 w-8 p-0"
+              >
+                {isAllSelected ? (
+                  <CheckSquare className="h-4 w-4 text-blue-600" />
+                ) : isIndeterminate ? (
+                  <div className="h-4 w-4 border-2 border-blue-400 rounded bg-blue-100" />
+                ) : (
+                  <Square className="h-4 w-4" />
+                )}
+              </Button>
+            ),
+            cell: ({ row }) => (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleSelectTransaction(row.original.id)}
+                className="h-8 w-8 p-0"
+              >
+                {selectedTransactionIds.has(row.original.id) ? (
+                  <CheckSquare className="h-4 w-4 text-blue-600" />
+                ) : (
+                  <Square className="h-4 w-4" />
+                )}
+              </Button>
+            ),
+            size: 40,
+          })
+        );
+      }
+      
+      return [
+        ...baseColumns,
+      
       // Date column
       columnHelper.accessor("date", {
         header: ({ column }) => (
@@ -523,10 +603,11 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
              </div>
            );
          },
-         size: 200,
-       }),
-    ],
-    [editingRow, editingField, allTags, allCategories, editingTagsForTransaction, editingCategoryForTransaction]
+        size: 200,
+      }),
+      ];
+    },
+    [editingRow, editingField, allTags, allCategories, editingTagsForTransaction, editingCategoryForTransaction, isMultiSelectMode, selectedTransactionIds, isAllSelected, isIndeterminate]
   );
 
   const table = useReactTable({
@@ -571,9 +652,49 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-            Transactions ({allTransactions.length} loaded{data?.pages?.[0]?.pagination?.total ? ` of ${data.pages[0].pagination.total}` : ''})
-          </h3>
+          <div className="flex items-center gap-4">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+              Transactions ({allTransactions.length} loaded{data?.pages?.[0]?.pagination?.total ? ` of ${data.pages[0].pagination.total}` : ''})
+            </h3>
+            {!isMultiSelectMode && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsMultiSelectMode(true)}
+                className="flex items-center gap-2"
+              >
+                <CheckSquare className="h-4 w-4" />
+                Multi-Select
+              </Button>
+            )}
+            {isMultiSelectMode && (
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-sm">
+                  {selectedTransactionIds.size} selected
+                </Badge>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsBulkEditModalOpen(true)}
+                  className="flex items-center gap-2"
+                  disabled={selectedTransactionIds.size === 0}
+                >
+                  <Edit className="h-4 w-4" />
+                  Bulk Edit
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedTransactionIds(new Set());
+                    setIsMultiSelectMode(false);
+                  }}
+                >
+                  Done
+                </Button>
+              </div>
+            )}
+          </div>
           {isFetchingNextPage && (
             <div className="flex items-center gap-2 text-sm text-gray-500">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
@@ -592,8 +713,9 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         style={{ maxHeight: "70vh", width: "100%" }}
         onScroll={(e) => fetchMoreOnBottomReached(e.target as HTMLDivElement)}
       >
-        <Table className="w-full min-w-[900px] table-auto md:table-fixed">
+        <Table className={`w-full ${isMultiSelectMode ? 'min-w-[940px]' : 'min-w-[900px]'} table-auto md:table-fixed`}>
           <colgroup>
+            {isMultiSelectMode && <col className="w-[40px]" />}
             <col className="w-[100px]" />
             <col className="w-[350px] md:w-[320px]" />
             <col className="w-[120px]" />
@@ -706,6 +828,18 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               console.error("Failed to clear split:", error);
               // TODO: Show error message to user
             }
+          }}
+        />
+      )}
+
+      {/* Bulk Edit Modal */}
+      {selectedTransactions.length > 0 && (
+        <BulkEditModal
+          selectedTransactions={selectedTransactions}
+          isOpen={isBulkEditModalOpen}
+          onClose={() => {
+            setIsBulkEditModalOpen(false);
+            setSelectedTransactionIds(new Set());
           }}
         />
       )}

@@ -112,3 +112,23 @@ export function useClearTransactionSplit() {
     },
   });
 }
+
+export function useBulkUpdateTransactions() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ transactionIds, updates }: { transactionIds: string[]; updates: Partial<Transaction> }) =>
+      apiClient.bulkUpdateTransactions(transactionIds, updates),
+    onSuccess: () => {
+      // Force complete refetch of all transaction data
+      queryClient.removeQueries({ queryKey: ["transactions"] });
+      queryClient.removeQueries({ queryKey: ["transactions-infinite"] });
+      // Remove all infinite transaction queries to force fresh data
+      queryClient.removeQueries({ 
+        predicate: (query) => {
+          return query.queryKey[0] === "transactions-infinite";
+        }
+      });
+    },
+  });
+}
