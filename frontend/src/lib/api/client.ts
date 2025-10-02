@@ -151,6 +151,19 @@ class ApiClient {
     });
   }
 
+  async bulkUpdateTransactions(
+    transactionIds: string[],
+    updates: Partial<Transaction>
+  ): Promise<ApiResponse<Transaction[]>> {
+    return this.request<Transaction[]>("/transactions/bulk-update", {
+      method: "PATCH",
+      body: JSON.stringify({ 
+        transaction_ids: transactionIds, 
+        updates 
+      }),
+    });
+  }
+
   async deleteTransaction(id: string): Promise<ApiResponse<void>> {
     return this.request<void>(`/transactions/${id}`, {
       method: "DELETE",
