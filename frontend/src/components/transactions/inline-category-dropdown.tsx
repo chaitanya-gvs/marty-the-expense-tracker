@@ -24,7 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 
 interface InlineCategoryDropdownProps {
   transactionId: string;
@@ -50,7 +50,8 @@ export function InlineCategoryDropdown({
   const [hoveredCategoryId, setHoveredCategoryId] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", color: "#3B82F6" });
-  const [deletingCategory, setDeletingCategory] = useState<{ id: string; name: string } | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState<{ id: string; name: string } | null>(null);
   
   const { data: allCategories = [] } = useCategories();
   const updateTransaction = useUpdateTransaction();
@@ -65,10 +66,6 @@ export function InlineCategoryDropdown({
     }
   }, [currentCategory, allCategories]);
 
-  // Debug deletingCategory state changes
-  useEffect(() => {
-    console.log("deletingCategory state changed:", deletingCategory);
-  }, [deletingCategory]);
 
   // Auto-open the popover when component mounts
   useEffect(() => {
@@ -173,18 +170,24 @@ export function InlineCategoryDropdown({
   };
 
   const handleDeleteCategory = async (categoryId: string, categoryName: string) => {
-    console.log("handleDeleteCategory called with:", categoryId, categoryName);
+    setCategoryToDelete({ id: categoryId, name: categoryName });
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!categoryToDelete) return;
+    
     try {
-      console.log("Calling deleteCategoryMutation.mutateAsync with:", categoryId);
-      await deleteCategoryMutation.mutateAsync(categoryId);
-      console.log("Delete category mutation completed successfully");
+      await deleteCategoryMutation.mutateAsync(categoryToDelete.id);
       
       // Clear the category if it was selected
-      if (selectedCategory?.id === categoryId) {
+      if (selectedCategory?.id === categoryToDelete.id) {
         setSelectedCategory(null);
       }
     } catch (error) {
       console.error("Delete category error:", error);
+    } finally {
+      setCategoryToDelete(null);
     }
   };
 
@@ -379,9 +382,7 @@ export function InlineCategoryDropdown({
                           onMouseDown={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            console.log("Delete button clicked for:", category.name);
-                            console.log("Setting deletingCategory to:", { id: category.id, name: category.name });
-                            setDeletingCategory({ id: category.id, name: category.name });
+                            handleDeleteCategory(category.id, category.name);
                           }}
                           className={cn(
                             "inline-flex items-center justify-center h-5 w-5 p-0 rounded-md transition-opacity hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 hover:text-red-700",
@@ -558,62 +559,22 @@ export function InlineCategoryDropdown({
             <Button onClick={handleUpdateCategory}>
               Update Category
             </Button>
-            <Button 
-              onClick={() => {
-                console.log("Test delete button clicked");
-                setDeletingCategory({ id: "test-id", name: "Test Category" });
-                // Force a re-render
-                setTimeout(() => {
-                  console.log("After timeout, deletingCategory:", deletingCategory);
-                }, 100);
-              }}
-              variant="destructive"
-            >
-              Test Delete
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Category Confirmation Dialog */}
-      {console.log("Rendering AlertDialog with deletingCategory:", deletingCategory)}
-      <AlertDialog 
-        open={!!deletingCategory} 
-        onOpenChange={(isOpen) => {
-          console.log("AlertDialog onOpenChange:", isOpen, "deletingCategory:", deletingCategory);
-          if (!isOpen) {
-            setDeletingCategory(null);
-          }
-        }}
-      >
-        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Category</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete the category "{deletingCategory?.name}"? 
-              This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeletingCategory(null)}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                console.log("Delete action clicked, deletingCategory:", deletingCategory);
-                if (deletingCategory) {
-                  console.log("Calling handleDeleteCategory with:", deletingCategory.id, deletingCategory.name);
-                  handleDeleteCategory(deletingCategory.id, deletingCategory.name);
-                  setDeletingCategory(null);
-                }
-              }}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
-            >
-              Delete Category
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Delete Confirmation Dialog */}
+      <ConfirmationDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        title="Delete Category"
+        description={`Are you sure you want to delete the category "${categoryToDelete?.name}"? This action cannot be undone.`}
+        confirmText="Delete Category"
+        cancelText="Cancel"
+        variant="destructive"
+        onConfirm={confirmDelete}
+        onCancel={() => setCategoryToDelete(null)}
+      />
     </>
   );
 }
