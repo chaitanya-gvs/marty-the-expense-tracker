@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,7 @@ import { useCategories } from "@/hooks/use-categories";
 import { Transaction } from "@/lib/types";
 import { Check, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { CategoryAutocomplete } from "./category-autocomplete";
 
 interface TransactionInlineEditProps {
   transaction: Transaction;
@@ -32,20 +33,35 @@ export function TransactionInlineEdit({
 }: TransactionInlineEditProps) {
   const [value, setValue] = useState<string>(String(transaction[field] || ""));
   const updateTransaction = useUpdateTransaction();
-  const { data: categoriesData } = useCategories();
-  const categories = categoriesData?.data || [];
+  const { data: categories = [] } = useCategories();
 
-  const handleSave = async () => {
+  const handleSave = async (saveValue?: string) => {
+    console.log("=== handleSave called ===");
+    console.log("saveValue:", saveValue);
+    console.log("value:", value);
+    console.log("field:", field);
+    const valueToSave = saveValue !== undefined ? saveValue : value;
+    console.log("handleSave called with saveValue:", saveValue, "value:", value, "valueToSave:", valueToSave, "field:", field);
+    console.log("Type of valueToSave:", typeof valueToSave, "Is string:", typeof valueToSave === 'string');
     try {
-      let updateValue: any = value;
+      // Ensure we have a valid string value
+      if (typeof valueToSave !== 'string') {
+        console.error("Invalid value type:", typeof valueToSave, valueToSave);
+        toast.error("Invalid value type");
+        return;
+      }
+
+      let updateValue: any = valueToSave;
       
       // Convert value based on field type
       if (field === "amount" || field === "split_share_amount") {
-        updateValue = parseFloat(value);
+        updateValue = parseFloat(valueToSave);
       } else if (field === "is_shared" || field === "is_refund" || field === "is_transfer") {
-        updateValue = value === "true";
+        updateValue = valueToSave === "true";
       }
+      // For category field, value is already the category name
 
+      console.log("Updating transaction with:", { id: transaction.id, updates: { [field]: updateValue } });
       await updateTransaction.mutateAsync({
         id: transaction.id,
         updates: { [field]: updateValue },
@@ -69,21 +85,17 @@ export function TransactionInlineEdit({
 
   const renderInput = () => {
     switch (field) {
-      case "category":
-        return (
-          <Select value={value} onValueChange={setValue}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select category" />
-            </SelectTrigger>
-            <SelectContent>
-              {categories.map((category) => (
-                <SelectItem key={category.id} value={category.name}>
-                  {category.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        );
+              case "category":
+                return (
+                  <CategoryAutocomplete
+                    value={value}
+                    onValueChange={setValue}
+                    onSave={handleSave}
+                    onCancel={onCancel}
+                    placeholder="Type category..."
+                    className="w-full"
+                  />
+                );
 
       case "direction":
         return (
@@ -125,23 +137,29 @@ export function TransactionInlineEdit({
     }
   };
 
+  // For category field, the autocomplete component handles its own actions
+  if (field === "category") {
+    return renderInput();
+  }
+
+  // For other fields, show the traditional save/cancel buttons
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1">
+    <div className="flex items-center gap-1 w-full max-w-full overflow-hidden">
+      <div className="flex-1 min-w-0">
         {renderInput()}
       </div>
-      <div className="flex gap-1">
+      <div className="flex gap-0.5 flex-shrink-0">
         <Button
           size="sm"
           variant="ghost"
-          onClick={handleSave}
+          onClick={() => handleSave()}
           disabled={updateTransaction.isPending}
-          className="h-8 w-8 p-0"
+          className="h-5 w-5 p-0"
         >
           {updateTransaction.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 className="h-2.5 w-2.5 animate-spin" />
           ) : (
-            <Check className="h-4 w-4 text-green-600" />
+            <Check className="h-2.5 w-2.5 text-green-600" />
           )}
         </Button>
         <Button
@@ -149,9 +167,9 @@ export function TransactionInlineEdit({
           variant="ghost"
           onClick={onCancel}
           disabled={updateTransaction.isPending}
-          className="h-8 w-8 p-0"
+          className="h-5 w-5 p-0"
         >
-          <X className="h-4 w-4 text-red-600" />
+          <X className="h-2.5 w-2.5 text-red-600" />
         </Button>
       </div>
     </div>
