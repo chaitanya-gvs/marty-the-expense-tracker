@@ -24,11 +24,15 @@ export interface Transaction {
   status: "reviewed" | "needs_review" | "uncertain";
 }
 
+export interface SplitEntry {
+  participant: string;
+  amount: number | null;
+}
+
 export interface SplitBreakdown {
   mode: "equal" | "custom";
-  participants: string[];
-  custom_amounts?: Record<string, number>;
   include_me: boolean;
+  entries: SplitEntry[];
 }
 
 export interface RelatedMail {
@@ -52,9 +56,13 @@ export interface Budget {
 export interface Category {
   id: string;
   name: string;
-  color: string;
-  subcategories: Subcategory[];
-  is_hidden: boolean;
+  slug: string;
+  color?: string;
+  parent_id?: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Subcategory {

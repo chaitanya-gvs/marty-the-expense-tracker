@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
-import { Transaction, TransactionFilters, TransactionSort, PaginationParams } from "@/lib/types";
+import { Transaction, TransactionFilters, TransactionSort, PaginationParams, SplitBreakdown } from "@/lib/types";
 
 export function useTransactions(
   filters?: TransactionFilters,
@@ -23,7 +23,7 @@ export function useInfiniteTransactions(
       apiClient.getTransactions(filters, sort, { page: pageParam - 1, limit: 500 }),
     getNextPageParam: (lastPage) => {
       const { pagination } = lastPage;
-      return pagination.page < pagination.total_pages ? pagination.page + 2 : undefined;
+      return pagination && pagination.page < pagination.total_pages ? pagination.page + 2 : undefined;
     },
     initialPageParam: 1,
   });
@@ -44,9 +44,16 @@ export function useUpdateTransaction() {
     mutationFn: ({ id, updates }: { id: string; updates: Partial<Transaction> }) =>
       apiClient.updateTransaction(id, updates),
     onSuccess: (data, variables) => {
-      // Invalidate and refetch transactions
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["transaction", variables.id] });
+      // Force complete refetch of all transaction data
+      queryClient.removeQueries({ queryKey: ["transactions"] });
+      queryClient.removeQueries({ queryKey: ["transactions-infinite"] });
+      queryClient.removeQueries({ queryKey: ["transaction", variables.id] });
+      // Remove all infinite transaction queries to force fresh data
+      queryClient.removeQueries({ 
+        predicate: (query) => {
+          return query.queryKey[0] === "transactions-infinite";
+        }
+      });
     },
   });
 }
@@ -59,6 +66,7 @@ export function useLinkRefund() {
       apiClient.linkRefund(childId, parentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions-infinite"] });
     },
   });
 }
@@ -71,6 +79,36 @@ export function useGroupTransfer() {
       apiClient.groupTransfer(transactionIds),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions-infinite"] });
+    },
+  });
+}
+
+export function useUpdateTransactionSplit() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, splitBreakdown, myShareAmount }: { id: string; splitBreakdown: SplitBreakdown; myShareAmount: number }) =>
+      apiClient.updateTransactionSplit(id, splitBreakdown, myShareAmount),
+    onSuccess: (data, variables) => {
+      // Invalidate and refetch all transaction queries
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions-infinite"] });
+      queryClient.invalidateQueries({ queryKey: ["transaction", variables.id] });
+    },
+  });
+}
+
+export function useClearTransactionSplit() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => apiClient.clearTransactionSplit(id),
+    onSuccess: (data, variables) => {
+      // Invalidate and refetch all transaction queries
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions-infinite"] });
+      queryClient.invalidateQueries({ queryKey: ["transaction", variables] });
     },
   });
 }

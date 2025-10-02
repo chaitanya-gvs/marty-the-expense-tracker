@@ -1,4 +1,4 @@
-import { ApiResponse, Transaction, Budget, Category, Tag, TransactionFilters, TransactionSort, PaginationParams, TransferSuggestion, RefundSuggestion } from "@/lib/types";
+import { ApiResponse, Transaction, Budget, Category, Tag, TransactionFilters, TransactionSort, PaginationParams, TransferSuggestion, RefundSuggestion, SplitBreakdown } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
@@ -27,6 +27,12 @@ class ApiClient {
     
     if (!response.ok) {
       throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    }
+
+    // Handle empty responses (like 204 No Content)
+    const contentType = response.headers.get('content-type');
+    if (response.status === 204 || !contentType?.includes('application/json')) {
+      return {} as ApiResponse<T>;
     }
 
     return response.json();
@@ -83,7 +89,7 @@ class ApiClient {
       params.append("limit", String(pagination.limit));
     }
 
-    return this.request<Transaction[]>(`/transactions?${params.toString()}`);
+    return this.request<Transaction[]>(`/transactions/?${params.toString()}`);
   }
 
   async getTransaction(id: string): Promise<ApiResponse<Transaction>> {
@@ -97,6 +103,32 @@ class ApiClient {
     return this.request<Transaction>(`/transactions/${id}`, {
       method: "PATCH",
       body: JSON.stringify(updates),
+    });
+  }
+
+  async updateTransactionSplit(
+    id: string,
+    splitBreakdown: SplitBreakdown,
+    myShareAmount: number
+  ): Promise<ApiResponse<Transaction>> {
+    return this.request<Transaction>(`/transactions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        split_breakdown: splitBreakdown,
+        split_share_amount: myShareAmount,
+        is_shared: true
+      }),
+    });
+  }
+
+  async clearTransactionSplit(id: string): Promise<ApiResponse<Transaction>> {
+    return this.request<Transaction>(`/transactions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        split_breakdown: null,
+        split_share_amount: null,
+        is_shared: false
+      }),
     });
   }
 
@@ -135,7 +167,7 @@ class ApiClient {
       limit: String(limit),
       offset: String(offset),
     });
-    return this.request<Transaction[]>(`/transactions/search?${params.toString()}`);
+    return this.request<Transaction[]>(`/transactions/search/?${params.toString()}`);
   }
 
   // Budgets
@@ -166,41 +198,14 @@ class ApiClient {
     });
   }
 
-  // Categories (now under transactions)
-  async getCategories(): Promise<ApiResponse<Category[]>> {
-    return this.request<Category[]>("/transactions/categories");
-  }
-
-  async createCategory(category: Omit<Category, "id">): Promise<ApiResponse<Category>> {
-    return this.request<Category>("/transactions/categories", {
-      method: "POST",
-      body: JSON.stringify(category),
-    });
-  }
-
-  async updateCategory(
-    id: string,
-    updates: Partial<Category>
-  ): Promise<ApiResponse<Category>> {
-    return this.request<Category>(`/transactions/categories/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(updates),
-    });
-  }
-
-  async deleteCategory(id: string): Promise<ApiResponse<void>> {
-    return this.request<void>(`/transactions/categories/${id}`, {
-      method: "DELETE",
-    });
-  }
 
   // Tags (now under transactions)
   async getTags(): Promise<ApiResponse<Tag[]>> {
-    return this.request<Tag[]>("/transactions/tags");
+    return this.request<Tag[]>("/transactions/tags/");
   }
 
   async createTag(tag: Omit<Tag, "id" | "usage_count">): Promise<ApiResponse<Tag>> {
-    return this.request<Tag>("/transactions/tags", {
+    return this.request<Tag>("/transactions/tags/", {
       method: "POST",
       body: JSON.stringify(tag),
     });
@@ -219,6 +224,79 @@ class ApiClient {
   async deleteTag(id: string): Promise<ApiResponse<void>> {
     return this.request<void>(`/transactions/tags/${id}`, {
       method: "DELETE",
+    });
+  }
+
+  async searchTags(query: string, limit: number = 20): Promise<ApiResponse<Tag[]>> {
+    return this.request<Tag[]>(`/transactions/tags/search?query=${encodeURIComponent(query)}&limit=${limit}`);
+  }
+
+  async getTag(tagId: string): Promise<ApiResponse<Tag>> {
+    return this.request<Tag>(`/transactions/tags/${tagId}`);
+  }
+
+  async upsertTag(tag: Omit<Tag, "id" | "usage_count">): Promise<ApiResponse<{ id: string }>> {
+    return this.request<{ id: string }>("/transactions/tags/upsert", {
+      method: "POST",
+      body: JSON.stringify(tag),
+    });
+  }
+
+  // Categories
+  async getCategories(): Promise<ApiResponse<Category[]>> {
+    return this.request<Category[]>("/transactions/categories/");
+  }
+
+  async searchCategories(query: string, limit: number = 20): Promise<ApiResponse<Category[]>> {
+    return this.request<Category[]>(`/transactions/categories/search?query=${encodeURIComponent(query)}&limit=${limit}`);
+  }
+
+  async getCategory(categoryId: string): Promise<ApiResponse<Category>> {
+    return this.request<Category>(`/transactions/categories/${categoryId}`);
+  }
+
+  async createCategory(categoryData: {
+    name: string;
+    color?: string;
+    parent_id?: string;
+    sort_order?: number;
+  }): Promise<ApiResponse<{ id: string }>> {
+    return this.request<{ id: string }>("/transactions/categories/", {
+      method: "POST",
+      body: JSON.stringify(categoryData),
+    });
+  }
+
+  async updateCategory(
+    categoryId: string,
+    categoryData: {
+      name?: string;
+      color?: string;
+      parent_id?: string;
+      sort_order?: number;
+    }
+  ): Promise<ApiResponse<any>> {
+    return this.request<any>(`/transactions/categories/${categoryId}`, {
+      method: "PUT",
+      body: JSON.stringify(categoryData),
+    });
+  }
+
+  async deleteCategory(categoryId: string): Promise<void> {
+    await this.request<void>(`/transactions/categories/${categoryId}`, {
+      method: "DELETE",
+    });
+  }
+
+  async upsertCategory(categoryData: {
+    name: string;
+    color?: string;
+    parent_id?: string;
+    sort_order?: number;
+  }): Promise<ApiResponse<{ id: string }>> {
+    return this.request<{ id: string }>("/transactions/categories/upsert", {
+      method: "POST",
+      body: JSON.stringify(categoryData),
     });
   }
 
