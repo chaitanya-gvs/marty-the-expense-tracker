@@ -12,14 +12,40 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+import asyncpg
 
-from src.services.database_manager.operations import TransactionOperations
-from src.services.database_manager.connection import get_session_factory
+from src.services.database_manager.operations import TransactionOperations, CategoryOperations, TagOperations
+from src.services.database_manager.connection import get_session_factory, refresh_connection_pool
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
+
+
+async def handle_database_operation(operation_func, *args, **kwargs):
+    """
+    Handle database operations with automatic retry on InvalidCachedStatementError
+    """
+    max_retries = 2
+    
+    for attempt in range(max_retries):
+        try:
+            return await operation_func(*args, **kwargs)
+        except asyncpg.exceptions.InvalidCachedStatementError as e:
+            logger.warning(f"InvalidCachedStatementError on attempt {attempt + 1}: {e}")
+            if attempt < max_retries - 1:
+                # Refresh connection pool and retry
+                await refresh_connection_pool()
+                logger.info("Refreshed connection pool, retrying operation")
+                continue
+            else:
+                # Final attempt failed
+                logger.error(f"Database operation failed after {max_retries} attempts")
+                raise e
+        except Exception as e:
+            # For other exceptions, don't retry
+            raise e
 
 
 # ============================================================================
@@ -78,7 +104,7 @@ class TransactionResponse(BaseModel):
     date: str
     account: str
     description: str
-    category: str
+    category: Optional[str] = None
     subcategory: Optional[str] = None
     direction: str
     amount: float
@@ -142,15 +168,17 @@ class GroupTransferRequest(BaseModel):
 class CategoryCreate(BaseModel):
     """Request model for creating a category."""
     name: str = Field(..., min_length=1, max_length=100)
-    color: str = Field(..., pattern="^#[0-9A-Fa-f]{6}$")
-    is_hidden: bool = False
+    color: Optional[str] = Field(None, pattern="^#[0-9A-Fa-f]{6}$")
+    parent_id: Optional[str] = None
+    sort_order: Optional[int] = Field(None, ge=0)
 
 
 class CategoryUpdate(BaseModel):
     """Request model for updating a category."""
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     color: Optional[str] = Field(None, pattern="^#[0-9A-Fa-f]{6}$")
-    is_hidden: Optional[bool] = None
+    parent_id: Optional[str] = None
+    sort_order: Optional[int] = Field(None, ge=0)
 
 
 class SubcategoryCreate(BaseModel):
@@ -179,9 +207,13 @@ class CategoryResponse(BaseModel):
     """Response model for category data."""
     id: str
     name: str
-    color: str
-    subcategories: List[SubcategoryResponse]
-    is_hidden: bool
+    slug: str
+    color: Optional[str] = None
+    parent_id: Optional[str] = None
+    sort_order: int
+    is_active: bool
+    created_at: str
+    updated_at: str
 
 
 # ============================================================================
@@ -242,144 +274,7 @@ class ApiResponse(BaseModel):
 # OPERATIONS CLASSES
 # ============================================================================
 
-class CategoryOperations:
-    """Operations for managing categories."""
-    
-    @staticmethod
-    async def get_all_categories(include_hidden: bool = False) -> List[Dict[str, Any]]:
-        """Get all categories with their subcategories."""
-        session_factory = get_session_factory()
-        session = session_factory()
-        try:
-            # Get categories
-            where_clause = "" if include_hidden else "WHERE is_hidden = false"
-            result = await session.execute(
-                text(f"""
-                    SELECT id, name, color, is_hidden, created_at, updated_at
-                    FROM categories 
-                    {where_clause}
-                    ORDER BY name
-                """)
-            )
-            categories = result.fetchall()
-            
-            # Get subcategories for each category
-            category_dict = {}
-            for category in categories:
-                category_id = category.id
-                category_dict[category_id] = {
-                    "id": category_id,
-                    "name": category.name,
-                    "color": category.color,
-                    "is_hidden": category.is_hidden,
-                    "created_at": category.created_at,
-                    "updated_at": category.updated_at,
-                    "subcategories": []
-                }
-            
-            # Get subcategories
-            subcategory_where = "" if include_hidden else "WHERE is_hidden = false"
-            subcategory_result = await session.execute(
-                text(f"""
-                    SELECT id, name, color, is_hidden, category_id, created_at, updated_at
-                    FROM subcategories 
-                    {subcategory_where}
-                    ORDER BY name
-                """)
-            )
-            subcategories = subcategory_result.fetchall()
-            
-            # Group subcategories by category
-            for subcategory in subcategories:
-                category_id = subcategory.category_id
-                if category_id in category_dict:
-                    category_dict[category_id]["subcategories"].append({
-                        "id": subcategory.id,
-                        "name": subcategory.name,
-                        "color": subcategory.color,
-                        "is_hidden": subcategory.is_hidden,
-                        "created_at": subcategory.created_at,
-                        "updated_at": subcategory.updated_at
-                    })
-            
-            return list(category_dict.values())
-            
-        finally:
-            await session.close()
-    
-    @staticmethod
-    async def create_category(name: str, color: str, is_hidden: bool = False) -> str:
-        """Create a new category."""
-        session_factory = get_session_factory()
-        session = session_factory()
-        try:
-            result = await session.execute(
-                text("""
-                    INSERT INTO categories (name, color, is_hidden)
-                    VALUES (:name, :color, :is_hidden)
-                    RETURNING id
-                """), {
-                    "name": name,
-                    "color": color,
-                    "is_hidden": is_hidden
-                }
-            )
-            category_id = result.fetchone()[0]
-            await session.commit()
-            return str(category_id)
-            
-        finally:
-            await session.close()
-
-
-class TagOperations:
-    """Operations for managing tags."""
-    
-    @staticmethod
-    async def get_all_tags() -> List[Dict[str, Any]]:
-        """Get all tags with usage counts."""
-        session_factory = get_session_factory()
-        session = session_factory()
-        try:
-            result = await session.execute(
-                text("""
-                    SELECT 
-                        t.id, t.name, t.color, t.created_at, t.updated_at,
-                        COUNT(CASE WHEN tr.transaction_id IS NOT NULL THEN 1 END) as usage_count
-                    FROM tags t
-                    LEFT JOIN transaction_tags tr ON t.id = tr.tag_id
-                    GROUP BY t.id, t.name, t.color, t.created_at, t.updated_at
-                    ORDER BY usage_count DESC, t.name
-                """)
-            )
-            rows = result.fetchall()
-            return [dict(row._mapping) for row in rows]
-            
-        finally:
-            await session.close()
-    
-    @staticmethod
-    async def create_tag(name: str, color: str) -> str:
-        """Create a new tag."""
-        session_factory = get_session_factory()
-        session = session_factory()
-        try:
-            result = await session.execute(
-                text("""
-                    INSERT INTO tags (name, color)
-                    VALUES (:name, :color)
-                    RETURNING id
-                """), {
-                    "name": name,
-                    "color": color
-                }
-            )
-            tag_id = result.fetchone()[0]
-            await session.commit()
-            return str(tag_id)
-            
-        finally:
-            await session.close()
+# TagOperations is now imported from operations.py
 
 
 class SuggestionOperations:
@@ -492,7 +387,7 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
         date=transaction.get('transaction_date', '').isoformat() if transaction.get('transaction_date') else '',
         account=transaction.get('account', ''),
         description=transaction.get('description', ''),
-        category=transaction.get('category', ''),
+        category=transaction.get('category', ''),  # This now comes from the JOIN with categories table
         subcategory=transaction.get('sub_category'),
         direction=transaction.get('direction', 'debit'),
         amount=float(transaction.get('amount', 0)),
@@ -514,25 +409,6 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
     )
 
 
-def _convert_db_category_to_response(category: Dict[str, Any]) -> CategoryResponse:
-    """Convert database category to API response format."""
-    return CategoryResponse(
-        id=category["id"],
-        name=category["name"],
-        color=category["color"],
-        is_hidden=category["is_hidden"],
-        subcategories=[
-            SubcategoryResponse(
-                id=sub["id"],
-                name=sub["name"],
-                color=sub["color"],
-                is_hidden=sub["is_hidden"]
-            )
-            for sub in category["subcategories"]
-        ]
-    )
-
-
 def _convert_db_tag_to_response(tag: Dict[str, Any]) -> TagResponse:
     """Convert database tag to API response format."""
     return TagResponse(
@@ -541,6 +417,33 @@ def _convert_db_tag_to_response(tag: Dict[str, Any]) -> TagResponse:
         color=tag["color"],
         usage_count=tag.get("usage_count", 0)
     )
+
+
+def _calculate_split_share_amount(split_breakdown: Dict[str, Any], total_amount: float) -> float:
+    """Calculate the user's share amount from split breakdown."""
+    if not split_breakdown or not isinstance(split_breakdown, dict):
+        return 0.0
+    
+    include_me = split_breakdown.get("include_me", False)
+    if not include_me:
+        return 0.0
+    
+    mode = split_breakdown.get("mode", "equal")
+    entries = split_breakdown.get("entries", [])
+    
+    if mode == "equal":
+        # Equal split: total amount divided by number of participants
+        if entries:
+            return total_amount / len(entries)
+        return 0.0
+    elif mode == "custom":
+        # Custom split: find the user's specific amount
+        for entry in entries:
+            if entry.get("participant") == "me":
+                return float(entry.get("amount", 0))
+        return 0.0
+    
+    return 0.0
 
 
 # ============================================================================
@@ -569,7 +472,8 @@ async def get_transactions(
     try:
         # Handle query parameters for backward compatibility
         if date_range_start or date_range_end:
-            transactions = await TransactionOperations.get_transactions_by_date_range(
+            transactions = await handle_database_operation(
+                TransactionOperations.get_transactions_by_date_range,
                 start_date=date_range_start or date.min,
                 end_date=date_range_end or date.max,
                 limit=limit,
@@ -577,7 +481,8 @@ async def get_transactions(
                 order_by="DESC" if sort_direction == "desc" else "ASC"
             )
         else:
-            transactions = await TransactionOperations.get_all_transactions(
+            transactions = await handle_database_operation(
+                TransactionOperations.get_all_transactions,
                 limit=limit,
                 offset=(page - 1) * limit,
                 order_by="DESC" if sort_direction == "desc" else "ASC"
@@ -655,13 +560,145 @@ async def get_transactions(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ============================================================================
+# TAG ROUTES (within transactions)
+# ============================================================================
+
+@router.get("/tags/", response_model=ApiResponse)
+async def get_tags():
+    """Get all tags with usage counts."""
+    try:
+        tags = await TagOperations.get_all_tags()
+        response_tags = [_convert_db_tag_to_response(t) for t in tags]
+        
+        return ApiResponse(data=response_tags)
+        
+    except Exception as e:
+        logger.error(f"Failed to get tags: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tags/search", response_model=ApiResponse)
+async def search_tags(
+    query: str = Query(..., description="Search query for tag names"),
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of results")
+):
+    """Search tags by name."""
+    try:
+        tags = await TagOperations.search_tags(query, limit)
+        response_tags = [_convert_db_tag_to_response(t) for t in tags]
+        
+        return ApiResponse(data=response_tags)
+        
+    except Exception as e:
+        logger.error(f"Failed to search tags: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tags/{tag_id}", response_model=ApiResponse)
+async def get_tag(tag_id: str):
+    """Get a specific tag by ID."""
+    try:
+        tag = await TagOperations.get_tag_by_id(tag_id)
+        if not tag:
+            raise HTTPException(status_code=404, detail="Tag not found")
+        
+        response_tag = _convert_db_tag_to_response(tag)
+        return ApiResponse(data=response_tag)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get tag: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tags/", response_model=ApiResponse, status_code=201)
+async def create_tag(tag_data: TagCreate):
+    """Create a new tag."""
+    try:
+        tag_id = await TagOperations.create_tag(
+            name=tag_data.name,
+            color=tag_data.color
+        )
+        
+        return ApiResponse(data={"id": tag_id}, message="Tag created successfully")
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to create tag: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/tags/{tag_id}", response_model=ApiResponse)
+async def update_tag(tag_id: str, tag_data: TagUpdate):
+    """Update a tag."""
+    try:
+        success = await TagOperations.update_tag(
+            tag_id=tag_id,
+            name=tag_data.name,
+            color=tag_data.color
+        )
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Tag not found")
+        
+        return ApiResponse(message="Tag updated successfully")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update tag: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/tags/{tag_id}", status_code=204)
+async def delete_tag(tag_id: str):
+    """Delete a tag (soft delete)."""
+    try:
+        success = await TagOperations.delete_tag(tag_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Tag not found")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete tag: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tags/upsert", response_model=ApiResponse)
+async def upsert_tag(tag_data: TagCreate):
+    """Upsert a tag (create if not exists, update if exists)."""
+    try:
+        tag_id = await TagOperations.upsert_tag(
+            name=tag_data.name,
+            color=tag_data.color
+        )
+        
+        return ApiResponse(data={"id": tag_id}, message="Tag upserted successfully")
+        
+    except Exception as e:
+        logger.error(f"Failed to upsert tag: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{transaction_id}", response_model=ApiResponse)
 async def get_transaction(transaction_id: str):
     """Get a single transaction by ID."""
     try:
-        transaction = await TransactionOperations.get_transaction_by_id(transaction_id)
+        transaction = await handle_database_operation(
+            TransactionOperations.get_transaction_by_id,
+            transaction_id
+        )
         if not transaction:
             raise HTTPException(status_code=404, detail="Transaction not found")
+        
+        # Get tags for the transaction
+        transaction_tags = await TagOperations.get_tags_for_transaction(transaction_id)
+        tag_names = [tag['name'] for tag in transaction_tags]
+        transaction['tags'] = tag_names
         
         response_transaction = _convert_db_transaction_to_response(transaction)
         return ApiResponse(data=response_transaction)
@@ -677,7 +714,8 @@ async def get_transaction(transaction_id: str):
 async def create_transaction(transaction_data: TransactionCreate):
     """Create a new transaction."""
     try:
-        transaction_id = await TransactionOperations.create_transaction(
+        transaction_id = await handle_database_operation(
+            TransactionOperations.create_transaction,
             transaction_date=transaction_data.date,
             amount=transaction_data.amount,
             direction=transaction_data.direction,
@@ -702,7 +740,10 @@ async def create_transaction(transaction_data: TransactionCreate):
         )
         
         # Fetch the created transaction
-        created_transaction = await TransactionOperations.get_transaction_by_id(transaction_id)
+        created_transaction = await handle_database_operation(
+            TransactionOperations.get_transaction_by_id,
+            transaction_id
+        )
         response_transaction = _convert_db_transaction_to_response(created_transaction)
         
         return ApiResponse(data=response_transaction, message="Transaction created successfully")
@@ -731,12 +772,56 @@ async def update_transaction(transaction_id: str, updates: TransactionUpdate):
             else:
                 update_data[field] = value
         
-        success = await TransactionOperations.update_transaction(transaction_id, **update_data)
+        # Auto-calculate split_share_amount if split_breakdown is provided but split_share_amount is not
+        if "split_breakdown" in update_data and "split_share_amount" not in update_data:
+            split_breakdown = update_data["split_breakdown"]
+            if split_breakdown and isinstance(split_breakdown, dict):
+                # Get the transaction to access the total amount
+                current_transaction = await handle_database_operation(
+                    TransactionOperations.get_transaction_by_id,
+                    transaction_id
+                )
+                if current_transaction:
+                    total_amount = float(current_transaction.get('amount', 0))
+                    split_share_amount = _calculate_split_share_amount(split_breakdown, total_amount)
+                    update_data["split_share_amount"] = split_share_amount
+        
+        # Handle tags separately - remove from update_data to handle via TagOperations
+        tag_names = None
+        if "tags" in update_data:
+            tag_names = update_data.pop("tags")
+        
+        # Handle tags if provided - convert tag names to tag IDs
+        if tag_names is not None:
+            tag_ids = []
+            for tag_name in tag_names:
+                tag = await TagOperations.get_tag_by_name(tag_name)
+                if tag:
+                    tag_ids.append(tag["id"])
+            await TagOperations.set_transaction_tags(transaction_id, tag_ids)
+        
+        # Update transaction fields if any (excluding tags which are handled above)
+        success = True  # Default to success if no fields to update
+        if update_data:
+            success = await handle_database_operation(
+                TransactionOperations.update_transaction,
+                transaction_id,
+                **update_data
+            )
+        
         if not success:
             raise HTTPException(status_code=404, detail="Transaction not found or update failed")
         
-        # Fetch the updated transaction
-        updated_transaction = await TransactionOperations.get_transaction_by_id(transaction_id)
+        # Fetch the updated transaction with tags
+        updated_transaction = await handle_database_operation(
+            TransactionOperations.get_transaction_by_id,
+            transaction_id
+        )
+        # Get tags for the transaction
+        transaction_tags = await TagOperations.get_tags_for_transaction(transaction_id)
+        tag_names = [tag['name'] for tag in transaction_tags]
+        updated_transaction['tags'] = tag_names
+        
         response_transaction = _convert_db_transaction_to_response(updated_transaction)
         
         return ApiResponse(data=response_transaction, message="Transaction updated successfully")
@@ -752,7 +837,10 @@ async def update_transaction(transaction_id: str, updates: TransactionUpdate):
 async def delete_transaction(transaction_id: str):
     """Delete a transaction."""
     try:
-        success = await TransactionOperations.delete_transaction(transaction_id)
+        success = await handle_database_operation(
+            TransactionOperations.delete_transaction,
+            transaction_id
+        )
         if not success:
             raise HTTPException(status_code=404, detail="Transaction not found")
         
@@ -825,7 +913,8 @@ async def search_transactions(
 ):
     """Search transactions by description, notes, or reference number."""
     try:
-        transactions = await TransactionOperations.search_transactions(
+        transactions = await handle_database_operation(
+            TransactionOperations.search_transactions,
             query=query,
             limit=limit,
             offset=offset
@@ -845,16 +934,46 @@ async def search_transactions(
 # ============================================================================
 
 @router.get("/categories/", response_model=ApiResponse)
-async def get_categories(include_hidden: bool = Query(False, description="Include hidden categories")):
-    """Get all categories with their subcategories."""
+async def get_categories():
+    """Get all active categories."""
     try:
-        categories = await CategoryOperations.get_all_categories(include_hidden=include_hidden)
-        response_categories = [_convert_db_category_to_response(c) for c in categories]
-        
-        return ApiResponse(data=response_categories)
+        categories = await CategoryOperations.get_all_categories()
+        return ApiResponse(data=categories)
         
     except Exception as e:
         logger.error(f"Failed to get categories: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/categories/search", response_model=ApiResponse)
+async def search_categories(
+    query: str = Query(..., description="Search query for category names"),
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of results")
+):
+    """Search categories by name."""
+    try:
+        categories = await CategoryOperations.search_categories(query, limit)
+        return ApiResponse(data=categories)
+        
+    except Exception as e:
+        logger.error(f"Failed to search categories: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/categories/{category_id}", response_model=ApiResponse)
+async def get_category(category_id: str):
+    """Get a specific category by ID."""
+    try:
+        category = await CategoryOperations.get_category_by_id(category_id)
+        if not category:
+            raise HTTPException(status_code=404, detail="Category not found")
+        
+        return ApiResponse(data=category)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get category: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -865,48 +984,76 @@ async def create_category(category_data: CategoryCreate):
         category_id = await CategoryOperations.create_category(
             name=category_data.name,
             color=category_data.color,
-            is_hidden=category_data.is_hidden
+            parent_id=category_data.parent_id,
+            sort_order=category_data.sort_order
         )
         
         return ApiResponse(data={"id": category_id}, message="Category created successfully")
         
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to create category: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ============================================================================
-# TAG ROUTES (within transactions)
-# ============================================================================
-
-@router.get("/tags/", response_model=ApiResponse)
-async def get_tags():
-    """Get all tags with usage counts."""
+@router.put("/categories/{category_id}", response_model=ApiResponse)
+async def update_category(category_id: str, category_data: CategoryUpdate):
+    """Update a category."""
     try:
-        tags = await TagOperations.get_all_tags()
-        response_tags = [_convert_db_tag_to_response(t) for t in tags]
-        
-        return ApiResponse(data=response_tags)
-        
-    except Exception as e:
-        logger.error(f"Failed to get tags: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/tags/", response_model=ApiResponse, status_code=201)
-async def create_tag(tag_data: TagCreate):
-    """Create a new tag."""
-    try:
-        tag_id = await TagOperations.create_tag(
-            name=tag_data.name,
-            color=tag_data.color
+        success = await CategoryOperations.update_category(
+            category_id=category_id,
+            name=category_data.name,
+            color=category_data.color,
+            parent_id=category_data.parent_id,
+            sort_order=category_data.sort_order
         )
         
-        return ApiResponse(data={"id": tag_id}, message="Tag created successfully")
+        if not success:
+            raise HTTPException(status_code=404, detail="Category not found")
+        
+        return ApiResponse(data={"success": True}, message="Category updated successfully")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update category: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/categories/{category_id}", status_code=204)
+async def delete_category(category_id: str):
+    """Delete a category (soft delete)."""
+    try:
+        success = await CategoryOperations.delete_category(category_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Category not found")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete category: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/categories/upsert", response_model=ApiResponse)
+async def upsert_category(category_data: CategoryCreate):
+    """Upsert a category (create if not exists, update if exists)."""
+    try:
+        category_id = await CategoryOperations.upsert_category(
+            name=category_data.name,
+            color=category_data.color,
+            parent_id=category_data.parent_id,
+            sort_order=category_data.sort_order
+        )
+        
+        return ApiResponse(data={"id": category_id}, message="Category upserted successfully")
         
     except Exception as e:
-        logger.error(f"Failed to create tag: {e}")
+        logger.error(f"Failed to upsert category: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
 
 
 # ============================================================================

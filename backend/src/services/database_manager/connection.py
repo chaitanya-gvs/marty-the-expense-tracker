@@ -29,7 +29,16 @@ def get_engine() -> AsyncEngine:
             echo=False,  # Set to True for SQL query logging
             pool_pre_ping=True,
             pool_size=10,
-            max_overflow=20
+            max_overflow=20,
+            # Add connection arguments to handle cached statement invalidation
+            connect_args={
+                "server_settings": {
+                    "application_name": "expense_tracker",
+                    "jit": "off"  # Disable JIT compilation to avoid cached statement issues
+                },
+                "prepared_statement_cache_size": 0,  # Disable prepared statement caching
+                "command_timeout": 60
+            }
         )
         _session_factory = async_sessionmaker(
             bind=_engine,
@@ -57,6 +66,20 @@ async def close_engine():
         await _engine.dispose()
         _engine = None
         _session_factory = None
+
+
+async def refresh_connection_pool():
+    """Refresh the connection pool to clear cached statements"""
+    global _engine, _session_factory
+    
+    if _engine:
+        # Dispose of the current engine to clear all cached statements
+        await _engine.dispose()
+        _engine = None
+        _session_factory = None
+        
+        # Recreate the engine with fresh connections
+        get_engine()
 
 
 # Context manager for database sessions
