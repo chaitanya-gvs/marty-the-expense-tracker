@@ -71,13 +71,21 @@ export function TransactionsPage() {
            transactionDate.getFullYear() === currentYear;
   });
   
+  // Helper function to get effective amount (my share for shared transactions)
+  const getEffectiveAmount = (transaction: any) => {
+    if (!transaction) return 0;
+    const isShared = transaction.is_shared;
+    const splitAmount = transaction.split_share_amount;
+    return isShared && splitAmount ? splitAmount : transaction.amount || 0;
+  };
+
   const monthlySpent = monthlyTransactions
     .filter(t => t && t.direction === 'debit')
-    .reduce((sum, t) => sum + (t.amount || 0), 0);
+    .reduce((sum, t) => sum + getEffectiveAmount(t), 0);
   
   const monthlyRefunded = monthlyTransactions
     .filter(t => t && t.direction === 'credit')
-    .reduce((sum, t) => sum + (t.amount || 0), 0);
+    .reduce((sum, t) => sum + getEffectiveAmount(t), 0);
 
   // Get active filters for display
   const activeFilters = Object.entries(filters).filter(([_, value]) => value !== undefined && value !== "");

@@ -11,14 +11,7 @@ import {
   SortingState,
   ColumnDef,
 } from "@tanstack/react-table";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+// Using native HTML table elements for better sticky header support
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -30,6 +23,7 @@ import { useCategories } from "@/hooks/use-categories";
 import { Transaction, TransactionFilters, TransactionSort, SplitBreakdown, Tag, Category } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { apiClient } from "@/lib/api/client";
 import { 
   ArrowUpDown, 
   ArrowUp, 
@@ -47,7 +41,8 @@ import {
   GitBranch,
   CheckSquare,
   Square,
-  Edit
+  Edit,
+  Unlink
 } from "lucide-react";
 import { format } from "date-fns";
 import { TransactionEditModal } from "./transaction-edit-modal";
@@ -57,6 +52,7 @@ import { TagPill } from "./tag-pill";
 import { InlineTagDropdown } from "./inline-tag-dropdown";
 import { InlineCategoryDropdown } from "./inline-category-dropdown";
 import { BulkEditModal } from "./bulk-edit-modal";
+import { LinksColumn } from "./links-column";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
 
 const columnHelper = createColumnHelper<Transaction>();
@@ -164,6 +160,114 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       }
       return newSet;
     });
+  };
+
+  // Bulk action logic
+  const canBulkLinkRefund = useMemo(() => {
+    if (selectedTransactions.length !== 2) return false;
+    const directions = selectedTransactions.map(t => t.direction);
+    return directions.includes("debit") && directions.includes("credit");
+  }, [selectedTransactions]);
+
+  const canBulkGroupTransfer = useMemo(() => {
+    if (selectedTransactions.length < 2) return false;
+    const directions = selectedTransactions.map(t => t.direction);
+    const hasDebit = directions.includes("debit");
+    const hasCredit = directions.includes("credit");
+    const amounts = selectedTransactions.map(t => Math.abs(t.amount));
+    const amountsSimilar = amounts.every(amount => 
+      Math.abs(amount - amounts[0]) < amounts[0] * 0.1 // 10% tolerance
+    );
+    return hasDebit && hasCredit && amountsSimilar;
+  }, [selectedTransactions]);
+
+  const canBulkUnlink = useMemo(() => {
+    return selectedTransactions.some(t => 
+      t.link_parent_id || t.transfer_group_id
+    );
+  }, [selectedTransactions]);
+
+  const handleBulkLinkRefund = async () => {
+    if (!canBulkLinkRefund) return;
+    
+    const debitTransaction = selectedTransactions.find(t => t.direction === "debit");
+    const creditTransaction = selectedTransactions.find(t => t.direction === "credit");
+    
+    if (!debitTransaction || !creditTransaction) return;
+
+    try {
+      await apiClient.linkRefund(creditTransaction.id, debitTransaction.id);
+      toast.success("Refund linked successfully", {
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            await apiClient.updateTransaction(creditTransaction.id, {
+              link_parent_id: undefined,
+              is_refund: false,
+            });
+          },
+        },
+      });
+      setSelectedTransactionIds(new Set());
+    } catch (error) {
+      toast.error("Failed to link refund");
+      console.error("Bulk link refund error:", error);
+    }
+  };
+
+  const handleBulkGroupTransfer = async () => {
+    if (!canBulkGroupTransfer) return;
+
+    try {
+      const transactionIds = selectedTransactions.map(t => t.id);
+      await apiClient.groupTransfer(transactionIds);
+      toast.success(`Grouped ${transactionIds.length} transactions as a transfer`, {
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            const updatePromises = transactionIds.map(id => 
+              apiClient.updateTransaction(id, { transfer_group_id: undefined })
+            );
+            await Promise.all(updatePromises);
+          },
+        },
+      });
+      setSelectedTransactionIds(new Set());
+    } catch (error) {
+      toast.error("Failed to group transfer");
+      console.error("Bulk group transfer error:", error);
+    }
+  };
+
+  const handleBulkUnlink = async () => {
+    try {
+      const updatePromises = selectedTransactions
+        .filter(t => t.link_parent_id || t.transfer_group_id)
+        .map(t => 
+          apiClient.updateTransaction(t.id, {
+            link_parent_id: undefined,
+            transfer_group_id: undefined,
+            is_refund: false,
+          })
+        );
+      
+      await Promise.all(updatePromises);
+      
+      const unlinkedCount = updatePromises.length;
+      toast.success(`Unlinked ${unlinkedCount} transactions`, {
+        action: {
+          label: "Undo",
+          onClick: () => {
+            // Note: Full undo would require storing previous state
+            toast.info("Undo not available for bulk operations");
+          },
+        },
+      });
+      setSelectedTransactionIds(new Set());
+    } catch (error) {
+      toast.error("Failed to unlink transactions");
+      console.error("Bulk unlink error:", error);
+    }
   };
 
   // Infinite scroll effect
@@ -331,10 +435,27 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             )}
           </Button>
         ),
+        sortingFn: (rowA, rowB) => {
+          // Use effective amount (my share) for sorting shared transactions
+          const getEffectiveAmount = (row: any) => {
+            const isShared = row.original.is_shared;
+            const splitAmount = row.original.split_share_amount;
+            return isShared && splitAmount ? splitAmount : row.original.amount;
+          };
+          
+          const amountA = getEffectiveAmount(rowA);
+          const amountB = getEffectiveAmount(rowB);
+          return amountA - amountB;
+        },
         cell: ({ getValue, row }) => {
-          const amount = getValue();
+          const totalAmount = getValue();
           const splitAmount = row.original.split_share_amount;
           const direction = row.original.direction;
+          const isShared = row.original.is_shared;
+          
+          // For shared transactions, show the effective amount (my share) as primary
+          const displayAmount = isShared && splitAmount ? splitAmount : totalAmount;
+          const showTotalAmount = isShared && splitAmount && splitAmount !== totalAmount;
           
            return (
              <div className="flex flex-col items-end whitespace-nowrap">
@@ -344,11 +465,11 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                    ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200" 
                    : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
                )}>
-                 {direction === "debit" ? "↓" : "↑"} {formatCurrency(amount)}
+                 {direction === "debit" ? "↓" : "↑"} {formatCurrency(displayAmount)}
                </div>
-               {row.original.is_shared && splitAmount && splitAmount !== amount && (
+               {showTotalAmount && (
                  <div className="text-xs text-gray-500 mt-1 text-right">
-                   Your share: {formatCurrency(splitAmount)}
+                   Total: {formatCurrency(totalAmount)}
                  </div>
                )}
              </div>
@@ -488,11 +609,175 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
              </div>
            );
          },
-         size: 80,
-       }),
-       
-       // Tags column
-       columnHelper.accessor("tags", {
+        size: 80,
+      }),
+      
+      // Links column
+      columnHelper.display({
+        id: "links",
+        header: () => (
+          <div className="flex items-center justify-center gap-1 text-sm font-medium">
+            <Link2 className="h-4 w-4" />
+            Links
+          </div>
+        ),
+        cell: ({ row }) => {
+          const transaction = row.original;
+          return (
+            <LinksColumn
+              transaction={transaction}
+              allTransactions={allTransactions}
+              onLinkRefund={async (childId, parentId) => {
+                try {
+                  await updateTransaction.mutateAsync({
+                    id: childId,
+                    updates: {
+                      link_parent_id: parentId,
+                      is_refund: true,
+                    },
+                  });
+                  toast.success("Refund linked successfully", {
+                    action: {
+                      label: "Undo",
+                      onClick: async () => {
+                        await updateTransaction.mutateAsync({
+                          id: childId,
+                          updates: {
+                            link_parent_id: undefined,
+                            is_refund: false,
+                          },
+                        });
+                      },
+                    },
+                  });
+                } catch (error) {
+                  toast.error("Failed to link refund");
+                  console.error("Link refund error:", error);
+                }
+              }}
+              onUnlinkRefund={async (childId) => {
+                try {
+                  await updateTransaction.mutateAsync({
+                    id: childId,
+                    updates: {
+                      link_parent_id: undefined,
+                      is_refund: false,
+                    },
+                  });
+                  toast.success("Refund unlinked successfully", {
+                    action: {
+                      label: "Undo",
+                      onClick: async () => {
+                        // This would need the original parent ID to restore
+                        // For now, we'll just show the toast without undo
+                      },
+                    },
+                  });
+                } catch (error) {
+                  toast.error("Failed to unlink refund");
+                  console.error("Unlink refund error:", error);
+                }
+              }}
+              onGroupTransfer={async (transactionIds) => {
+                try {
+                  await apiClient.groupTransfer(transactionIds);
+                  toast.success(`Grouped ${transactionIds.length} transactions as a transfer`, {
+                    action: {
+                      label: "Undo",
+                      onClick: async () => {
+                        // Ungroup by setting transfer_group_id to undefined for all
+                        const updatePromises = transactionIds.map(id => 
+                          updateTransaction.mutateAsync({
+                            id,
+                            updates: { transfer_group_id: undefined },
+                          })
+                        );
+                        await Promise.all(updatePromises);
+                      },
+                    },
+                  });
+                } catch (error) {
+                  toast.error("Failed to group transfer");
+                  console.error("Group transfer error:", error);
+                }
+              }}
+              onUngroupTransfer={async (transactionId) => {
+                try {
+                  await updateTransaction.mutateAsync({
+                    id: transactionId,
+                    updates: { transfer_group_id: undefined },
+                  });
+                  toast.success("Transfer ungrouped successfully", {
+                    action: {
+                      label: "Undo",
+                      onClick: async () => {
+                        // This would need the original group ID to restore
+                        // For now, we'll just show the toast without undo
+                      },
+                    },
+                  });
+                } catch (error) {
+                  toast.error("Failed to ungroup transfer");
+                  console.error("Ungroup transfer error:", error);
+                }
+              }}
+              onAddToTransferGroup={async (transactionIds) => {
+                try {
+                  const targetGroupId = transaction.transfer_group_id;
+                  const updatePromises = transactionIds.map(id => 
+                    updateTransaction.mutateAsync({
+                      id,
+                      updates: { transfer_group_id: targetGroupId },
+                    })
+                  );
+                  await Promise.all(updatePromises);
+                  toast.success(`Added ${transactionIds.length} transactions to transfer group`, {
+                    action: {
+                      label: "Undo",
+                      onClick: async () => {
+                        const unlinkPromises = transactionIds.map(id => 
+                          updateTransaction.mutateAsync({
+                            id,
+                            updates: { transfer_group_id: undefined },
+                          })
+                        );
+                        await Promise.all(unlinkPromises);
+                      },
+                    },
+                  });
+                } catch (error) {
+                  toast.error("Failed to add to transfer group");
+                  console.error("Add to transfer group error:", error);
+                }
+              }}
+              onRemoveFromTransferGroup={async (transactionId) => {
+                try {
+                  await updateTransaction.mutateAsync({
+                    id: transactionId,
+                    updates: { transfer_group_id: undefined },
+                  });
+                  toast.success("Transaction removed from transfer group", {
+                    action: {
+                      label: "Undo",
+                      onClick: async () => {
+                        // This would need the original group ID to restore
+                        // For now, we'll just show the toast without undo
+                      },
+                    },
+                  });
+                } catch (error) {
+                  toast.error("Failed to remove from transfer group");
+                  console.error("Remove from transfer group error:", error);
+                }
+              }}
+            />
+          );
+        },
+        size: 100,
+      }),
+      
+      // Tags column
+      columnHelper.accessor("tags", {
          header: () => (
            <div className="flex items-center gap-1 text-sm font-medium">
              <TagIcon className="h-4 w-4" />
@@ -533,81 +818,83 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
              );
            }
            
-           return (
-             <div className="flex items-center justify-between max-w-[180px]">
-               <div 
-                 className="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-thumb]:bg-gray-700 dark:hover:[&::-webkit-scrollbar-thumb]:bg-gray-600 flex-shrink min-w-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-1 rounded"
-                 onClick={() => setEditingTagsForTransaction(transaction.id)}
-                 title="Click to edit tags"
-               >
-                 {tagObjects && tagObjects.length > 0 ? (
-                   <div className="flex gap-1 whitespace-nowrap">
-                     {tagObjects.map((tag) => (
-                       <TagPill
-                         key={tag.id}
-                         tag={tag}
-                         variant="compact"
-                         className="text-xs flex-shrink-0"
-                         onRemove={async (tagId) => {
-                           try {
-                             const remainingTags = tagObjects.filter(t => t.id !== tagId);
-                             await updateTransaction.mutateAsync({
-                               id: transaction.id,
-                               updates: {
-                                 tags: remainingTags.map(t => t.name),
-                               },
-                             });
-                             toast.success("Tag removed successfully");
-                           } catch (error) {
-                             toast.error("Failed to remove tag");
-                             console.error("Remove tag error:", error);
-                           }
-                         }}
-                       />
-                     ))}
-                   </div>
-                 ) : (
-                   <span className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 whitespace-nowrap">Click to add tags</span>
-                 )}
-               </div>
-               <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 ml-1 flex-shrink-0">
-                 <DropdownMenu>
-                   <DropdownMenuTrigger asChild>
-                     <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                       <MoreVertical className="h-4 w-4" />
-                     </Button>
-                   </DropdownMenuTrigger>
-                   <DropdownMenuContent align="end">
-                     <DropdownMenuItem onClick={() => {
-                       setSelectedTransactionId(transaction.id);
-                       setIsEditModalOpen(true);
-                     }}>
-                       <Edit3 className="h-4 w-4 mr-2" />
-                       Edit
-                     </DropdownMenuItem>
-                     <DropdownMenuItem onClick={() => setEditingTagsForTransaction(transaction.id)}>
-                       <TagIcon className="h-4 w-4 mr-2" />
-                       Edit Tags
-                     </DropdownMenuItem>
-                     <DropdownMenuItem>
-                       <Link2 className="h-4 w-4 mr-2" />
-                       Link refund
-                     </DropdownMenuItem>
-                     <DropdownMenuItem>
-                       <GitBranch className="h-4 w-4 mr-2" />
-                       Group transfer
-                     </DropdownMenuItem>
-                   </DropdownMenuContent>
-                 </DropdownMenu>
-               </div>
-             </div>
-           );
+          return (
+            <div 
+              className="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-thumb]:bg-gray-700 dark:hover:[&::-webkit-scrollbar-thumb]:bg-gray-600 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-1 rounded max-w-[180px]"
+              onClick={() => setEditingTagsForTransaction(transaction.id)}
+              title="Click to edit tags"
+            >
+              {tagObjects && tagObjects.length > 0 ? (
+                <div className="flex gap-1 whitespace-nowrap">
+                  {tagObjects.map((tag) => (
+                    <TagPill
+                      key={tag.id}
+                      tag={tag}
+                      variant="compact"
+                      className="text-xs flex-shrink-0"
+                      onRemove={async (tagId) => {
+                        try {
+                          const remainingTags = tagObjects.filter(t => t.id !== tagId);
+                          await updateTransaction.mutateAsync({
+                            id: transaction.id,
+                            updates: {
+                              tags: remainingTags.map(t => t.name),
+                            },
+                          });
+                          toast.success("Tag removed successfully");
+                        } catch (error) {
+                          toast.error("Failed to remove tag");
+                          console.error("Remove tag error:", error);
+                        }
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <span className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 whitespace-nowrap">Click to add tags</span>
+              )}
+            </div>
+          );
          },
         size: 200,
       }),
+      
+      // Actions column (3-dot menu)
+      columnHelper.display({
+        id: "actions",
+        header: () => null,
+        cell: ({ row }) => {
+          const transaction = row.original;
+          return (
+            <div className="flex justify-center items-center opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => {
+                    setSelectedTransactionId(transaction.id);
+                    setIsEditModalOpen(true);
+                  }}>
+                    <Edit3 className="h-4 w-4 mr-2" />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setEditingTagsForTransaction(transaction.id)}>
+                    <TagIcon className="h-4 w-4 mr-2" />
+                    Edit Tags
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          );
+        },
+        size: 50,
+      }),
       ];
     },
-    [editingRow, editingField, allTags, allCategories, editingTagsForTransaction, editingCategoryForTransaction, isMultiSelectMode, selectedTransactionIds, isAllSelected, isIndeterminate]
+    [editingRow, editingField, allTags, allCategories, editingTagsForTransaction, editingCategoryForTransaction, isMultiSelectMode, selectedTransactionIds, isAllSelected, isIndeterminate, allTransactions, updateTransaction]
   );
 
   const table = useReactTable({
@@ -683,6 +970,39 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   Bulk Edit
                 </Button>
                 <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBulkLinkRefund}
+                  className="flex items-center gap-2"
+                  disabled={!canBulkLinkRefund}
+                  title="Link refund (select one debit and one credit)"
+                >
+                  <Link2 className="h-4 w-4" />
+                  Link refund
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBulkGroupTransfer}
+                  className="flex items-center gap-2"
+                  disabled={!canBulkGroupTransfer}
+                  title="Group as transfer (select 2+ transactions with opposite directions)"
+                >
+                  <GitBranch className="h-4 w-4" />
+                  Group transfer
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBulkUnlink}
+                  className="flex items-center gap-2"
+                  disabled={!canBulkUnlink}
+                  title="Unlink/ungroup selected transactions"
+                >
+                  <Unlink className="h-4 w-4" />
+                  Unlink/Ungroup
+                </Button>
+                <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => {
@@ -704,33 +1024,29 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         </div>
       </div>
 
-      <div
-        className="overflow-auto relative" 
-        ref={(node) => {
-          parentRef.current = node;
-          tableContainerRef.current = node;
-        }}
-        style={{ maxHeight: "70vh", width: "100%" }}
-        onScroll={(e) => fetchMoreOnBottomReached(e.target as HTMLDivElement)}
-      >
-        <Table className={`w-full ${isMultiSelectMode ? 'min-w-[940px]' : 'min-w-[900px]'} table-auto md:table-fixed`}>
-          <colgroup>
-            {isMultiSelectMode && <col className="w-[40px]" />}
-            <col className="w-[100px]" />
-            <col className="w-[350px] md:w-[320px]" />
-            <col className="w-[120px]" />
-            <col className="w-[130px]" />
-            <col className="w-[130px]" />
-            <col className="w-[80px]" />
-            <col className="w-[200px]" />
-          </colgroup>
-          <TableHeader className="sticky top-0 bg-white dark:bg-gray-900 z-30 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+      <div className="w-full" style={{ height: "70vh", display: "flex", flexDirection: "column" }}>
+        {/* Sticky Header */}
+        <div className="flex-shrink-0 w-full overflow-x-auto bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-md z-50">
+          <table className={`w-full ${isMultiSelectMode ? 'min-w-[1140px]' : 'min-w-[1100px]'} table-auto md:table-fixed`}>
+            <colgroup>
+              {isMultiSelectMode && <col className="w-[40px]" />}
+              <col className="w-[100px]" />
+              <col className="w-[350px] md:w-[320px]" />
+              <col className="w-[120px]" />
+              <col className="w-[130px]" />
+              <col className="w-[130px]" />
+              <col className="w-[80px]" />
+              <col className="w-[100px]" />
+              <col className="w-[200px]" />
+              <col className="w-[50px]" />
+            </colgroup>
+            <thead>
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
+              <tr key={headerGroup.id} className="border-b transition-colors">
                 {headerGroup.headers.map((header) => (
-                  <TableHead 
+                  <th 
                     key={header.id} 
-                    className="px-3 py-2 text-left font-semibold text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-800 h-12 align-middle"
+                    className="px-3 py-2 text-left font-semibold text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-800 h-12 align-middle text-foreground whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]"
                   >
                     {header.isPlaceholder
                       ? null
@@ -738,14 +1054,39 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                           header.column.columnDef.header,
                           header.getContext()
                         )}
-                  </TableHead>
+                  </th>
                 ))}
-              </TableRow>
+              </tr>
             ))}
-          </TableHeader>
-          <TableBody>
+            </thead>
+          </table>
+        </div>
+
+        {/* Scrollable Body */}
+        <div
+          className="flex-1 overflow-auto relative w-full"
+          ref={(node) => {
+            parentRef.current = node;
+            tableContainerRef.current = node;
+          }}
+          onScroll={(e) => fetchMoreOnBottomReached(e.target as HTMLDivElement)}
+        >
+          <table className={`w-full ${isMultiSelectMode ? 'min-w-[1140px]' : 'min-w-[1100px]'} table-auto md:table-fixed`}>
+            <colgroup>
+              {isMultiSelectMode && <col className="w-[40px]" />}
+              <col className="w-[100px]" />
+              <col className="w-[350px] md:w-[320px]" />
+              <col className="w-[120px]" />
+              <col className="w-[130px]" />
+              <col className="w-[130px]" />
+              <col className="w-[80px]" />
+              <col className="w-[100px]" />
+              <col className="w-[200px]" />
+              <col className="w-[50px]" />
+            </colgroup>
+            <tbody className="[&_tr:last-child]:border-0">
             {rows.map((row) => (
-              <TableRow
+              <tr
                 key={row.id}
                 className={cn(
                   "group hover:bg-gray-50 dark:hover:bg-gray-800 border-b border-gray-100 dark:border-gray-800 transition-colors duration-150 h-12",
@@ -753,10 +1094,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 )}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <TableCell 
+                  <td 
                     key={cell.id} 
                     className={cn(
-                      "px-3 py-2 text-sm align-middle",
+                      "px-3 py-2 text-sm align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
                       editingTagsForTransaction === row.original.id && cell.column.id === "tags" && "relative",
                       editingCategoryForTransaction === row.original.id && cell.column.id === "category" && "relative"
                     )}
@@ -765,12 +1106,13 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                       cell.column.columnDef.cell,
                       cell.getContext()
                     )}
-                  </TableCell>
+                  </td>
                 ))}
-              </TableRow>
+              </tr>
             ))}
-          </TableBody>
-        </Table>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {!hasNextPage && allTransactions.length > 0 && (
