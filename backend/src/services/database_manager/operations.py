@@ -257,6 +257,7 @@ class TransactionOperations:
         is_partial_refund: bool = False,
         is_shared: bool = False,
         split_breakdown: Optional[Dict[str, Any]] = None,
+        paid_by: Optional[str] = None,
         sub_category: Optional[str] = None,
         tags: Optional[List[str]] = None,
         notes: Optional[str] = None,
@@ -282,12 +283,12 @@ class TransactionOperations:
                 text("""
                     INSERT INTO transactions (
                         transaction_date, transaction_time, amount, split_share_amount,
-                        direction, transaction_type, is_partial_refund, is_shared, split_breakdown,
+                        direction, transaction_type, is_partial_refund, is_shared, split_breakdown, paid_by,
                         account, category_id, sub_category, tags, description, notes, reference_number,
                         related_mails, source_file, raw_data, link_parent_id, transfer_group_id
                     ) VALUES (
                         :transaction_date, :transaction_time, :amount, :split_share_amount,
-                        :direction, :transaction_type, :is_partial_refund, :is_shared, :split_breakdown,
+                        :direction, :transaction_type, :is_partial_refund, :is_shared, :split_breakdown, :paid_by,
                         :account, :category_id, :sub_category, :tags, :description, :notes, :reference_number,
                         :related_mails, :source_file, :raw_data, :link_parent_id, :transfer_group_id
                     ) RETURNING id
@@ -301,6 +302,7 @@ class TransactionOperations:
                     "is_partial_refund": is_partial_refund,
                     "is_shared": is_shared,
                     "split_breakdown": json.dumps(split_breakdown) if split_breakdown else None,
+                    "paid_by": paid_by,
                     "account": account,
                     "category_id": category_id,
                     "sub_category": sub_category,
@@ -1055,7 +1057,8 @@ class TransactionOperations:
             "transaction_type": "purchase",  # Default to purchase for Splitwise transactions
             "is_partial_refund": False,
             "is_shared": transaction.get('is_shared', False),
-            "split_breakdown": None,
+            "split_breakdown": transaction.get('split_breakdown'),
+            "paid_by": transaction.get('paid_by'),  # Who actually paid for this transaction
             "account": transaction.get('account', ''),
                 "category": transaction.get('category') or 'uncategorized',
             "sub_category": None,
