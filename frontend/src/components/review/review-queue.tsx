@@ -82,7 +82,20 @@ export function ReviewQueue() {
                         <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
                           <div>Date: {format(new Date(transaction.date), "MMM dd, yyyy")}</div>
                           <div className="flex items-center gap-4">
-                            <span>Amount: ₹{transaction.amount.toLocaleString()}</span>
+                            <span>
+                              Amount: ₹{(() => {
+                                // Show effective amount (my share) for shared transactions
+                                const isShared = transaction.is_shared;
+                                const splitAmount = transaction.split_share_amount;
+                                const displayAmount = isShared && splitAmount ? splitAmount : transaction.amount;
+                                return displayAmount.toLocaleString();
+                              })()}
+                              {transaction.is_shared && transaction.split_share_amount && transaction.split_share_amount !== transaction.amount && (
+                                <span className="text-xs text-gray-500 ml-1">
+                                  (Total: ₹{transaction.amount.toLocaleString()})
+                                </span>
+                              )}
+                            </span>
                             <span>Direction: {transaction.direction}</span>
                           </div>
                           {transaction.notes && (
