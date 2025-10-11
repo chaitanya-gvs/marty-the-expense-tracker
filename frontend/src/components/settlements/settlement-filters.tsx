@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, X, RotateCcw, Check } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Calendar, X, RotateCcw, Check, Users } from "lucide-react";
 import { useSettlementParticipants } from "@/hooks/use-settlements";
 
 interface SettlementFilters {
@@ -15,6 +16,9 @@ interface SettlementFilters {
   date_range_end?: string;
   min_amount?: number;
   participant?: string;
+  participants?: string[];
+  show_owed_to_me_only?: boolean;
+  show_shared_only?: boolean;
 }
 
 interface SettlementFiltersProps {
@@ -34,6 +38,9 @@ export function SettlementFilters({
   const [dateRangeEndInput, setDateRangeEndInput] = useState(filters.date_range_end || "");
   const [selectedDatePreset, setSelectedDatePreset] = useState<string>("custom");
   const [selectedParticipant, setSelectedParticipant] = useState<string>(filters.participant || "all");
+  const [selectedParticipants, setSelectedParticipants] = useState<string[]>(filters.participants || []);
+  const [showOwedToMeOnly, setShowOwedToMeOnly] = useState<boolean>(filters.show_owed_to_me_only || false);
+  const [showSharedOnly, setShowSharedOnly] = useState<boolean>(filters.show_shared_only || false);
 
   // Fetch participants data
   const { participants = [] } = useSettlementParticipants();
@@ -61,6 +68,9 @@ export function SettlementFilters({
 
     // Apply participant
     newFilters.participant = selectedParticipant !== "all" ? selectedParticipant : undefined;
+    newFilters.participants = selectedParticipants.length > 0 ? selectedParticipants : undefined;
+    newFilters.show_owed_to_me_only = showOwedToMeOnly;
+    newFilters.show_shared_only = showSharedOnly;
 
     // Apply all filters at once
     onFiltersChange(newFilters);
@@ -72,6 +82,9 @@ export function SettlementFilters({
     setDateRangeEndInput("");
     setSelectedDatePreset("custom");
     setSelectedParticipant("all");
+    setSelectedParticipants([]);
+    setShowOwedToMeOnly(false);
+    setShowSharedOnly(false);
     onClearFilters();
   };
 
@@ -132,6 +145,9 @@ export function SettlementFilters({
     if (filters.participant) {
       badges.push({ key: "participant", label: `Participant: ${filters.participant}`, value: filters.participant });
     }
+    if (filters.participants && filters.participants.length > 0) {
+      badges.push({ key: "participants", label: `Multiple: ${filters.participants.join(", ")}`, value: filters.participants });
+    }
     if (filters.date_range_start || filters.date_range_end) {
       const start = filters.date_range_start ? new Date(filters.date_range_start).toLocaleDateString() : "Start";
       const end = filters.date_range_end ? new Date(filters.date_range_end).toLocaleDateString() : "End";
@@ -140,14 +156,72 @@ export function SettlementFilters({
     if (filters.min_amount !== undefined) {
       badges.push({ key: "min_amount", label: `Min Amount: ₹${filters.min_amount}`, value: filters.min_amount });
     }
+    if (filters.show_owed_to_me_only) {
+      badges.push({ key: "owed_to_me", label: "Owed to Me Only", value: true });
+    }
+    if (filters.show_shared_only) {
+      badges.push({ key: "shared_only", label: "Shared Transactions Only", value: true });
+    }
     
     return badges;
   };
+
+  // Quick filter actions
+  const quickFilters = [
+    {
+      label: "Owed to Me",
+      icon: "💰",
+      action: () => {
+        setShowOwedToMeOnly(!showOwedToMeOnly);
+        setShowSharedOnly(false);
+      },
+      active: showOwedToMeOnly
+    },
+    {
+      label: "Shared Only",
+      icon: "🤝",
+      action: () => {
+        setShowSharedOnly(!showSharedOnly);
+        setShowOwedToMeOnly(false);
+      },
+      active: showSharedOnly
+    },
+    {
+      label: "This Month",
+      icon: "📅",
+      action: () => {
+        handleDatePreset("this_month");
+        applyAllFilters();
+      },
+      active: selectedDatePreset === "this_month"
+    }
+  ];
 
   const activeFilterBadges = getActiveFilterBadges();
 
   return (
     <div className="space-y-4">
+      {/* Quick Filter Chips */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm text-slate-400">Quick filters:</span>
+        {quickFilters.map((filter) => (
+          <Button
+            key={filter.label}
+            variant={filter.active ? "default" : "outline"}
+            size="sm"
+            onClick={filter.action}
+            className={`h-8 px-3 text-xs transition-all duration-200 ${
+              filter.active 
+                ? "bg-blue-600 hover:bg-blue-700 text-white" 
+                : "border-slate-600 text-slate-300 hover:bg-slate-800"
+            }`}
+          >
+            <span className="mr-1">{filter.icon}</span>
+            {filter.label}
+          </Button>
+        ))}
+      </div>
+
       {/* Main Filters Grid */}
       <div className="bg-slate-900/70 rounded-xl p-4 border border-slate-800">
         <div className="flex items-center justify-between mb-4">
