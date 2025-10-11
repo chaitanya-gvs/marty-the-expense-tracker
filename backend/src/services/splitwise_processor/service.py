@@ -99,6 +99,17 @@ class SplitwiseService:
             # Find current user's involvement in this expense
             my_share = 0.0
             participants = []
+            paid_by = None
+            max_paid_amount = 0.0
+            
+            # Create detailed split breakdown structure
+            split_breakdown = {
+                "mode": "custom",  # Splitwise always has custom amounts
+                "entries": [],
+                "include_me": True,
+                "paid_by": None,
+                "total_participants": len(expense.users)
+            }
             
             for expense_user in expense.users:
                 user_name = f"{expense_user.user.first_name} {expense_user.user.last_name}".strip()
@@ -106,6 +117,22 @@ class SplitwiseService:
                 
                 if expense_user.user.id == current_user.id:
                     my_share = expense_user.owed_share
+                
+                # Track who paid the most (primary payer)
+                if expense_user.paid_share > max_paid_amount:
+                    max_paid_amount = expense_user.paid_share
+                    paid_by = user_name
+                
+                # Add to split breakdown entries
+                split_breakdown["entries"].append({
+                    "participant": user_name,
+                    "amount": float(expense_user.owed_share),
+                    "paid_share": float(expense_user.paid_share),
+                    "net_balance": float(expense_user.net_balance) if expense_user.net_balance else 0.0
+                })
+            
+            # Set paid_by in split breakdown
+            split_breakdown["paid_by"] = paid_by
             
             # Skip if user has no share (shouldn't happen due to filtering, but safety check)
             if my_share == 0.0:
@@ -125,7 +152,7 @@ class SplitwiseService:
             if expense.created_by:
                 created_by_name = f"{expense.created_by.first_name} {expense.created_by.last_name}".strip()
             
-            # Create processed transaction
+            # Create processed transaction with enhanced data
             processed_transaction = ProcessedSplitwiseTransaction(
                 splitwise_id=expense.id,
                 description=expense.description,
@@ -139,8 +166,12 @@ class SplitwiseService:
                 my_share=my_share,
                 total_participants=len(participants),
                 participants=participants,
+                paid_by=paid_by,  # Who actually paid for this transaction
                 is_payment=is_payment,
-                raw_data=expense.dict()
+                raw_data={
+                    **expense.dict(),
+                    "split_breakdown": split_breakdown  # Include enhanced split breakdown
+                }
             )
             
             return processed_transaction
