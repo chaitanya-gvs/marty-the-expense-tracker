@@ -49,8 +49,12 @@ class ApiClient {
     if (filters) {
       // Map frontend filter structure to backend query parameters
       if (filters.date_range) {
-        params.append("date_range_start", filters.date_range.start);
-        params.append("date_range_end", filters.date_range.end);
+        if (filters.date_range.start) {
+          params.append("date_range_start", filters.date_range.start);
+        }
+        if (filters.date_range.end) {
+          params.append("date_range_end", filters.date_range.end);
+        }
       }
       if (filters.accounts) {
         params.append("accounts", filters.accounts.join(","));
@@ -65,8 +69,12 @@ class ApiClient {
         params.append("tags", filters.tags.join(","));
       }
       if (filters.amount_range) {
-        params.append("amount_min", String(filters.amount_range.min));
-        params.append("amount_max", String(filters.amount_range.max));
+        if (filters.amount_range.min !== undefined && filters.amount_range.min !== null) {
+          params.append("amount_min", String(filters.amount_range.min));
+        }
+        if (filters.amount_range.max !== undefined && filters.amount_range.max !== null) {
+          params.append("amount_max", String(filters.amount_range.max));
+        }
       }
       if (filters.direction) {
         params.append("direction", filters.direction);
@@ -345,6 +353,40 @@ class ApiClient {
     return this.request<{ message: string }>("/sync/splitwise", {
       method: "POST",
     });
+  }
+
+  // Settlements
+  async getSettlementSummary(filters?: {
+    date_range_start?: string;
+    date_range_end?: string;
+    min_amount?: number;
+  }): Promise<ApiResponse<any>> {
+    const params = new URLSearchParams();
+    if (filters?.date_range_start) params.append('date_range_start', filters.date_range_start);
+    if (filters?.date_range_end) params.append('date_range_end', filters.date_range_end);
+    if (filters?.min_amount !== undefined) params.append('min_amount', filters.min_amount.toString());
+    
+    return this.request<any>(`/settlements/summary?${params.toString()}`);
+  }
+
+  async getSettlementDetail(
+    participant: string,
+    filters?: {
+      date_range_start?: string;
+      date_range_end?: string;
+      min_amount?: number;
+    }
+  ): Promise<ApiResponse<any>> {
+    const params = new URLSearchParams();
+    if (filters?.date_range_start) params.append('date_range_start', filters.date_range_start);
+    if (filters?.date_range_end) params.append('date_range_end', filters.date_range_end);
+    if (filters?.min_amount !== undefined) params.append('min_amount', filters.min_amount.toString());
+    
+    return this.request<any>(`/settlements/participant/${encodeURIComponent(participant)}?${params.toString()}`);
+  }
+
+  async getSettlementParticipants(): Promise<ApiResponse<{ participants: string[] }>> {
+    return this.request<{ participants: string[] }>('/settlements/participants');
   }
 }
 
