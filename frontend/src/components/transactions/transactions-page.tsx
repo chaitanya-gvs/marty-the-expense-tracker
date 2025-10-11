@@ -21,6 +21,7 @@ export function TransactionsPage() {
   const [sort, setSort] = useState<{ field: keyof any; direction: "asc" | "desc" } | undefined>();
 
   const handleFiltersChange = (newFilters: TransactionFiltersType) => {
+    console.log("🔧 Filters changed:", newFilters);
     setFilters(newFilters);
   };
 
@@ -38,7 +39,7 @@ export function TransactionsPage() {
   const { data, isLoading, error } = useInfiniteTransactions(filters, sort);
 
   // Calculate real data from transactions
-  const allTransactions = data?.pages?.flatMap(page => page.transactions || []) || [];
+  const allTransactions = data?.pages?.flatMap(page => page.data || []) || [];
   const totalTransactions = allTransactions.length;
   
   // Calculate date range from actual data with null checks
@@ -173,28 +174,60 @@ export function TransactionsPage() {
         {activeFilters.length > 0 && (
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm text-gray-500 dark:text-gray-400">Filters:</span>
-            {activeFilters.map(([key, value]) => (
-              <Badge 
-                key={key} 
-                variant="secondary" 
-                className="gap-1 text-xs"
-              >
-                {key === 'direction' ? (value === 'debit' ? 'Debit' : 'Credit') :
-                 key === 'account' ? value :
-                 key === 'category' ? value :
-                 key === 'date_from' ? `From ${value}` :
-                 key === 'date_to' ? `To ${value}` :
-                 value}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-3 w-3 p-0 ml-1 hover:bg-gray-200 dark:hover:bg-gray-700"
-                  onClick={() => removeFilter(key as keyof TransactionFiltersType)}
+            {activeFilters.map(([key, value]) => {
+              // Handle different filter types for display
+              let displayValue = "";
+              
+              if (key === 'direction') {
+                displayValue = value === 'debit' ? 'Debit' : 'Credit';
+              } else if (key === 'accounts') {
+                displayValue = Array.isArray(value) ? value.join(', ') : value;
+              } else if (key === 'categories') {
+                displayValue = Array.isArray(value) ? value.join(', ') : value;
+              } else if (key === 'tags') {
+                displayValue = Array.isArray(value) ? value.join(', ') : value;
+              } else if (key === 'date_range') {
+                const dateRange = value as {start: string, end: string};
+                const startDate = dateRange.start ? new Date(dateRange.start).toLocaleDateString() : 'Start';
+                const endDate = dateRange.end ? new Date(dateRange.end).toLocaleDateString() : 'End';
+                displayValue = `${startDate} - ${endDate}`;
+              } else if (key === 'amount_range') {
+                const amountRange = value as {min: number, max: number};
+                const min = amountRange.min !== undefined ? `₹${amountRange.min}` : 'Min';
+                const max = amountRange.max !== undefined ? `₹${amountRange.max}` : 'Max';
+                displayValue = `${min} - ${max}`;
+              } else if (key === 'transaction_type') {
+                displayValue = value === 'shared' ? 'Shared' : value === 'refunds' ? 'Refunds' : value === 'transfers' ? 'Transfers' : value;
+              } else {
+                displayValue = String(value);
+              }
+
+              return (
+                <Badge 
+                  key={key} 
+                  variant="secondary" 
+                  className="gap-1 text-xs"
                 >
-                  <X className="h-2 w-2" />
-                </Button>
-              </Badge>
-            ))}
+                  {key === 'search' ? `Search: "${displayValue}"` :
+                   key === 'accounts' ? `Account: ${displayValue}` :
+                   key === 'categories' ? `Category: ${displayValue}` :
+                   key === 'tags' ? `Tags: ${displayValue}` :
+                   key === 'date_range' ? `Date: ${displayValue}` :
+                   key === 'amount_range' ? `Amount: ${displayValue}` :
+                   key === 'direction' ? `Direction: ${displayValue}` :
+                   key === 'transaction_type' ? `Type: ${displayValue}` :
+                   displayValue}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-3 w-3 p-0 ml-1 hover:bg-gray-200 dark:hover:bg-gray-700"
+                    onClick={() => removeFilter(key as keyof TransactionFiltersType)}
+                  >
+                    <X className="h-2 w-2" />
+                  </Button>
+                </Badge>
+              );
+            })}
             <Button
               variant="ghost"
               size="sm"

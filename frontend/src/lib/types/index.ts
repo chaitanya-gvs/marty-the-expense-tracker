@@ -79,6 +79,40 @@ export interface Tag {
   usage_count: number;
 }
 
+export interface SettlementEntry {
+  participant: string;
+  amount_owed_to_me: number;
+  amount_i_owe: number;
+  net_balance: number;
+  transaction_count: number;
+}
+
+export interface SettlementSummary {
+  total_amount_owed_to_me: number;
+  total_amount_i_owe: number;
+  net_total_balance: number;
+  participant_count: number;
+  settlements: SettlementEntry[];
+}
+
+export interface SettlementTransaction {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+  my_share: number;
+  participant_share: number;
+  paid_by: string;
+  split_breakdown: SplitBreakdown;
+}
+
+export interface SettlementDetail {
+  participant: string;
+  net_balance: number;
+  transactions: SettlementTransaction[];
+  total_shared_amount: number;
+}
+
 export interface TransactionFilters {
   date_range?: {
     start: string;
