@@ -11,11 +11,17 @@ export function formatCurrency(amount: number | null | undefined): string {
   
   // During SSR or if window is not available, use a simple format
   if (typeof window === 'undefined') {
-    return `₹${amount.toFixed(2)}`;
+    const formatted = amount.toFixed(2);
+    // Trim trailing zeros
+    return `₹${formatted.replace(/\.?0+$/, '')}`;
   }
   
-  // On client side, use locale formatting
-  return `₹${amount.toLocaleString()}`;
+  // On client side, use locale formatting and trim trailing zeros
+  const formatted = amount.toLocaleString('en-IN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  });
+  return `₹${formatted}`;
 }
 
 /**

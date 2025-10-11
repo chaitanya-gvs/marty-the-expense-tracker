@@ -14,6 +14,7 @@ export interface Transaction {
   is_refund: boolean;
   is_transfer: boolean;
   split_breakdown?: SplitBreakdown;
+  paid_by?: string;
   link_parent_id?: string;
   transfer_group_id?: string;
   related_mails?: RelatedMail[];
@@ -27,12 +28,16 @@ export interface Transaction {
 export interface SplitEntry {
   participant: string;
   amount: number | null;
+  paid_share?: number; // Amount this participant actually paid
+  net_balance?: number; // Net balance for this participant
 }
 
 export interface SplitBreakdown {
   mode: "equal" | "custom";
   include_me: boolean;
   entries: SplitEntry[];
+  paid_by?: string; // Who actually paid for this transaction
+  total_participants?: number; // Total number of participants
 }
 
 export interface RelatedMail {

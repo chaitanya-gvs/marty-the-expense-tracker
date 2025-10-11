@@ -25,6 +25,7 @@ export function SplitEditor({ transaction, isOpen, isLoading = false, onClose, o
   const [includeMe, setIncludeMe] = useState(true);
   const [entries, setEntries] = useState<SplitEntry[]>([]);
   const [newParticipant, setNewParticipant] = useState("");
+  const [paidBy, setPaidBy] = useState<string>("me");
 
   // Initialize entries when transaction changes
   useEffect(() => {
@@ -32,11 +33,13 @@ export function SplitEditor({ transaction, isOpen, isLoading = false, onClose, o
       setMode(transaction.split_breakdown.mode);
       setIncludeMe(transaction.split_breakdown.include_me);
       setEntries(transaction.split_breakdown.entries);
+      setPaidBy(transaction.split_breakdown.paid_by || "me");
     } else {
       // Default initialization
       setMode("equal");
       setIncludeMe(true);
       setEntries([{ participant: "me", amount: null }]);
+      setPaidBy(transaction.paid_by || "me");
     }
   }, [transaction]);
 
@@ -128,8 +131,12 @@ export function SplitEditor({ transaction, isOpen, isLoading = false, onClose, o
       include_me: includeMe,
       entries: entries.map(entry => ({
         participant: entry.participant,
-        amount: mode === "equal" ? null : entry.amount
-      }))
+        amount: mode === "equal" ? null : entry.amount,
+        paid_share: entry.paid_share,
+        net_balance: entry.net_balance
+      })),
+      paid_by: paidBy,
+      total_participants: entries.length
     };
 
     // Calculate my share amount
@@ -207,6 +214,25 @@ export function SplitEditor({ transaction, isOpen, isLoading = false, onClose, o
             </Label>
           </div>
 
+          {/* Paid By Selector */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Who paid for this transaction?</Label>
+            <select
+              value={paidBy}
+              onChange={(e) => setPaidBy(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+            >
+              <option value="me">Me</option>
+              {entries
+                .filter(entry => entry.participant !== "me")
+                .map((entry) => (
+                  <option key={entry.participant} value={entry.participant}>
+                    {entry.participant}
+                  </option>
+                ))}
+            </select>
+          </div>
+
           {/* Participants */}
           <div className="space-y-3">
             <Label className="text-sm font-medium">Participants</Label>
@@ -229,10 +255,15 @@ export function SplitEditor({ transaction, isOpen, isLoading = false, onClose, o
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {entries.map((entry, index) => (
                 <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded">
-                  <div className="flex-1">
+                  <div className="flex-1 flex items-center gap-2">
                     <span className="text-sm font-medium">
                       {entry.participant === "me" ? "Me" : entry.participant}
                     </span>
+                    {entry.participant === paidBy && (
+                      <span className="text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded-full">
+                        Paid
+                      </span>
+                    )}
                   </div>
                   
                   {mode === "custom" ? (

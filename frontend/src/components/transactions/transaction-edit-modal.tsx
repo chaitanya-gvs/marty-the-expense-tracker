@@ -28,8 +28,11 @@ import { Transaction, Tag } from "@/lib/types";
 import { format } from "date-fns";
 import { X, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { apiClient } from "@/lib/api/client";
 import { CategorySelector } from "./category-selector";
 import { MultiTagSelector } from "./multi-tag-selector";
+import { RefundAdjustmentSection } from "./refund-adjustment-section";
+import { TransferGroupSection } from "./transfer-group-section";
 
 interface TransactionEditModalProps {
   transactionId: string;
@@ -328,6 +331,105 @@ export function TransactionEditModal({
                   <Label htmlFor="is_transfer" className="text-sm">Transfer</Label>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Refunds & Adjustments */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">Refunds & Adjustments</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              <RefundAdjustmentSection 
+                transaction={transaction}
+                allTransactions={[]} // This would need to be passed from parent
+                onLinkRefund={async (childId: string, parentId: string) => {
+                  try {
+                    await updateTransaction.mutateAsync({
+                      id: childId,
+                      updates: {
+                        link_parent_id: parentId,
+                        is_refund: true,
+                      },
+                    });
+                    toast.success("Refund linked successfully");
+                  } catch (error) {
+                    toast.error("Failed to link refund");
+                  }
+                }}
+                onUnlinkRefund={async (childId: string) => {
+                  try {
+                    await updateTransaction.mutateAsync({
+                      id: childId,
+                      updates: {
+                        link_parent_id: undefined,
+                        is_refund: false,
+                      },
+                    });
+                    toast.success("Refund unlinked successfully");
+                  } catch (error) {
+                    toast.error("Failed to unlink refund");
+                  }
+                }}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Transfer Group */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">Transfer Group</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              <TransferGroupSection
+                transaction={transaction}
+                allTransactions={[]} // This would need to be passed from parent
+                onGroupTransfer={async (transactionIds: string[]) => {
+                  try {
+                    await apiClient.groupTransfer(transactionIds);
+                    toast.success(`Grouped ${transactionIds.length} transactions as a transfer`);
+                  } catch (error) {
+                    toast.error("Failed to group transfer");
+                  }
+                }}
+                onUngroupTransfer={async (transactionId: string) => {
+                  try {
+                    await updateTransaction.mutateAsync({
+                      id: transactionId,
+                      updates: { transfer_group_id: undefined },
+                    });
+                    toast.success("Transfer ungrouped successfully");
+                  } catch (error) {
+                    toast.error("Failed to ungroup transfer");
+                  }
+                }}
+                onAddToTransferGroup={async (transactionIds: string[]) => {
+                  try {
+                    const targetGroupId = transaction.transfer_group_id;
+                    const updatePromises = transactionIds.map((id: string) => 
+                      updateTransaction.mutateAsync({
+                        id,
+                        updates: { transfer_group_id: targetGroupId },
+                      })
+                    );
+                    await Promise.all(updatePromises);
+                    toast.success(`Added ${transactionIds.length} transactions to transfer group`);
+                  } catch (error) {
+                    toast.error("Failed to add to transfer group");
+                  }
+                }}
+                onRemoveFromTransferGroup={async (transactionId: string) => {
+                  try {
+                    await updateTransaction.mutateAsync({
+                      id: transactionId,
+                      updates: { transfer_group_id: undefined },
+                    });
+                    toast.success("Transaction removed from transfer group");
+                  } catch (error) {
+                    toast.error("Failed to remove from transfer group");
+                  }
+                }}
+              />
             </CardContent>
           </Card>
 
