@@ -34,7 +34,7 @@ class SettlementTransaction(BaseModel):
     amount: float = Field(..., description="Total transaction amount")
     my_share: float = Field(..., description="My share of the transaction")
     participant_share: float = Field(..., description="Participant's share of the transaction")
-    paid_by: str = Field(..., description="Who paid for this transaction")
+    paid_by: Optional[str] = Field(None, description="Who paid for this transaction")
     split_breakdown: Dict[str, Any] = Field(..., description="Original split breakdown")
 
 

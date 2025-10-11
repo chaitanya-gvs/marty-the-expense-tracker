@@ -82,6 +82,7 @@ class ProcessedSplitwiseTransaction(BaseModel):
     my_share: float = 0.0
     total_participants: int = 0
     participants: List[str] = Field(default_factory=list)
+    paid_by: Optional[str] = None  # Who actually paid for this transaction
     is_payment: bool = False
     raw_data: Dict[str, Any] = Field(default_factory=dict)
 

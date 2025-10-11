@@ -75,7 +75,7 @@ async def _get_settlement_transactions(
     query = """
         SELECT 
             id, transaction_date, description, amount, split_share_amount,
-            split_breakdown, account, direction, transaction_type
+            split_breakdown, paid_by, account, direction, transaction_type
         FROM transactions 
         WHERE is_shared = true 
         AND split_breakdown IS NOT NULL
@@ -113,6 +113,7 @@ async def _get_settlement_transactions(
             "amount": float(row.amount),
             "split_share_amount": float(row.split_share_amount) if row.split_share_amount else 0.0,
             "split_breakdown": row.split_breakdown if row.split_breakdown else {},
+            "paid_by": row.paid_by,  # Who actually paid for this transaction
             "account": row.account,
             "direction": row.direction,
             "transaction_type": row.transaction_type,
@@ -143,8 +144,8 @@ def _calculate_settlements(transactions: List[Dict[str, Any]]) -> SettlementSumm
         total_amount = transaction["amount"]
         participants = _get_participants_from_split_breakdown(split_breakdown)
         
-        # Determine who paid (assumption: the account owner paid)
-        paid_by = "me"  # This could be made more sophisticated
+        # Determine who paid from the transaction data
+        paid_by = transaction.get("paid_by")
         
         for participant in participants:
             if participant not in participant_balances:
@@ -157,12 +158,14 @@ def _calculate_settlements(transactions: List[Dict[str, Any]]) -> SettlementSumm
             participant_share = _calculate_participant_share(split_breakdown, participant, total_amount)
             my_share = _calculate_participant_share(split_breakdown, "me", total_amount)
             
-            if paid_by == "me":
-                # I paid, so participant owes me their share
+            # Handle settlement calculation based on who paid
+            if paid_by == "me" or paid_by is None:
+                # I paid (or unknown payer - assume I paid for backward compatibility), so participant owes me their share
                 participant_balances[participant]["amount_owed_to_me"] += participant_share
             elif paid_by == participant:
                 # Participant paid, so I owe them my share
                 participant_balances[participant]["amount_i_owe"] += my_share
+            # If paid_by is someone else, we don't track that in our settlements (could be enhanced later)
             
             participant_balances[participant]["transaction_count"] += 1
     
@@ -269,8 +272,8 @@ async def get_participant_settlement(
             participant_share = _calculate_participant_share(split_breakdown, participant, total_amount)
             my_share = _calculate_participant_share(split_breakdown, "me", total_amount)
             
-            # Determine who paid (simplified assumption)
-            paid_by = "me"  # Could be enhanced to determine actual payer
+            # Determine who paid from the transaction data
+            paid_by = transaction.get("paid_by")
             
             if participant_share > 0 or my_share > 0:
                 settlement_transaction = SettlementTransaction(
@@ -287,9 +290,11 @@ async def get_participant_settlement(
                 participant_transactions.append(settlement_transaction)
                 total_shared_amount += total_amount
                 
-                if paid_by == "me":
+                if paid_by == "me" or paid_by is None:
+                    # I paid (or unknown payer - assume I paid for backward compatibility)
                     amount_owed_to_me += participant_share
-                else:
+                elif paid_by == participant:
+                    # Participant paid, so I owe them my share
                     amount_i_owe += my_share
         
         net_balance = amount_owed_to_me - amount_i_owe
