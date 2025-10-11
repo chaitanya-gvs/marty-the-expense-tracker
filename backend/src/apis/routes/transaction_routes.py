@@ -121,6 +121,7 @@ class TransactionResponse(BaseModel):
     is_refund: bool
     is_transfer: bool
     split_breakdown: Optional[Dict[str, Any]] = None
+    paid_by: Optional[str] = None
     link_parent_id: Optional[str] = None
     transfer_group_id: Optional[str] = None
     related_mails: List[str] = []
@@ -404,8 +405,9 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
         is_refund=transaction.get('is_partial_refund', False),
         is_transfer=bool(transaction.get('transfer_group_id')),
         split_breakdown=transaction.get('split_breakdown'),
-        link_parent_id=transaction.get('link_parent_id'),
-        transfer_group_id=transaction.get('transfer_group_id'),
+        paid_by=transaction.get('paid_by'),
+        link_parent_id=str(transaction.get('link_parent_id')) if transaction.get('link_parent_id') else None,
+        transfer_group_id=str(transaction.get('transfer_group_id')) if transaction.get('transfer_group_id') else None,
         related_mails=transaction.get('related_mails', []) or [],
         source_file=transaction.get('source_file'),
         raw_data=_parse_raw_data(transaction.get('raw_data')),
