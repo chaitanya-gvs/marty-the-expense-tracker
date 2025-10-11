@@ -30,6 +30,7 @@ class Transaction(Base):
     is_partial_refund: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
     is_shared: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
     split_breakdown: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    paid_by: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Who actually paid for this transaction
     account: Mapped[str] = mapped_column(Text, nullable=False)
     category_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("categories.id"), nullable=True)
     sub_category: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
