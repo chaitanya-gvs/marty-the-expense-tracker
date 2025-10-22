@@ -188,7 +188,7 @@ class ApiClient {
       limit: String(limit),
       offset: String(offset),
     });
-    return this.request<Transaction[]>(`/transactions/search/?${params.toString()}`);
+    return this.request<Transaction[]>(`/transactions/search?${params.toString()}`);
   }
 
   // Budgets

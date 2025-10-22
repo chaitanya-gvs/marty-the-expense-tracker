@@ -1,17 +1,45 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Search, X, RotateCcw, Check } from "lucide-react";
+import { Calendar, Search, X, RotateCcw, Check, ChevronDown, ChevronUp } from "lucide-react";
 import type { TransactionFilters } from "@/lib/types";
 import { useCategories } from "@/hooks/use-categories";
 import { useTags } from "@/hooks/use-tags";
 import { cn } from "@/lib/utils";
+
+// Custom hook for localStorage persistence
+function useLocalStorage<T>(key: string, initialValue: T) {
+  const [storedValue, setStoredValue] = useState<T>(initialValue);
+
+  useEffect(() => {
+    try {
+      const item = window.localStorage.getItem(key);
+      if (item) {
+        setStoredValue(JSON.parse(item));
+      }
+    } catch (error) {
+      console.error(`Error loading ${key} from localStorage:`, error);
+    }
+  }, [key]);
+
+  const setValue = (value: T | ((val: T) => T)) => {
+    try {
+      const valueToStore = value instanceof Function ? value(storedValue) : value;
+      setStoredValue(valueToStore);
+      window.localStorage.setItem(key, JSON.stringify(valueToStore));
+    } catch (error) {
+      console.error(`Error saving ${key} to localStorage:`, error);
+    }
+  };
+
+  return [storedValue, setValue] as const;
+}
 
 interface TransactionFiltersProps {
   filters: TransactionFilters;
@@ -24,6 +52,11 @@ export function TransactionFilters({
   onFiltersChange,
   onClearFilters,
 }: TransactionFiltersProps) {
+  // Collapse/Expand state
+  const [expanded, setExpanded] = useState(false);
+  const filtersButtonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [searchInput, setSearchInput] = useState(filters.search || "");
   const [amountMinInput, setAmountMinInput] = useState(filters.amount_range?.min?.toString() || "");
@@ -103,6 +136,12 @@ export function TransactionFilters({
     onFiltersChange(newFilters);
 
     console.log("✅ Filters applied!", newFilters);
+    
+    // Collapse panel after applying
+    setExpanded(false);
+    
+    // Return focus to filters button
+    setTimeout(() => filtersButtonRef.current?.focus(), 100);
   };
 
   const resetAllFilters = () => {
@@ -118,6 +157,12 @@ export function TransactionFilters({
     setSelectedDirection("all");
     setSelectedTransactionType("all");
     onClearFilters();
+    
+    // Collapse panel after reset
+    setExpanded(false);
+    
+    // Return focus to filters button
+    setTimeout(() => filtersButtonRef.current?.focus(), 100);
   };
 
   const handleDatePreset = (preset: string) => {
@@ -182,6 +227,88 @@ export function TransactionFilters({
     selectedDirection !== (filters.direction || "all") ||
     selectedTransactionType !== (filters.transaction_type || "all");
 
+  // Keyboard support
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && expanded) {
+        setExpanded(false);
+        filtersButtonRef.current?.focus();
+      }
+    };
+
+    if (expanded) {
+      document.addEventListener("keydown", handleKeyDown);
+      return () => document.removeEventListener("keydown", handleKeyDown);
+    }
+  }, [expanded]);
+
+  // Clear a specific filter and apply immediately
+  const clearFilter = (key: keyof TransactionFilters) => {
+    const newFilters = { ...filters };
+    delete newFilters[key];
+    
+    // Also update local state
+    if (key === "search") setSearchInput("");
+    else if (key === "accounts") setSelectedAccounts([]);
+    else if (key === "direction") setSelectedDirection("all");
+    else if (key === "transaction_type") setSelectedTransactionType("all");
+    else if (key === "date_range") {
+      setDateRangeStartInput("");
+      setDateRangeEndInput("");
+      setSelectedDatePreset("custom");
+    }
+    else if (key === "amount_range") {
+      setAmountMinInput("");
+      setAmountMaxInput("");
+    }
+    else if (key === "categories") setSelectedCategories([]);
+    else if (key === "tags") setSelectedTags([]);
+    
+    onFiltersChange(newFilters);
+  };
+
+  // Expand panel and focus on a specific control
+  const expandAndFocusControl = (key: string) => {
+    setExpanded(true);
+    // Focus will be handled by the browser naturally when the panel expands
+  };
+
+  // Quick date preset handlers
+  const applyQuickDatePreset = (preset: "this_month" | "last_30") => {
+    const today = new Date();
+    
+    if (preset === "this_month") {
+      const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      const newFilters = {
+        ...filters,
+        date_range: {
+          start: thisMonthStart.toISOString().split("T")[0],
+          end: today.toISOString().split("T")[0]
+        }
+      };
+      
+      setDateRangeStartInput(newFilters.date_range.start);
+      setDateRangeEndInput(newFilters.date_range.end);
+      setSelectedDatePreset("this_month");
+      onFiltersChange(newFilters);
+    } else if (preset === "last_30") {
+      const thirtyDaysAgo = new Date(today);
+      thirtyDaysAgo.setDate(today.getDate() - 30);
+      const newFilters = {
+        ...filters,
+        date_range: {
+          start: thirtyDaysAgo.toISOString().split("T")[0],
+          end: today.toISOString().split("T")[0]
+        }
+      };
+      
+      setDateRangeStartInput(newFilters.date_range.start);
+      setDateRangeEndInput(newFilters.date_range.end);
+      setSelectedDatePreset("custom");
+      onFiltersChange(newFilters);
+    }
+  };
+
   // Get active filter badges
   const getActiveFilterBadges = () => {
     const badges = [];
@@ -221,32 +348,72 @@ export function TransactionFilters({
   const activeFilterBadges = getActiveFilterBadges();
 
   return (
-    <div className="space-y-4">
-      {/* Main Filters Grid */}
-      <div className="bg-slate-900/70 rounded-xl p-4 border border-slate-800">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-medium text-slate-200">FILTERS</h3>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={resetAllFilters}
-              className="h-8 px-3 text-xs border-slate-600 text-slate-300 hover:bg-slate-800"
-            >
-              <RotateCcw className="h-3 w-3 mr-1" />
-              Reset
-            </Button>
-            <Button
-              size="sm"
-              onClick={applyAllFilters}
-              disabled={!hasUnappliedChanges}
-              className="h-8 px-3 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Check className="h-3 w-3 mr-1" />
-              Apply
-            </Button>
-          </div>
+    <div className="space-y-2">
+      {/* Collapsed Bar (Always Visible) */}
+      <div className="sticky top-0 z-20 bg-slate-900/70 backdrop-blur border-b border-slate-800 px-4 py-2 flex items-center gap-2 text-sm">
+        <button
+          ref={filtersButtonRef}
+          onClick={() => setExpanded(!expanded)}
+          aria-expanded={expanded}
+          aria-controls="filters-panel"
+          className="rounded-full bg-slate-800 hover:bg-slate-700 px-3 py-1 text-slate-200 flex items-center gap-1 transition-colors"
+        >
+          Filters
+          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+
+        {/* Active Filter Chips */}
+        <div className="flex flex-wrap gap-2 items-center">
+          {activeFilterBadges.length === 0 ? (
+            <span className="text-xs text-slate-500">No filters applied</span>
+          ) : (
+            activeFilterBadges.map((badge) => (
+              <button
+                key={badge.key}
+                onClick={() => expandAndFocusControl(badge.key)}
+                className="rounded-full bg-blue-700/40 text-blue-200 border border-blue-600 px-2 py-0.5 text-xs flex items-center gap-1 hover:bg-blue-700/60 transition-colors"
+              >
+                {badge.label}
+                <X
+                  className="h-3 w-3 hover:text-blue-100"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    clearFilter(badge.key as keyof TransactionFilters);
+                  }}
+                />
+              </button>
+            ))
+          )}
         </div>
+
+        {/* Quick Presets (Desktop Only) */}
+        <div className="ml-auto hidden md:flex items-center gap-2">
+          <button
+            onClick={() => applyQuickDatePreset("this_month")}
+            className="rounded-md px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+          >
+            This month
+          </button>
+          <button
+            onClick={() => applyQuickDatePreset("last_30")}
+            className="rounded-md px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+          >
+            Last 30d
+          </button>
+        </div>
+      </div>
+
+      {/* Expanded Panel (Animated) */}
+      <div
+        id="filters-panel"
+        ref={panelRef}
+        data-open={expanded}
+        className={cn(
+          "transition-all duration-200 ease-out overflow-hidden",
+          expanded ? "max-h-[600px] opacity-100" : "max-h-0 opacity-0"
+        )}
+      >
+        <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 mt-2">
 
         {/* 2-Row Grid Layout */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -495,57 +662,30 @@ export function TransactionFilters({
             </Select>
           </div>
         </div>
-      </div>
 
-      {/* Active Filter Badges */}
-      {activeFilterBadges.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm text-slate-400">Active filters:</span>
-          {activeFilterBadges.map((badge) => (
-            <Badge 
-              key={badge.key} 
-              variant="secondary" 
-              className="gap-1 text-xs bg-slate-800 text-slate-300 border-slate-600 hover:bg-slate-700"
+          {/* Sticky Actions Footer */}
+          <div className="sticky bottom-0 mt-3 pt-3 bg-gradient-to-t from-slate-900 to-transparent flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={resetAllFilters}
+              className="h-8 px-3 text-xs border-slate-600 text-slate-300 hover:bg-slate-800"
             >
-              {badge.label}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-3 w-3 p-0 ml-1 hover:bg-slate-600"
-                onClick={() => {
-                  if (badge.key === "search") {
-                    updateFilter("search", undefined);
-                  } else if (badge.key === "accounts") {
-                    updateFilter("accounts", undefined);
-                  } else if (badge.key === "direction") {
-                    updateFilter("direction", undefined);
-                  } else if (badge.key === "transaction_type") {
-                    updateFilter("transaction_type", undefined);
-                  } else if (badge.key === "date_range") {
-                    updateFilter("date_range", undefined);
-                  } else if (badge.key === "amount_range") {
-                    updateFilter("amount_range", undefined);
-                  } else if (badge.key === "categories") {
-                    updateFilter("categories", undefined);
-                  } else if (badge.key === "tags") {
-                    updateFilter("tags", undefined);
-                  }
-                }}
-              >
-                <X className="h-2 w-2" />
-              </Button>
-            </Badge>
-          ))}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs text-slate-400 hover:text-slate-200"
-            onClick={onClearFilters}
-          >
-            Clear all
-          </Button>
+              <RotateCcw className="h-3 w-3 mr-1" />
+              Reset
+            </Button>
+            <Button
+              size="sm"
+              onClick={applyAllFilters}
+              disabled={!hasUnappliedChanges}
+              className="h-8 px-3 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Check className="h-3 w-3 mr-1" />
+              Apply
+            </Button>
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

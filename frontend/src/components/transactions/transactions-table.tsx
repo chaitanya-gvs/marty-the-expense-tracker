@@ -53,6 +53,7 @@ import { InlineTagDropdown } from "./inline-tag-dropdown";
 import { InlineCategoryDropdown } from "./inline-category-dropdown";
 import { BulkEditModal } from "./bulk-edit-modal";
 import { LinksColumn } from "./links-column";
+import { RelatedTransactionsDrawer } from "./related-transactions-drawer";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
 
 const columnHelper = createColumnHelper<Transaction>();
@@ -105,7 +106,12 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(new Set());
   const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const [highlightedTransactionIds, setHighlightedTransactionIds] = useState<Set<string>>(new Set());
+  const [drawerTransaction, setDrawerTransaction] = useState<Transaction | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const tableContainerRef = useRef<HTMLDivElement>(null);
+  const headerScrollRef = useRef<HTMLDivElement>(null);
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
 
   const updateTransactionSplit = useUpdateTransactionSplit();
   const clearTransactionSplit = useClearTransactionSplit();
@@ -122,12 +128,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     isFetchingNextPage,
   } = useInfiniteTransactions(filters, sort);
   
-  // Debug logging for transaction data
-  useEffect(() => {
-    if (data?.pages) {
-      console.warn('🔍 Transaction data updated:', data.pages[0]?.data?.slice(0, 3));
-    }
-  }, [data]);
 
   // Flatten all transactions from all pages
   const allTransactions = useMemo(() => {
@@ -162,7 +162,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     });
   };
 
-  // Bulk action logic
+  // Enhanced bulk action logic
   const canBulkLinkRefund = useMemo(() => {
     if (selectedTransactions.length !== 2) return false;
     const directions = selectedTransactions.map(t => t.direction);
@@ -174,11 +174,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     const directions = selectedTransactions.map(t => t.direction);
     const hasDebit = directions.includes("debit");
     const hasCredit = directions.includes("credit");
-    const amounts = selectedTransactions.map(t => Math.abs(t.amount));
-    const amountsSimilar = amounts.every(amount => 
-      Math.abs(amount - amounts[0]) < amounts[0] * 0.1 // 10% tolerance
-    );
-    return hasDebit && hasCredit && amountsSimilar;
+    return hasDebit && hasCredit;
   }, [selectedTransactions]);
 
   const canBulkUnlink = useMemo(() => {
@@ -186,6 +182,29 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       t.link_parent_id || t.transfer_group_id
     );
   }, [selectedTransactions]);
+
+  // Selection summary for enhanced toolbar
+  const selectionSummary = useMemo(() => {
+    const debits = selectedTransactions.filter(t => t.direction === "debit");
+    const credits = selectedTransactions.filter(t => t.direction === "credit");
+    const totalAmount = selectedTransactions.reduce((sum, t) => sum + t.amount, 0);
+    
+    return {
+      total: selectedTransactions.length,
+      debits: debits.length,
+      credits: credits.length,
+      totalAmount,
+    };
+  }, [selectedTransactions]);
+
+  // Highlight management functions
+  const handleHighlightTransactions = useCallback((transactionIds: string[]) => {
+    setHighlightedTransactionIds(new Set(transactionIds));
+  }, []);
+
+  const handleClearHighlight = useCallback(() => {
+    setHighlightedTransactionIds(new Set());
+  }, []);
 
   const handleBulkLinkRefund = async () => {
     if (!canBulkLinkRefund) return;
@@ -270,6 +289,37 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     }
   };
 
+  const handleBulkSwapDirection = async () => {
+    try {
+      const updatePromises = selectedTransactions.map(t => 
+        apiClient.updateTransaction(t.id, {
+          direction: t.direction === "debit" ? "credit" : "debit",
+        })
+      );
+      
+      await Promise.all(updatePromises);
+      
+      toast.success(`Swapped direction for ${selectedTransactions.length} transactions`, {
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            // Swap back
+            const undoPromises = selectedTransactions.map(t => 
+              apiClient.updateTransaction(t.id, {
+                direction: t.direction === "debit" ? "credit" : "debit",
+              })
+            );
+            await Promise.all(undoPromises);
+          },
+        },
+      });
+      setSelectedTransactionIds(new Set());
+    } catch (error) {
+      toast.error("Failed to swap directions");
+      console.error("Bulk swap direction error:", error);
+    }
+  };
+
   // Infinite scroll effect
   const fetchMoreOnBottomReached = useCallback(
     (containerRefElement?: HTMLDivElement | null) => {
@@ -283,9 +333,33 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     [fetchNextPage, hasNextPage, isFetchingNextPage]
   );
 
+  // Scroll synchronization between header and body
+  const handleHeaderScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (bodyScrollRef.current) {
+      bodyScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
+  }, []);
+
+  const handleBodyScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (headerScrollRef.current) {
+      headerScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
+    fetchMoreOnBottomReached(e.currentTarget);
+  }, [fetchMoreOnBottomReached]);
+
   useEffect(() => {
     fetchMoreOnBottomReached(tableContainerRef.current);
   }, [fetchMoreOnBottomReached]);
+
+  // Helper functions for aggregate refunds
+  const getLinkedChildren = useCallback((transactionId: string) => {
+    return allTransactions.filter(t => t.link_parent_id === transactionId);
+  }, [allTransactions]);
+
+  const getAggregateRefund = useCallback((transactionId: string) => {
+    const children = getLinkedChildren(transactionId);
+    return children.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  }, [getLinkedChildren]);
 
   const columns = useMemo(
     () => {
@@ -393,6 +467,9 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           
           const description = getValue();
           const fullText = row.original.notes ? `${description} - ${row.original.notes}` : description;
+          const linkedChildren = getLinkedChildren(row.original.id);
+          const hasLinkedChildren = linkedChildren.length > 0;
+          const aggregateRefund = hasLinkedChildren ? getAggregateRefund(row.original.id) : 0;
           
           return (
             <div 
@@ -402,14 +479,27 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 setEditingField("description");
               }}
             >
-              <div className="font-medium text-sm truncate max-w-[320px] md:max-w-[300px]" title={fullText}>
-                {description}
-              </div>
-              {row.original.notes && (
-                <div className="text-xs text-gray-500 truncate max-w-[320px] md:max-w-[300px]" title={row.original.notes}>
-                  {row.original.notes}
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm truncate max-w-[280px] md:max-w-[260px]" title={fullText}>
+                    {description}
+                  </div>
+                  {row.original.notes && (
+                    <div className="text-xs text-gray-500 truncate max-w-[280px] md:max-w-[260px]" title={row.original.notes}>
+                      {row.original.notes}
+                    </div>
+                  )}
                 </div>
-              )}
+                {hasLinkedChildren && (
+                  <Badge 
+                    variant="outline" 
+                    className="text-xs border-purple-500 text-purple-600 dark:text-purple-400 shrink-0"
+                    title={`${linkedChildren.length} refund${linkedChildren.length > 1 ? 's' : ''}`}
+                  >
+                    ↩︎ Refunded {formatCurrency(aggregateRefund)} of {formatCurrency(Math.abs(row.original.amount))}
+                  </Badge>
+                )}
+              </div>
             </div>
           );
         },
@@ -770,6 +860,12 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   console.error("Remove from transfer group error:", error);
                 }
               }}
+              onHighlightTransactions={handleHighlightTransactions}
+              onClearHighlight={handleClearHighlight}
+              onOpenDrawer={(transaction) => {
+                setDrawerTransaction(transaction);
+                setIsDrawerOpen(true);
+              }}
             />
           );
         },
@@ -790,22 +886,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
            const tagObjects = convertStringTagsToObjects(tagNames || [], allTags);
            const isEditingTags = editingTagsForTransaction === transaction.id;
            
-           // Always log for the first few transactions to debug
-           if (row.index < 3) {
-             console.warn(`🔍 Transaction ${row.index}:`, {
-               id: transaction.id,
-               tagNames,
-               allTagsCount: allTags.length,
-               tagObjectsCount: tagObjects.length
-             });
-           }
            
-           // Debug logging
-           if (tagNames && tagNames.length > 0) {
-             console.warn(`🔍 Transaction ${transaction.id} has tags:`, tagNames);
-             console.warn('🔍 All tags available:', allTags);
-             console.warn('🔍 Converted tag objects:', tagObjects);
-           }
            
            if (isEditingTags) {
              return (
@@ -957,7 +1038,12 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             {isMultiSelectMode && (
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="text-sm">
-                  {selectedTransactionIds.size} selected
+                  {selectionSummary.total} selected
+                  {selectionSummary.total > 0 && (
+                    <span className="ml-1 text-xs text-gray-500">
+                      ({selectionSummary.debits} debits, {selectionSummary.credits} credits)
+                    </span>
+                  )}
                 </Badge>
                 <Button
                   variant="outline"
@@ -975,7 +1061,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   onClick={handleBulkLinkRefund}
                   className="flex items-center gap-2"
                   disabled={!canBulkLinkRefund}
-                  title="Link refund (select one debit and one credit)"
+                  title={canBulkLinkRefund ? "Link refund" : "Select exactly 2 transactions (1 debit + 1 credit)"}
                 >
                   <Link2 className="h-4 w-4" />
                   Link refund
@@ -986,7 +1072,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   onClick={handleBulkGroupTransfer}
                   className="flex items-center gap-2"
                   disabled={!canBulkGroupTransfer}
-                  title="Group as transfer (select 2+ transactions with opposite directions)"
+                  title={canBulkGroupTransfer ? "Group as transfer" : "Select 2+ transactions with opposite directions"}
                 >
                   <GitBranch className="h-4 w-4" />
                   Group transfer
@@ -994,10 +1080,21 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={handleBulkSwapDirection}
+                  className="flex items-center gap-2"
+                  disabled={selectedTransactionIds.size === 0}
+                  title="Swap debit ↔ credit for selected transactions"
+                >
+                  <ArrowUpDown className="h-4 w-4" />
+                  Swap direction
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={handleBulkUnlink}
                   className="flex items-center gap-2"
                   disabled={!canBulkUnlink}
-                  title="Unlink/ungroup selected transactions"
+                  title={canBulkUnlink ? "Unlink/ungroup selected transactions" : "No linked/grouped transactions selected"}
                 >
                   <Unlink className="h-4 w-4" />
                   Unlink/Ungroup
@@ -1026,7 +1123,11 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
       <div className="w-full" style={{ height: "70vh", display: "flex", flexDirection: "column" }}>
         {/* Sticky Header */}
-        <div className="flex-shrink-0 w-full overflow-x-auto bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-md z-50">
+        <div 
+          ref={headerScrollRef}
+          className="flex-shrink-0 w-full overflow-x-auto bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-md z-50"
+          onScroll={handleHeaderScroll}
+        >
           <table className={`w-full ${isMultiSelectMode ? 'min-w-[1140px]' : 'min-w-[1100px]'} table-auto md:table-fixed`}>
             <colgroup>
               {isMultiSelectMode && <col className="w-[40px]" />}
@@ -1064,12 +1165,13 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
         {/* Scrollable Body */}
         <div
-          className="flex-1 overflow-auto relative w-full"
           ref={(node) => {
+            bodyScrollRef.current = node;
             parentRef.current = node;
             tableContainerRef.current = node;
           }}
-          onScroll={(e) => fetchMoreOnBottomReached(e.target as HTMLDivElement)}
+          className="flex-1 overflow-auto relative w-full"
+          onScroll={handleBodyScroll}
         >
           <table className={`w-full ${isMultiSelectMode ? 'min-w-[1140px]' : 'min-w-[1100px]'} table-auto md:table-fixed`}>
             <colgroup>
@@ -1090,7 +1192,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 key={row.id}
                 className={cn(
                   "group hover:bg-gray-50 dark:hover:bg-gray-800 border-b border-gray-100 dark:border-gray-800 transition-colors duration-150 h-12",
-                  editingRow === row.original.id && "bg-blue-50 dark:bg-blue-900/20"
+                  editingRow === row.original.id && "bg-blue-50 dark:bg-blue-900/20",
+                  highlightedTransactionIds.has(row.original.id) && "bg-blue-50 dark:bg-blue-900/10 border-l-2 border-l-blue-500"
                 )}
               >
                 {row.getVisibleCells().map((cell) => (
@@ -1152,7 +1255,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 splitBreakdown,
                 myShareAmount
               });
-              console.log("Split breakdown saved successfully");
               setIsSplitEditorOpen(false);
               setSelectedTransactionForSplit(null);
             } catch (error) {
@@ -1163,7 +1265,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           onClearSplit={async () => {
             try {
               await clearTransactionSplit.mutateAsync(selectedTransactionForSplit.id);
-              console.log("Split cleared successfully");
               setIsSplitEditorOpen(false);
               setSelectedTransactionForSplit(null);
             } catch (error) {
@@ -1182,6 +1283,87 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           onClose={() => {
             setIsBulkEditModalOpen(false);
             setSelectedTransactionIds(new Set());
+          }}
+        />
+      )}
+
+      {/* Related Transactions Drawer - Rendered at table level to persist across re-renders */}
+      {drawerTransaction && (
+        <RelatedTransactionsDrawer
+          transaction={drawerTransaction}
+          parentTransaction={
+            drawerTransaction.link_parent_id
+              ? allTransactions.find(t => t.id === drawerTransaction.link_parent_id)
+              : undefined
+          }
+          transferGroup={
+            drawerTransaction.transfer_group_id
+              ? allTransactions.filter(t => t.transfer_group_id === drawerTransaction.transfer_group_id)
+              : []
+          }
+          isOpen={isDrawerOpen}
+          onClose={() => {
+            setIsDrawerOpen(false);
+            setDrawerTransaction(null);
+          }}
+          onUnlink={async () => {
+            await updateTransaction.mutateAsync({
+              id: drawerTransaction.id,
+              updates: {
+                link_parent_id: undefined,
+                is_refund: false,
+              },
+            });
+            setIsDrawerOpen(false);
+            setDrawerTransaction(null);
+          }}
+          onUngroup={async () => {
+            try {
+              // Ungroup all transactions in the group
+              const transferGroupId = drawerTransaction.transfer_group_id;
+              console.log("🔄 Ungrouping transfer group:", transferGroupId);
+              
+              if (transferGroupId) {
+                const groupTransactions = allTransactions.filter(t => t.transfer_group_id === transferGroupId);
+                console.log("🔄 Found", groupTransactions.length, "transactions to ungroup");
+                
+                // Update all transactions in the group
+                // Note: Must use null instead of undefined, as JSON.stringify removes undefined values
+                const results = await Promise.all(
+                  groupTransactions.map(t =>
+                    updateTransaction.mutateAsync({
+                      id: t.id,
+                      updates: { transfer_group_id: null as any },
+                    })
+                  )
+                );
+                
+                console.log("✅ Ungroup mutations completed:", results.length);
+                toast.success("Transfer group removed successfully");
+                
+                // Wait a bit for cache to update before closing drawer
+                await new Promise(resolve => setTimeout(resolve, 300));
+              }
+              setIsDrawerOpen(false);
+              setDrawerTransaction(null);
+            } catch (error) {
+              console.error("❌ Failed to ungroup transfer:", error);
+              toast.error("Failed to ungroup transfer");
+            }
+          }}
+          onRemoveFromGroup={async (transactionId) => {
+            try {
+              // Note: Must use null instead of undefined, as JSON.stringify removes undefined values
+              await updateTransaction.mutateAsync({
+                id: transactionId,
+                updates: { transfer_group_id: null as any },
+              });
+              toast.success("Transaction removed from group");
+              // Keep drawer open to show updated group
+            } catch (error) {
+              console.error("Failed to remove from group:", error);
+              toast.error("Failed to remove transaction from group");
+            }
           }}
         />
       )}

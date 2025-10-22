@@ -64,9 +64,10 @@ export function useLinkRefund() {
   return useMutation({
     mutationFn: ({ childId, parentId }: { childId: string; parentId: string }) =>
       apiClient.linkRefund(childId, parentId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["transactions-infinite"] });
+    onSuccess: async () => {
+      // Use refetchQueries to wait for the refetch to complete
+      await queryClient.refetchQueries({ queryKey: ["transactions-infinite"] });
+      await queryClient.refetchQueries({ queryKey: ["transactions"] });
     },
   });
 }
@@ -77,9 +78,10 @@ export function useGroupTransfer() {
   return useMutation({
     mutationFn: (transactionIds: string[]) =>
       apiClient.groupTransfer(transactionIds),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["transactions-infinite"] });
+    onSuccess: async () => {
+      // Use refetchQueries to wait for the refetch to complete
+      await queryClient.refetchQueries({ queryKey: ["transactions-infinite"] });
+      await queryClient.refetchQueries({ queryKey: ["transactions"] });
     },
   });
 }
