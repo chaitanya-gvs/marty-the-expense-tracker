@@ -692,6 +692,30 @@ async def upsert_tag(tag_data: TagCreate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/search", response_model=ApiResponse)
+async def search_transactions(
+    query: str = Query(..., description="Search query"),
+    limit: int = Query(100, ge=1, le=500, description="Maximum results to return"),
+    offset: int = Query(0, ge=0, description="Number of results to skip")
+):
+    """Search transactions by description, notes, or reference number."""
+    try:
+        transactions = await handle_database_operation(
+            TransactionOperations.search_transactions,
+            query=query,
+            limit=limit,
+            offset=offset
+        )
+        
+        response_transactions = [_convert_db_transaction_to_response(t) for t in transactions]
+        
+        return ApiResponse(data=response_transactions)
+        
+    except Exception as e:
+        logger.error(f"Failed to search transactions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{transaction_id}", response_model=ApiResponse)
 async def get_transaction(transaction_id: str):
     """Get a single transaction by ID."""
@@ -1018,28 +1042,6 @@ async def group_transfer(request: GroupTransferRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/search", response_model=ApiResponse)
-async def search_transactions(
-    query: str = Query(..., description="Search query"),
-    limit: int = Query(100, ge=1, le=500, description="Maximum results to return"),
-    offset: int = Query(0, ge=0, description="Number of results to skip")
-):
-    """Search transactions by description, notes, or reference number."""
-    try:
-        transactions = await handle_database_operation(
-            TransactionOperations.search_transactions,
-            query=query,
-            limit=limit,
-            offset=offset
-        )
-        
-        response_transactions = [_convert_db_transaction_to_response(t) for t in transactions]
-        
-        return ApiResponse(data=response_transactions)
-        
-    except Exception as e:
-        logger.error(f"Failed to search transactions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================

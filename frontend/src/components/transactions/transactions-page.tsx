@@ -1,24 +1,60 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { TransactionFilters } from "@/components/transactions/transaction-filters";
 import { TransactionsTable } from "@/components/transactions/transactions-table";
-import { TransactionFilters as TransactionFiltersType } from "@/lib/types";
+import { TransactionFilters as TransactionFiltersType, TransactionSort } from "@/lib/types";
 import { useInfiniteTransactions } from "@/hooks/use-transactions";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { 
   Plus, 
   Download, 
   BarChart3, 
-  X,
   TrendingUp,
   TrendingDown
 } from "lucide-react";
 
+// Get default date range (This Month)
+function getDefaultDateRange() {
+  const today = new Date();
+  const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  return {
+    start: thisMonthStart.toISOString().split("T")[0],
+    end: today.toISOString().split("T")[0]
+  };
+}
+
+// Load filters from localStorage or use defaults
+function getInitialFilters(): TransactionFiltersType {
+  if (typeof window === 'undefined') return {};
+  
+  try {
+    const saved = localStorage.getItem('transaction-filters');
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch (error) {
+    console.error('Error loading filters from localStorage:', error);
+  }
+  
+  // Default to "This Month" preset if no saved filters
+  return {
+    date_range: getDefaultDateRange()
+  };
+}
+
 export function TransactionsPage() {
-  const [filters, setFilters] = useState<TransactionFiltersType>({});
-  const [sort, setSort] = useState<{ field: keyof any; direction: "asc" | "desc" } | undefined>();
+  const [filters, setFilters] = useState<TransactionFiltersType>(getInitialFilters);
+  const [sort, setSort] = useState<TransactionSort | undefined>();
+  
+  // Persist filters to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem('transaction-filters', JSON.stringify(filters));
+    } catch (error) {
+      console.error('Error saving filters to localStorage:', error);
+    }
+  }, [filters]);
 
   const handleFiltersChange = (newFilters: TransactionFiltersType) => {
     console.log("🔧 Filters changed:", newFilters);
@@ -27,12 +63,6 @@ export function TransactionsPage() {
 
   const handleClearFilters = () => {
     setFilters({});
-  };
-
-  const removeFilter = (filterKey: keyof TransactionFiltersType) => {
-    const newFilters = { ...filters };
-    delete newFilters[filterKey];
-    setFilters(newFilters);
   };
 
   // Get transactions data
@@ -86,9 +116,6 @@ export function TransactionsPage() {
   const monthlyRefunded = monthlyTransactions
     .filter(t => t && t.direction === 'credit')
     .reduce((sum, t) => sum + getEffectiveAmount(t), 0);
-
-  // Get active filters for display
-  const activeFilters = Object.entries(filters).filter(([_, value]) => value !== undefined && value !== "");
 
   // Show loading state while data is being fetched
   if (isLoading) {
@@ -177,75 +204,6 @@ export function TransactionsPage() {
             </Button>
           </div>
         </div>
-
-        {/* Active Filters */}
-        {activeFilters.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm text-gray-500 dark:text-gray-400">Filters:</span>
-            {activeFilters.map(([key, value]) => {
-              // Handle different filter types for display
-              let displayValue = "";
-              
-              if (key === 'direction') {
-                displayValue = value === 'debit' ? 'Debit' : 'Credit';
-              } else if (key === 'accounts') {
-                displayValue = Array.isArray(value) ? value.join(', ') : value;
-              } else if (key === 'categories') {
-                displayValue = Array.isArray(value) ? value.join(', ') : value;
-              } else if (key === 'tags') {
-                displayValue = Array.isArray(value) ? value.join(', ') : value;
-              } else if (key === 'date_range') {
-                const dateRange = value as {start: string, end: string};
-                const startDate = dateRange.start ? new Date(dateRange.start).toLocaleDateString() : 'Start';
-                const endDate = dateRange.end ? new Date(dateRange.end).toLocaleDateString() : 'End';
-                displayValue = `${startDate} - ${endDate}`;
-              } else if (key === 'amount_range') {
-                const amountRange = value as {min: number, max: number};
-                const min = amountRange.min !== undefined ? `₹${amountRange.min}` : 'Min';
-                const max = amountRange.max !== undefined ? `₹${amountRange.max}` : 'Max';
-                displayValue = `${min} - ${max}`;
-              } else if (key === 'transaction_type') {
-                displayValue = value === 'shared' ? 'Shared' : value === 'refunds' ? 'Refunds' : value === 'transfers' ? 'Transfers' : value;
-              } else {
-                displayValue = String(value);
-              }
-
-              return (
-                <Badge 
-                  key={key} 
-                  variant="secondary" 
-                  className="gap-1 text-xs"
-                >
-                  {key === 'search' ? `Search: "${displayValue}"` :
-                   key === 'accounts' ? `Account: ${displayValue}` :
-                   key === 'categories' ? `Category: ${displayValue}` :
-                   key === 'tags' ? `Tags: ${displayValue}` :
-                   key === 'date_range' ? `Date: ${displayValue}` :
-                   key === 'amount_range' ? `Amount: ${displayValue}` :
-                   key === 'direction' ? `Direction: ${displayValue}` :
-                   key === 'transaction_type' ? `Type: ${displayValue}` :
-                   displayValue}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-3 w-3 p-0 ml-1 hover:bg-gray-200 dark:hover:bg-gray-700"
-                    onClick={() => removeFilter(key as keyof TransactionFiltersType)}
-                  >
-                    <X className="h-2 w-2" />
-                  </Button>
-                </Badge>
-              );
-            })}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-              onClick={handleClearFilters}
-            >
-              Clear all
-            </Button>
-          </div>
-        )}
       </div>
 
       {/* Filters and Table */}
