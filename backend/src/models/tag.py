@@ -25,7 +25,7 @@ class Tag(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     
     # Relationships
-    transactions: Mapped[List["Transaction"]] = relationship("Transaction", secondary="transaction_tags", back_populates="tags")
+    transactions: Mapped[List["Transaction"]] = relationship("Transaction", secondary="transaction_tags", back_populates="tags_rel")
 
     # Indexes and constraints
     __table_args__ = (

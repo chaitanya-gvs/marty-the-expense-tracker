@@ -737,6 +737,73 @@ async def search_transactions(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/field-values/{field_name}", response_model=ApiResponse)
+async def get_unique_field_values(
+    field_name: str,
+    query: Optional[str] = Query(None, description="Filter by partial match"),
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of results")
+):
+    """Get unique values for a transaction field (for autocomplete)."""
+    try:
+        # Map field names from API to database column names
+        field_mapping = {
+            "description": "description",
+            "account": "account",
+            "notes": "notes",
+            "paid_by": "paid_by"
+        }
+        
+        if field_name not in field_mapping:
+            raise HTTPException(status_code=400, detail=f"Field '{field_name}' not supported")
+        
+        db_field = field_mapping[field_name]
+        
+        session_factory = get_session_factory()
+        session = session_factory()
+        
+        try:
+            # Build query based on whether we have a search query
+            if query:
+                sql_query = text(f"""
+                    SELECT DISTINCT {db_field} as value
+                    FROM transactions
+                    WHERE {db_field} IS NOT NULL 
+                    AND {db_field} != ''
+                    AND LOWER({db_field}) LIKE LOWER(:query)
+                    ORDER BY {db_field}
+                    LIMIT :limit
+                """)
+                result = await session.execute(
+                    sql_query, 
+                    {"query": f"%{query}%", "limit": limit}
+                )
+            else:
+                sql_query = text(f"""
+                    SELECT DISTINCT {db_field} as value, COUNT(*) as usage_count
+                    FROM transactions
+                    WHERE {db_field} IS NOT NULL 
+                    AND {db_field} != ''
+                    GROUP BY {db_field}
+                    ORDER BY usage_count DESC, {db_field}
+                    LIMIT :limit
+                """)
+                result = await session.execute(sql_query, {"limit": limit})
+            
+            rows = result.fetchall()
+            values = [row.value for row in rows]
+            
+            return ApiResponse(data=values)
+            
+        finally:
+            await session.close()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get unique field values for {field_name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{transaction_id}", response_model=ApiResponse)
 async def get_transaction(transaction_id: str):
     """Get a single transaction by ID."""

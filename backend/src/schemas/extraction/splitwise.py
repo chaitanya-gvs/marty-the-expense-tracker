@@ -10,9 +10,9 @@ from pydantic import BaseModel, Field
 class SplitwiseUser(BaseModel):
     """Splitwise user model."""
     id: int
-    first_name: str
-    last_name: str
-    email: str
+    first_name: str = ""
+    last_name: Optional[str] = None  # Some users may not have a last name
+    email: Optional[str] = None  # Some users may not have an email set
     picture: Optional[Dict[str, str]] = None
 
 

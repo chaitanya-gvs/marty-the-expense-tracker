@@ -112,7 +112,9 @@ class SplitwiseService:
             }
             
             for expense_user in expense.users:
-                user_name = f"{expense_user.user.first_name} {expense_user.user.last_name}".strip()
+                first_name = expense_user.user.first_name or ""
+                last_name = expense_user.user.last_name or ""
+                user_name = f"{first_name} {last_name}".strip()
                 participants.append(user_name)
                 
                 if expense_user.user.id == current_user.id:

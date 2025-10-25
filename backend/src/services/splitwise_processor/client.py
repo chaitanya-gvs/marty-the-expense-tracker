@@ -124,9 +124,9 @@ class SplitwiseAPIClient:
             expense_user = SplitwiseExpenseUser(
                 user=SplitwiseUser(
                     id=user_info.get("id"),
-                    first_name=user_info.get("first_name", ""),
-                    last_name=user_info.get("last_name", ""),
-                    email=user_info.get("email", ""),
+                    first_name=user_info.get("first_name") or "",
+                    last_name=user_info.get("last_name"),
+                    email=user_info.get("email"),
                     picture=user_info.get("picture")
                 ),
                 paid_share=float(user_data.get("paid_share", 0)),
