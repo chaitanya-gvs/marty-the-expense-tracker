@@ -32,7 +32,7 @@ export function TransferPopover({
   onAddToGroup,
   onRemoveFromGroup,
 }: TransferPopoverProps) {
-  const isGrouped = !!transaction.transfer_group_id && transferGroup.length > 0;
+  const isGrouped = !!transaction.transaction_group_id && transferGroup.length > 0;
 
   const handleCreateGroup = async (suggestionIds: string[]) => {
     try {
@@ -54,9 +54,9 @@ export function TransferPopover({
 
   const handleUngroup = async () => {
     try {
-      // Update all transactions in the group to remove transfer_group_id
+      // Update all transactions in the group to remove transaction_group_id
       const updatePromises = transferGroup.map(t => 
-        apiClient.updateTransaction(t.id, { transfer_group_id: undefined })
+        apiClient.updateTransaction(t.id, { transaction_group_id: undefined })
       );
       await Promise.all(updatePromises);
       onUngroup();
@@ -75,7 +75,7 @@ export function TransferPopover({
 
   const handleRemoveFromGroup = async (transactionId: string) => {
     try {
-      await apiClient.updateTransaction(transactionId, { transfer_group_id: undefined });
+      await apiClient.updateTransaction(transactionId, { transaction_group_id: undefined });
       onRemoveFromGroup(transactionId);
       onClose();
       toast.success("Transaction removed from transfer group", {
@@ -92,9 +92,9 @@ export function TransferPopover({
 
   const handleAddToGroup = async (transactionIds: string[]) => {
     try {
-      // Add to existing group by setting the same transfer_group_id
+      // Add to existing group by setting the same transaction_group_id
       const updatePromises = transactionIds.map(id => 
-        apiClient.updateTransaction(id, { transfer_group_id: transaction.transfer_group_id })
+        apiClient.updateTransaction(id, { transaction_group_id: transaction.transaction_group_id })
       );
       await Promise.all(updatePromises);
       onAddToGroup(transactionIds);

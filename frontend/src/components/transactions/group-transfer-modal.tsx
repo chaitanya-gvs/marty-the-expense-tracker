@@ -105,7 +105,7 @@ export function GroupTransferModal({
       const formattedSuggestions: TransactionSuggestion[] = response.data
         .filter((t: Transaction) => 
           t.id !== transaction.id &&
-          !t.transfer_group_id
+          !t.transaction_group_id
         )
         .map((t: Transaction) => ({
           id: t.id,
@@ -142,7 +142,7 @@ export function GroupTransferModal({
     const fallbackSuggestions: TransactionSuggestion[] = allTransactions
       .filter((t: Transaction) => 
         t.id !== transaction.id &&
-        !t.transfer_group_id
+        !t.transaction_group_id
       )
       .map((t: Transaction) => ({
         id: t.id,
@@ -179,7 +179,7 @@ export function GroupTransferModal({
       const formattedResults: TransactionSuggestion[] = response.data
         .filter((t: Transaction) => 
           t.id !== transaction.id &&
-          !t.transfer_group_id
+          !t.transaction_group_id
         )
         .map((t: Transaction) => ({
           id: t.id,

@@ -159,6 +159,43 @@ class ApiClient {
     });
   }
 
+  async splitTransaction(
+    transactionId: string,
+    parts: Array<{
+      description: string;
+      amount: number;
+      category?: string;
+      subcategory?: string;
+      tags?: string[];
+      notes?: string;
+    }>,
+    deleteOriginal: boolean = false
+  ): Promise<ApiResponse<{ split_group_id: string; transactions: Transaction[] }>> {
+    return this.request<{ split_group_id: string; transactions: Transaction[] }>(
+      "/transactions/split-transaction",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          transaction_id: transactionId,
+          parts,
+          delete_original: deleteOriginal,
+        }),
+      }
+    );
+  }
+
+  async ungroupSplit(
+    transactionGroupId: string
+  ): Promise<ApiResponse<Transaction | { deleted_count: number }>> {
+    return this.request<Transaction | { deleted_count: number }>(
+      "/transactions/ungroup-split",
+      {
+        method: "POST",
+        body: JSON.stringify({ transaction_group_id: transactionGroupId }),
+      }
+    );
+  }
+
   async bulkUpdateTransactions(
     transactionIds: string[],
     updates: Partial<Transaction>

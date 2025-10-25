@@ -86,6 +86,41 @@ export function useGroupTransfer() {
   });
 }
 
+export function useSplitTransaction() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ 
+      transactionId, 
+      parts, 
+      deleteOriginal 
+    }: { 
+      transactionId: string; 
+      parts: Array<{
+        description: string;
+        amount: number;
+        category?: string;
+        subcategory?: string;
+        tags?: string[];
+        notes?: string;
+      }>;
+      deleteOriginal?: boolean;
+    }) =>
+      apiClient.splitTransaction(transactionId, parts, deleteOriginal),
+    onSuccess: async () => {
+      // Force complete refetch of all transaction data by removing cached queries
+      queryClient.removeQueries({ queryKey: ["transactions"] });
+      queryClient.removeQueries({ queryKey: ["transactions-infinite"] });
+      // Remove all infinite transaction queries to force fresh data
+      queryClient.removeQueries({ 
+        predicate: (query) => {
+          return query.queryKey[0] === "transactions-infinite";
+        }
+      });
+    },
+  });
+}
+
 export function useUpdateTransactionSplit() {
   const queryClient = useQueryClient();
 

@@ -28,7 +28,7 @@ export function TransferChip({
 }: TransferChipProps) {
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
 
-  const isGrouped = !!transaction.transfer_group_id && transferGroup.length > 0;
+  const isGrouped = !!transaction.transaction_group_id && transferGroup.length > 0;
 
   if (isGrouped && transferGroup.length > 0) {
     // Show grouped state

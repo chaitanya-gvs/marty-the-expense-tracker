@@ -7,6 +7,7 @@ import { formatCurrency, formatDate } from "@/lib/format-utils";
 import { Transaction } from "@/lib/types";
 import { toast } from "sonner";
 import { X, ArrowDown, ArrowRight, ArrowLeft, Unlink, Trash2, ExternalLink } from "lucide-react";
+import { apiClient } from "@/lib/api/client";
 
 interface RelatedTransactionsDrawerProps {
   transaction: Transaction;
@@ -19,7 +20,7 @@ interface RelatedTransactionsDrawerProps {
   onRemoveFromGroup: (transactionId: string) => void;
 }
 
-type DrawerMode = "refund" | "transfer";
+type DrawerMode = "refund" | "transfer" | "split";
 
 export function RelatedTransactionsDrawer({
   transaction,
@@ -36,8 +37,14 @@ export function RelatedTransactionsDrawer({
     return null;
   }
 
-  const mode: DrawerMode = !!parentTransaction ? "refund" : "transfer";
+  // Determine mode: refund, split, or transfer
+  const mode: DrawerMode = !!parentTransaction 
+    ? "refund" 
+    : transaction.is_split 
+    ? "split" 
+    : "transfer";
   const netAmount = transferGroup.reduce((sum, t) => sum + t.amount, 0);
+  const totalSplitAmount = transferGroup.reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
   const handleUnlink = async () => {
     try {
@@ -52,12 +59,23 @@ export function RelatedTransactionsDrawer({
 
   const handleUngroup = async () => {
     try {
-      onUngroup();
-      onClose();
-      toast.success("Transfer group removed");
+      if (mode === "split") {
+        // For split transactions, use the special ungroup-split endpoint
+        if (transaction.transaction_group_id) {
+          await apiClient.ungroupSplit(transaction.transaction_group_id);
+          toast.success("Split removed. Original transaction restored.");
+          onClose();
+          // Trigger a page refresh or callback to refresh the transaction list
+          window.location.reload();
+        }
+      } else {
+        // For transfer groups, use the normal ungroup
+        onUngroup();
+        onClose();
+      }
     } catch (error) {
-      console.error("Failed to ungroup transfer:", error);
-      toast.error("Failed to ungroup transfer");
+      console.error("Failed to ungroup:", error);
+      toast.error(mode === "split" ? "Failed to remove split" : "Failed to ungroup transfer");
     }
   };
 
@@ -268,6 +286,110 @@ export function RelatedTransactionsDrawer({
     );
   };
 
+  const renderSplitMode = () => {
+    if (transferGroup.length === 0) return null;
+
+    return (
+      <div className="space-y-6">
+        <div className="text-center">
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
+            Split Transaction ({transferGroup.length} parts)
+          </div>
+          <div className="flex items-center justify-center gap-2 text-gray-500">
+            <span className="text-base">⚡</span>
+            <span className="text-xs">One transaction split into multiple categories</span>
+          </div>
+        </div>
+
+        {/* Split Parts */}
+        <div className="space-y-3">
+          {transferGroup.map((t, index) => (
+            <div key={t.id} className="relative">
+              {index > 0 && (
+                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                  <ArrowDown className="h-3 w-3 text-gray-400" />
+                </div>
+              )}
+              <div className="p-4 rounded-lg border bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm truncate">{t.description}</div>
+                    <div className="text-xs text-purple-600 dark:text-purple-400">
+                      {formatDate(t.date)} · {formatCurrency(Math.abs(t.amount))} · {t.account.split(' ').slice(0, -2).join(' ')}
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      {t.category && (
+                        <Badge variant="secondary" className="text-xs">
+                          {t.category}
+                        </Badge>
+                      )}
+                      {t.subcategory && (
+                        <Badge variant="outline" className="text-xs">
+                          {t.subcategory}
+                        </Badge>
+                      )}
+                    </div>
+                    {t.notes && (
+                      <div className="text-xs text-gray-500 mt-2 italic">
+                        {t.notes}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Total */}
+        <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="text-center space-y-2">
+            <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Total Split Amount
+            </div>
+            <div className="text-lg font-bold text-purple-600 dark:text-purple-400">
+              {formatCurrency(totalSplitAmount)}
+            </div>
+            <div className="text-xs text-gray-500">
+              {transferGroup.length} parts from one transaction
+            </div>
+          </div>
+        </div>
+
+        {/* Info */}
+        {transferGroup.length > 1 && (
+          <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+            <p className="text-xs text-blue-700 dark:text-blue-300">
+              {transferGroup.some((t, idx) => idx === 0 && t.id === transaction.id) ? (
+                <>
+                  ✓ Original transaction is preserved in this group. 
+                  Removing the split will restore it.
+                </>
+              ) : (
+                <>
+                  ℹ️ This split group contains {transferGroup.length} parts. 
+                  Removing will delete all split parts and restore the original if it exists.
+                </>
+              )}
+            </p>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="space-y-2">
+          <Button
+            variant="outline"
+            onClick={handleUngroup}
+            className="w-full border-purple-500 text-purple-600 hover:bg-purple-50 dark:border-purple-400 dark:text-purple-400 dark:hover:bg-purple-900/20"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Remove Split & Restore Original
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <>
       {/* Overlay */}
@@ -282,9 +404,11 @@ export function RelatedTransactionsDrawer({
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-2">
-              <span className="text-base">{mode === "refund" ? "↩︎" : "⇄"}</span>
+              <span className="text-base">
+                {mode === "refund" ? "↩︎" : mode === "split" ? "⚡" : "⇄"}
+              </span>
               <span className="font-medium text-sm">
-                {mode === "refund" ? "Refund Details" : "Transfer Group"}
+                {mode === "refund" ? "Refund Details" : mode === "split" ? "Split Transaction" : "Transfer Group"}
               </span>
             </div>
             <Button
@@ -299,7 +423,7 @@ export function RelatedTransactionsDrawer({
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-4">
-            {mode === "refund" ? renderRefundMode() : renderTransferMode()}
+            {mode === "refund" ? renderRefundMode() : mode === "split" ? renderSplitMode() : renderTransferMode()}
           </div>
 
           {/* Footer */}

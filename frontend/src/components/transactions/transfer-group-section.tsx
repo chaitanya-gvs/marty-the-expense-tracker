@@ -42,11 +42,11 @@ export function TransferGroupSection({
 
   // Find transfer group for this transaction
   const transferGroup = useMemo(() => {
-    if (!transaction.transfer_group_id) return [];
-    return allTransactions.filter(t => t.transfer_group_id === transaction.transfer_group_id);
-  }, [transaction.transfer_group_id, allTransactions]);
+    if (!transaction.transaction_group_id) return [];
+    return allTransactions.filter(t => t.transaction_group_id === transaction.transaction_group_id);
+  }, [transaction.transaction_group_id, allTransactions]);
 
-  const isGrouped = !!transaction.transfer_group_id && transferGroup.length > 0;
+  const isGrouped = !!transaction.transaction_group_id && transferGroup.length > 0;
 
   const loadSuggestions = async () => {
     setIsLoading(true);
@@ -65,7 +65,7 @@ export function TransferGroupSection({
           t.id !== transaction.id &&
           Math.abs(Math.abs(t.amount) - Math.abs(transaction.amount)) < Math.abs(transaction.amount) * 0.1 && // 10% tolerance
           t.account !== transaction.account && // Different accounts preferred
-          !t.transfer_group_id // Not already in a group
+          !t.transaction_group_id // Not already in a group
         )
         .map((t: Transaction) => ({
           id: t.id,
@@ -107,9 +107,9 @@ export function TransferGroupSection({
 
   const handleUngroup = async () => {
     try {
-      // Update all transactions in the group to remove transfer_group_id
+      // Update all transactions in the group to remove transaction_group_id
       const updatePromises = transferGroup.map(t => 
-        apiClient.updateTransaction(t.id, { transfer_group_id: undefined })
+        apiClient.updateTransaction(t.id, { transaction_group_id: undefined })
       );
       await Promise.all(updatePromises);
       onUngroupTransfer(transaction.id);
@@ -127,7 +127,7 @@ export function TransferGroupSection({
 
   const handleRemoveFromGroup = async (transactionId: string) => {
     try {
-      await apiClient.updateTransaction(transactionId, { transfer_group_id: undefined });
+      await apiClient.updateTransaction(transactionId, { transaction_group_id: undefined });
       onRemoveFromTransferGroup(transactionId);
       toast.success("Transaction removed from transfer group", {
         action: {
@@ -143,9 +143,9 @@ export function TransferGroupSection({
 
   const handleAddToGroup = async (transactionIds: string[]) => {
     try {
-      // Add to existing group by setting the same transfer_group_id
+      // Add to existing group by setting the same transaction_group_id
       const updatePromises = transactionIds.map(id => 
-        apiClient.updateTransaction(id, { transfer_group_id: transaction.transfer_group_id })
+        apiClient.updateTransaction(id, { transaction_group_id: transaction.transaction_group_id })
       );
       await Promise.all(updatePromises);
       onAddToTransferGroup(transactionIds);

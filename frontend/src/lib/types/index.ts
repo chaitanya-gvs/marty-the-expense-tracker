@@ -12,11 +12,12 @@ export interface Transaction {
   notes?: string;
   is_shared: boolean;
   is_refund: boolean;
+  is_split: boolean;
   is_transfer: boolean;
   split_breakdown?: SplitBreakdown;
   paid_by?: string;
   link_parent_id?: string;
-  transfer_group_id?: string;
+  transaction_group_id?: string;
   related_mails?: RelatedMail[];
   source_file?: string;
   raw_data?: any;

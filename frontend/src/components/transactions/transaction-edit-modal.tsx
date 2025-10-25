@@ -396,7 +396,7 @@ export function TransactionEditModal({
                   try {
                     await updateTransaction.mutateAsync({
                       id: transactionId,
-                      updates: { transfer_group_id: undefined },
+                      updates: { transaction_group_id: undefined },
                     });
                     toast.success("Transfer ungrouped successfully");
                   } catch (error) {
@@ -405,11 +405,11 @@ export function TransactionEditModal({
                 }}
                 onAddToTransferGroup={async (transactionIds: string[]) => {
                   try {
-                    const targetGroupId = transaction.transfer_group_id;
+                    const targetGroupId = transaction.transaction_group_id;
                     const updatePromises = transactionIds.map((id: string) => 
                       updateTransaction.mutateAsync({
                         id,
-                        updates: { transfer_group_id: targetGroupId },
+                        updates: { transaction_group_id: targetGroupId },
                       })
                     );
                     await Promise.all(updatePromises);
@@ -422,7 +422,7 @@ export function TransactionEditModal({
                   try {
                     await updateTransaction.mutateAsync({
                       id: transactionId,
-                      updates: { transfer_group_id: undefined },
+                      updates: { transaction_group_id: undefined },
                     });
                     toast.success("Transaction removed from transfer group");
                   } catch (error) {

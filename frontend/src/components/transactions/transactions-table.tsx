@@ -42,7 +42,8 @@ import {
   CheckSquare,
   Square,
   Edit,
-  Unlink
+  Unlink,
+  Split
 } from "lucide-react";
 import { format } from "date-fns";
 import { TransactionEditModal } from "./transaction-edit-modal";
@@ -54,6 +55,7 @@ import { InlineCategoryDropdown } from "./inline-category-dropdown";
 import { BulkEditModal } from "./bulk-edit-modal";
 import { LinksColumn } from "./links-column";
 import { RelatedTransactionsDrawer } from "./related-transactions-drawer";
+import { SplitTransactionModal } from "./split-transaction-modal";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
 
 const columnHelper = createColumnHelper<Transaction>();
@@ -101,6 +103,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedTransactionForSplit, setSelectedTransactionForSplit] = useState<Transaction | null>(null);
   const [isSplitEditorOpen, setIsSplitEditorOpen] = useState(false);
+  const [selectedTransactionForSplitting, setSelectedTransactionForSplitting] = useState<Transaction | null>(null);
+  const [isSplitTransactionModalOpen, setIsSplitTransactionModalOpen] = useState(false);
   const [editingTagsForTransaction, setEditingTagsForTransaction] = useState<string | null>(null);
   const [editingCategoryForTransaction, setEditingCategoryForTransaction] = useState<string | null>(null);
   const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(new Set());
@@ -179,7 +183,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
   const canBulkUnlink = useMemo(() => {
     return selectedTransactions.some(t => 
-      t.link_parent_id || t.transfer_group_id
+      t.link_parent_id || t.transaction_group_id
     );
   }, [selectedTransactions]);
 
@@ -245,7 +249,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           label: "Undo",
           onClick: async () => {
             const updatePromises = transactionIds.map(id => 
-              apiClient.updateTransaction(id, { transfer_group_id: undefined })
+              apiClient.updateTransaction(id, { transaction_group_id: undefined })
             );
             await Promise.all(updatePromises);
           },
@@ -261,11 +265,11 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const handleBulkUnlink = async () => {
     try {
       const updatePromises = selectedTransactions
-        .filter(t => t.link_parent_id || t.transfer_group_id)
+        .filter(t => t.link_parent_id || t.transaction_group_id)
         .map(t => 
           apiClient.updateTransaction(t.id, {
             link_parent_id: undefined,
-            transfer_group_id: undefined,
+            transaction_group_id: undefined,
             is_refund: false,
           })
         );
@@ -490,13 +494,41 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     </div>
                   )}
                 </div>
+                {row.original.is_shared && (
+                  <Badge 
+                    variant="outline" 
+                    className="text-xs border-blue-500 text-blue-600 dark:text-blue-400 shrink-0 bg-blue-50 dark:bg-blue-900/20"
+                    title="Shared with others (Splitwise)"
+                  >
+                    <Users className="h-3 w-3 inline mr-1" />
+                    Shared
+                  </Badge>
+                )}
+                {row.original.is_split && (
+                  <Badge 
+                    variant="outline" 
+                    className="text-xs border-purple-500 text-purple-600 dark:text-purple-400 shrink-0 bg-purple-50 dark:bg-purple-900/20"
+                    title="Part of a split transaction"
+                  >
+                    ⚡ Split
+                  </Badge>
+                )}
+                {row.original.link_parent_id && (
+                  <Badge 
+                    variant="outline" 
+                    className="text-xs border-green-500 text-green-600 dark:text-green-400 shrink-0 bg-green-50 dark:bg-green-900/20"
+                    title="Refund of another transaction"
+                  >
+                    ↩︎ Refund
+                  </Badge>
+                )}
                 {hasLinkedChildren && (
                   <Badge 
                     variant="outline" 
-                    className="text-xs border-purple-500 text-purple-600 dark:text-purple-400 shrink-0"
+                    className="text-xs border-amber-500 text-amber-600 dark:text-amber-400 shrink-0 bg-amber-50 dark:bg-amber-900/20"
                     title={`${linkedChildren.length} refund${linkedChildren.length > 1 ? 's' : ''}`}
                   >
-                    ↩︎ Refunded {formatCurrency(aggregateRefund)} of {formatCurrency(Math.abs(row.original.amount))}
+                    ↩︎ Has Refunds
                   </Badge>
                 )}
               </div>
@@ -775,11 +807,11 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     action: {
                       label: "Undo",
                       onClick: async () => {
-                        // Ungroup by setting transfer_group_id to undefined for all
+                        // Ungroup by setting transaction_group_id to undefined for all
                         const updatePromises = transactionIds.map(id => 
                           updateTransaction.mutateAsync({
                             id,
-                            updates: { transfer_group_id: undefined },
+                            updates: { transaction_group_id: undefined },
                           })
                         );
                         await Promise.all(updatePromises);
@@ -795,7 +827,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 try {
                   await updateTransaction.mutateAsync({
                     id: transactionId,
-                    updates: { transfer_group_id: undefined },
+                    updates: { transaction_group_id: undefined },
                   });
                   toast.success("Transfer ungrouped successfully", {
                     action: {
@@ -813,11 +845,11 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               }}
               onAddToTransferGroup={async (transactionIds) => {
                 try {
-                  const targetGroupId = transaction.transfer_group_id;
+                  const targetGroupId = transaction.transaction_group_id;
                   const updatePromises = transactionIds.map(id => 
                     updateTransaction.mutateAsync({
                       id,
-                      updates: { transfer_group_id: targetGroupId },
+                      updates: { transaction_group_id: targetGroupId },
                     })
                   );
                   await Promise.all(updatePromises);
@@ -828,7 +860,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                         const unlinkPromises = transactionIds.map(id => 
                           updateTransaction.mutateAsync({
                             id,
-                            updates: { transfer_group_id: undefined },
+                            updates: { transaction_group_id: undefined },
                           })
                         );
                         await Promise.all(unlinkPromises);
@@ -844,7 +876,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 try {
                   await updateTransaction.mutateAsync({
                     id: transactionId,
-                    updates: { transfer_group_id: undefined },
+                    updates: { transaction_group_id: undefined },
                   });
                   toast.success("Transaction removed from transfer group", {
                     action: {
@@ -862,9 +894,20 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               }}
               onHighlightTransactions={handleHighlightTransactions}
               onClearHighlight={handleClearHighlight}
-              onOpenDrawer={(transaction) => {
-                setDrawerTransaction(transaction);
-                setIsDrawerOpen(true);
+              onOpenDrawer={(transactionOrId) => {
+                // Accept either a transaction object or a transaction ID
+                if (typeof transactionOrId === 'string') {
+                  // If it's an ID, find the fresh transaction from allTransactions
+                  const freshTransaction = allTransactions.find(t => t.id === transactionOrId);
+                  if (freshTransaction) {
+                    setDrawerTransaction(freshTransaction);
+                    setIsDrawerOpen(true);
+                  }
+                } else {
+                  // If it's a transaction object, use it directly
+                  setDrawerTransaction(transactionOrId);
+                  setIsDrawerOpen(true);
+                }
               }}
             />
           );
@@ -965,6 +1008,13 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   <DropdownMenuItem onClick={() => setEditingTagsForTransaction(transaction.id)}>
                     <TagIcon className="h-4 w-4 mr-2" />
                     Edit Tags
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => {
+                    setSelectedTransactionForSplitting(transaction);
+                    setIsSplitTransactionModalOpen(true);
+                  }}>
+                    <Split className="h-4 w-4 mr-2" />
+                    Split Transaction
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1287,6 +1337,18 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         />
       )}
 
+      {/* Split Transaction Modal */}
+      {selectedTransactionForSplitting && (
+        <SplitTransactionModal
+          transaction={selectedTransactionForSplitting}
+          isOpen={isSplitTransactionModalOpen}
+          onClose={() => {
+            setIsSplitTransactionModalOpen(false);
+            setSelectedTransactionForSplitting(null);
+          }}
+        />
+      )}
+
       {/* Related Transactions Drawer - Rendered at table level to persist across re-renders */}
       {drawerTransaction && (
         <RelatedTransactionsDrawer
@@ -1297,8 +1359,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               : undefined
           }
           transferGroup={
-            drawerTransaction.transfer_group_id
-              ? allTransactions.filter(t => t.transfer_group_id === drawerTransaction.transfer_group_id)
+            drawerTransaction.transaction_group_id
+              ? allTransactions.filter(t => t.transaction_group_id === drawerTransaction.transaction_group_id)
               : []
           }
           isOpen={isDrawerOpen}
@@ -1320,25 +1382,22 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           onUngroup={async () => {
             try {
               // Ungroup all transactions in the group
-              const transferGroupId = drawerTransaction.transfer_group_id;
-              console.log("🔄 Ungrouping transfer group:", transferGroupId);
+              const transferGroupId = drawerTransaction.transaction_group_id;
               
               if (transferGroupId) {
-                const groupTransactions = allTransactions.filter(t => t.transfer_group_id === transferGroupId);
-                console.log("🔄 Found", groupTransactions.length, "transactions to ungroup");
+                const groupTransactions = allTransactions.filter(t => t.transaction_group_id === transferGroupId);
                 
                 // Update all transactions in the group
                 // Note: Must use null instead of undefined, as JSON.stringify removes undefined values
-                const results = await Promise.all(
+                await Promise.all(
                   groupTransactions.map(t =>
                     updateTransaction.mutateAsync({
                       id: t.id,
-                      updates: { transfer_group_id: null as any },
+                      updates: { transaction_group_id: null as any },
                     })
                   )
                 );
                 
-                console.log("✅ Ungroup mutations completed:", results.length);
                 toast.success("Transfer group removed successfully");
                 
                 // Wait a bit for cache to update before closing drawer
@@ -1347,7 +1406,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               setIsDrawerOpen(false);
               setDrawerTransaction(null);
             } catch (error) {
-              console.error("❌ Failed to ungroup transfer:", error);
+              console.error("Failed to ungroup transfer:", error);
               toast.error("Failed to ungroup transfer");
             }
           }}
@@ -1356,7 +1415,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               // Note: Must use null instead of undefined, as JSON.stringify removes undefined values
               await updateTransaction.mutateAsync({
                 id: transactionId,
-                updates: { transfer_group_id: null as any },
+                updates: { transaction_group_id: null as any },
               });
               toast.success("Transaction removed from group");
               // Keep drawer open to show updated group
