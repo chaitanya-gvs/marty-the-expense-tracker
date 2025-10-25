@@ -266,7 +266,8 @@ class TransactionOperations:
         source_file: Optional[str] = None,
         raw_data: Optional[Dict[str, Any]] = None,
         link_parent_id: Optional[str] = None,
-        transfer_group_id: Optional[str] = None
+        transaction_group_id: Optional[str] = None,
+        is_split: Optional[bool] = None
     ) -> str:
         """Create a new transaction and return its ID"""
         session_factory = get_session_factory()
@@ -283,14 +284,14 @@ class TransactionOperations:
                 text("""
                     INSERT INTO transactions (
                         transaction_date, transaction_time, amount, split_share_amount,
-                        direction, transaction_type, is_partial_refund, is_shared, split_breakdown, paid_by,
+                        direction, transaction_type, is_partial_refund, is_shared, is_split, split_breakdown, paid_by,
                         account, category_id, sub_category, tags, description, notes, reference_number,
-                        related_mails, source_file, raw_data, link_parent_id, transfer_group_id
+                        related_mails, source_file, raw_data, link_parent_id, transaction_group_id
                     ) VALUES (
                         :transaction_date, :transaction_time, :amount, :split_share_amount,
-                        :direction, :transaction_type, :is_partial_refund, :is_shared, :split_breakdown, :paid_by,
+                        :direction, :transaction_type, :is_partial_refund, :is_shared, :is_split, :split_breakdown, :paid_by,
                         :account, :category_id, :sub_category, :tags, :description, :notes, :reference_number,
-                        :related_mails, :source_file, :raw_data, :link_parent_id, :transfer_group_id
+                        :related_mails, :source_file, :raw_data, :link_parent_id, :transaction_group_id
                     ) RETURNING id
                 """), {
                     "transaction_date": transaction_date,
@@ -314,7 +315,8 @@ class TransactionOperations:
                     "source_file": source_file,
                     "raw_data": raw_data,
                     "link_parent_id": link_parent_id,
-                    "transfer_group_id": transfer_group_id
+                    "transaction_group_id": transaction_group_id,
+                    "is_split": is_split
                 }
             )
             transaction_id = result.fetchone()[0]
@@ -504,7 +506,7 @@ class TransactionOperations:
             await session.close()
     
     @staticmethod
-    async def get_transfer_group_transactions(transfer_group_id: str) -> List[Dict[str, Any]]:
+    async def get_transfer_group_transactions(transaction_group_id: str) -> List[Dict[str, Any]]:
         """Get all transactions in a transfer group"""
         session_factory = get_session_factory()
         session = session_factory()
@@ -514,9 +516,9 @@ class TransactionOperations:
                     SELECT t.*, c.name as category
                     FROM transactions t
                     LEFT JOIN categories c ON t.category_id = c.id
-                    WHERE t.transfer_group_id = :transfer_group_id
+                    WHERE t.transaction_group_id = :transaction_group_id
                     ORDER BY t.transaction_date, t.created_at
-                """), {"transfer_group_id": transfer_group_id}
+                """), {"transaction_group_id": transaction_group_id}
             )
             rows = result.fetchall()
             return [dict(row._mapping) for row in rows]
@@ -580,7 +582,7 @@ class TransactionOperations:
                     'direction', 'transaction_type', 'is_partial_refund', 'is_shared', 'split_breakdown',
                     'account', 'category_id', 'sub_category', 'tags', 'description', 'notes', 
                     'reference_number', 'related_mails', 'source_file', 'raw_data',
-                    'link_parent_id', 'transfer_group_id'
+                    'link_parent_id', 'transaction_group_id'
                 ]:
                     set_clauses.append(f"{field} = :{field}")
                     # Handle JSON fields that need to be encoded
@@ -842,12 +844,12 @@ class TransactionOperations:
                     transaction_date, transaction_time, amount, split_share_amount,
                     direction, transaction_type, is_partial_refund, is_shared, split_breakdown,
                     account, category, sub_category, tags, description, notes, reference_number,
-                    related_mails, source_file, raw_data, link_parent_id, transfer_group_id
+                    related_mails, source_file, raw_data, link_parent_id, transaction_group_id
                 ) VALUES (
                     :transaction_date, :transaction_time, :amount, :split_share_amount,
                     :direction, :transaction_type, :is_partial_refund, :is_shared, :split_breakdown,
                     :account, :category, :sub_category, :tags, :description, :notes, :reference_number,
-                    :related_mails, :source_file, :raw_data, :link_parent_id, :transfer_group_id
+                    :related_mails, :source_file, :raw_data, :link_parent_id, :transaction_group_id
                 )
             """)
             
@@ -1070,7 +1072,7 @@ class TransactionOperations:
             "source_file": transaction.get('source_file', ''),
                 "raw_data": json.dumps(TransactionOperations._clean_data_for_json(transaction.get('raw_data', {}))) if transaction.get('raw_data') else None,
             "link_parent_id": None,
-            "transfer_group_id": None
+            "transaction_group_id": None
         }
 
 

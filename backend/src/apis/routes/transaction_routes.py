@@ -66,10 +66,11 @@ class TransactionCreate(BaseModel):
     notes: Optional[str] = None
     is_shared: bool = False
     is_refund: bool = False
+    is_split: bool = False
     is_transfer: bool = False
     split_breakdown: Optional[Dict[str, Any]] = None
     link_parent_id: Optional[str] = None
-    transfer_group_id: Optional[str] = None
+    transaction_group_id: Optional[str] = None
     related_mails: List[str] = []
     source_file: Optional[str] = None
     raw_data: Optional[Dict[str, Any]] = None
@@ -89,10 +90,11 @@ class TransactionUpdate(BaseModel):
     notes: Optional[str] = None
     is_shared: Optional[bool] = None
     is_refund: Optional[bool] = None
+    is_split: Optional[bool] = None
     is_transfer: Optional[bool] = None
     split_breakdown: Optional[Dict[str, Any]] = None
     link_parent_id: Optional[str] = None
-    transfer_group_id: Optional[str] = None
+    transaction_group_id: Optional[str] = None
     related_mails: Optional[List[str]] = None
     source_file: Optional[str] = None
     raw_data: Optional[Dict[str, Any]] = None
@@ -119,11 +121,12 @@ class TransactionResponse(BaseModel):
     notes: Optional[str] = None
     is_shared: bool
     is_refund: bool
+    is_split: bool
     is_transfer: bool
     split_breakdown: Optional[Dict[str, Any]] = None
     paid_by: Optional[str] = None
     link_parent_id: Optional[str] = None
-    transfer_group_id: Optional[str] = None
+    transaction_group_id: Optional[str] = None
     related_mails: List[str] = []
     source_file: Optional[str] = None
     raw_data: Optional[Dict[str, Any]] = None
@@ -166,6 +169,23 @@ class LinkRefundRequest(BaseModel):
 class GroupTransferRequest(BaseModel):
     """Request model for grouping transfers."""
     transaction_ids: List[str]
+
+
+class SplitTransactionPart(BaseModel):
+    """Individual part of a split transaction."""
+    description: str
+    amount: Decimal = Field(..., gt=0)
+    category: Optional[str] = None
+    subcategory: Optional[str] = None
+    tags: List[str] = []
+    notes: Optional[str] = None
+
+
+class SplitTransactionRequest(BaseModel):
+    """Request model for splitting a transaction."""
+    transaction_id: str
+    parts: List[SplitTransactionPart] = Field(..., min_items=2)
+    delete_original: bool = Field(default=False, description="Whether to delete the original transaction after splitting")
 
 
 # ============================================================================
@@ -320,8 +340,8 @@ class SuggestionOperations:
                         AND t1.direction != t2.direction
                         AND ABS(t1.amount) >= :min_amount
                         AND ABS(t2.amount) >= :min_amount
-                        AND t1.transfer_group_id IS NULL
-                        AND t2.transfer_group_id IS NULL
+                        AND t1.transaction_group_id IS NULL
+                        AND t2.transaction_group_id IS NULL
                     )
                     WHERE t1.id < t2.id
                     ORDER BY amount_diff ASC, time_diff_hours ASC
@@ -403,11 +423,12 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
         notes=transaction.get('notes'),
         is_shared=transaction.get('is_shared', False),
         is_refund=transaction.get('is_partial_refund', False),
-        is_transfer=bool(transaction.get('transfer_group_id')),
+        is_split=transaction.get('is_split', False),
+        is_transfer=bool(transaction.get('transaction_group_id')),
         split_breakdown=transaction.get('split_breakdown'),
         paid_by=transaction.get('paid_by'),
         link_parent_id=str(transaction.get('link_parent_id')) if transaction.get('link_parent_id') else None,
-        transfer_group_id=str(transaction.get('transfer_group_id')) if transaction.get('transfer_group_id') else None,
+        transaction_group_id=str(transaction.get('transaction_group_id')) if transaction.get('transaction_group_id') else None,
         related_mails=transaction.get('related_mails', []) or [],
         source_file=transaction.get('source_file'),
         raw_data=_parse_raw_data(transaction.get('raw_data')),
@@ -533,7 +554,7 @@ async def get_transactions(
                     continue
                 elif transaction_type == "refunds" and not transaction.get('is_partial_refund'):
                     continue
-                elif transaction_type == "transfers" and not transaction.get('transfer_group_id'):
+                elif transaction_type == "transfers" and not transaction.get('transaction_group_id'):
                     continue
             
             # Apply search filter
@@ -768,7 +789,7 @@ async def create_transaction(transaction_data: TransactionCreate):
             source_file=transaction_data.source_file,
             raw_data=transaction_data.raw_data,
             link_parent_id=transaction_data.link_parent_id,
-            transfer_group_id=transaction_data.transfer_group_id
+            transaction_group_id=transaction_data.transaction_group_id
         )
         
         # Fetch the created transaction
@@ -1022,14 +1043,14 @@ async def group_transfer(request: GroupTransferRequest):
         import uuid
         
         # Generate a transfer group ID
-        transfer_group_id = str(uuid.uuid4())
+        transaction_group_id = str(uuid.uuid4())
         
         # Update all transactions to have the same transfer group ID
         updated_transactions = []
         for transaction_id in request.transaction_ids:
             success = await TransactionOperations.update_transaction(
                 transaction_id,
-                transfer_group_id=transfer_group_id
+                transaction_group_id=transaction_group_id
             )
             if success:
                 transaction = await TransactionOperations.get_transaction_by_id(transaction_id)
@@ -1039,6 +1060,212 @@ async def group_transfer(request: GroupTransferRequest):
         
     except Exception as e:
         logger.error(f"Failed to group transfer: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class UngroupSplitRequest(BaseModel):
+    """Request model for ungrouping split transactions."""
+    transaction_group_id: str
+
+
+@router.post("/ungroup-split", response_model=ApiResponse)
+async def ungroup_split_transactions(request: UngroupSplitRequest):
+    """
+    Ungroup split transactions and restore the original.
+    
+    Strategy:
+    - If original transaction exists in group (wasn't deleted), restore it
+    - Delete all split part transactions
+    - If original was deleted during split, there's nothing to restore
+    """
+    try:
+        session_factory = get_session_factory()
+        session = session_factory()
+        
+        try:
+            # Get all transactions in the split group
+            result = await session.execute(
+                text("""
+                    SELECT id, description, amount, created_at, is_split
+                    FROM transactions
+                    WHERE transaction_group_id = :group_id
+                    AND is_split = true
+                    ORDER BY created_at ASC
+                """),
+                {"group_id": request.transaction_group_id}
+            )
+            transactions = result.fetchall()
+            
+            if not transactions:
+                raise HTTPException(status_code=404, detail="Split group not found")
+            
+            # The original transaction (if it exists) would be the first one created
+            # and would have a more complex description (original transaction description)
+            # Split parts would have simpler descriptions like "A", "B", "Internet", "Mobile"
+            
+            original_transaction = None
+            split_parts = []
+            
+            # Find the original vs split parts
+            # Original will have been created first and likely has the original description
+            for t in transactions:
+                if len(transactions) > 1:
+                    # If we have multiple transactions, the first one is likely the original
+                    if t == transactions[0]:
+                        original_transaction = t
+                    else:
+                        split_parts.append(t)
+                else:
+                    # If only one transaction, it's either a lone split part or the original
+                    split_parts.append(t)
+            
+            # Delete all split parts
+            for split_part in split_parts:
+                await handle_database_operation(
+                    TransactionOperations.delete_transaction,
+                    str(split_part.id)
+                )
+            
+            # Restore the original transaction if it exists
+            if original_transaction:
+                await handle_database_operation(
+                    TransactionOperations.update_transaction,
+                    str(original_transaction.id),
+                    is_split=False,
+                    transaction_group_id=None
+                )
+                
+                # Fetch the restored transaction
+                restored = await handle_database_operation(
+                    TransactionOperations.get_transaction_by_id,
+                    str(original_transaction.id)
+                )
+                
+                return ApiResponse(
+                    data=_convert_db_transaction_to_response(restored),
+                    message=f"Split removed. Original transaction restored. {len(split_parts)} split parts deleted."
+                )
+            else:
+                return ApiResponse(
+                    data={"deleted_count": len(split_parts)},
+                    message=f"Split removed. {len(split_parts)} split parts deleted. Original was not in the group."
+                )
+                
+        finally:
+            await session.close()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to ungroup split transactions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/split-transaction", response_model=ApiResponse)
+async def split_transaction(request: SplitTransactionRequest):
+    """Split a transaction into multiple parts."""
+    try:
+        import uuid
+        
+        # Get the original transaction
+        original_transaction = await handle_database_operation(
+            TransactionOperations.get_transaction_by_id,
+            request.transaction_id
+        )
+        
+        if not original_transaction:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        
+        # Validate that the sum of parts equals the original amount
+        total_parts_amount = sum(part.amount for part in request.parts)
+        original_amount = abs(float(original_transaction.get('amount', 0)))
+        
+        if abs(float(total_parts_amount) - original_amount) > 0.01:  # Allow small floating point differences
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Sum of split parts ({total_parts_amount}) does not equal original amount ({original_amount})"
+            )
+        
+        # Generate a transaction group ID for the split
+        split_group_id = str(uuid.uuid4())
+        
+        # Create new transactions for each split part
+        created_transactions = []
+        for part in request.parts:
+            try:
+                # Create the split transaction with the same base properties as the original
+                transaction_id = await handle_database_operation(
+                    TransactionOperations.create_transaction,
+                    transaction_date=original_transaction.get('transaction_date'),
+                    amount=part.amount,
+                    direction=original_transaction.get('direction'),
+                    transaction_type=original_transaction.get('transaction_type', 'purchase'),
+                    account=original_transaction.get('account'),
+                    category=part.category or original_transaction.get('category'),
+                    description=part.description,
+                    transaction_time=original_transaction.get('transaction_time'),
+                    split_share_amount=None,
+                    is_partial_refund=False,
+                    is_shared=False,
+                    is_split=True,  # Mark as a split transaction
+                    split_breakdown=None,
+                    sub_category=part.subcategory or original_transaction.get('sub_category'),
+                    tags=part.tags,
+                    notes=part.notes,
+                    reference_number=original_transaction.get('reference_number'),
+                    related_mails=original_transaction.get('related_mails', []),
+                    source_file=original_transaction.get('source_file'),
+                    raw_data=None,  # Don't copy raw_data to split transactions to avoid serialization issues
+                    link_parent_id=None,
+                    transaction_group_id=split_group_id
+                )
+                
+                # Fetch the created transaction
+                created_transaction = await handle_database_operation(
+                    TransactionOperations.get_transaction_by_id,
+                    transaction_id
+                )
+                created_transactions.append(_convert_db_transaction_to_response(created_transaction))
+                
+            except Exception as e:
+                logger.error(f"Failed to create split part: {e}")
+                # Continue with other parts even if one fails
+                continue
+        
+        # Handle original transaction
+        if request.delete_original:
+            # Delete the original transaction
+            await handle_database_operation(
+                TransactionOperations.delete_transaction,
+                request.transaction_id
+            )
+        else:
+            # Mark the original transaction as split and add it to the group
+            await handle_database_operation(
+                TransactionOperations.update_transaction,
+                request.transaction_id,
+                is_split=True,
+                transaction_group_id=split_group_id
+            )
+            # Fetch the updated original transaction
+            updated_original = await handle_database_operation(
+                TransactionOperations.get_transaction_by_id,
+                request.transaction_id
+            )
+            created_transactions.insert(0, _convert_db_transaction_to_response(updated_original))
+        
+        return ApiResponse(
+            data={
+                "split_group_id": split_group_id,
+                "transactions": created_transactions
+            },
+            message=f"Transaction split successfully into {len(created_transactions)} parts"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to split transaction: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

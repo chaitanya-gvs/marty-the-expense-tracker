@@ -19,7 +19,7 @@ class Transaction(Base):
     
     id: Mapped[UUID] = mapped_column(primary_key=True, server_default=func.gen_random_uuid())
     link_parent_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("transactions.id"), nullable=True)
-    transfer_group_id: Mapped[Optional[UUID]] = mapped_column(nullable=True)
+    transaction_group_id: Mapped[Optional[UUID]] = mapped_column(nullable=True)
     transaction_date: Mapped[date] = mapped_column(Date, nullable=False)
     transaction_time: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
@@ -29,6 +29,7 @@ class Transaction(Base):
     transaction_type: Mapped[str] = mapped_column(Text, nullable=False)
     is_partial_refund: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
     is_shared: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
+    is_split: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
     split_breakdown: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     paid_by: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Who actually paid for this transaction
     account: Mapped[str] = mapped_column(Text, nullable=False)
