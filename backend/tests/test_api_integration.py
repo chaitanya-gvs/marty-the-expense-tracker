@@ -31,7 +31,7 @@ class TestTransactionRoutes:
                 'description': 'Test transaction',
                 'is_shared': False,
                 'is_partial_refund': False,
-                'transfer_group_id': None,
+                'transaction_group_id': None,
                 'link_parent_id': None,
                 'tags': [],
                 'related_mails': [],
