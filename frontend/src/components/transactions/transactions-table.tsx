@@ -53,9 +53,10 @@ import { TagPill } from "./tag-pill";
 import { InlineTagDropdown } from "./inline-tag-dropdown";
 import { InlineCategoryDropdown } from "./inline-category-dropdown";
 import { BulkEditModal } from "./bulk-edit-modal";
-import { LinksColumn } from "./links-column";
 import { RelatedTransactionsDrawer } from "./related-transactions-drawer";
 import { SplitTransactionModal } from "./split-transaction-modal";
+import { LinkParentModal } from "./link-parent-modal";
+import { GroupTransferModal } from "./group-transfer-modal";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
 
 const columnHelper = createColumnHelper<Transaction>();
@@ -113,6 +114,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const [highlightedTransactionIds, setHighlightedTransactionIds] = useState<Set<string>>(new Set());
   const [drawerTransaction, setDrawerTransaction] = useState<Transaction | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [linkParentModalTransaction, setLinkParentModalTransaction] = useState<Transaction | null>(null);
+  const [groupTransferModalTransaction, setGroupTransferModalTransaction] = useState<Transaction | null>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
@@ -494,43 +497,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     </div>
                   )}
                 </div>
-                {row.original.is_shared && (
-                  <Badge 
-                    variant="outline" 
-                    className="text-xs border-blue-500 text-blue-600 dark:text-blue-400 shrink-0 bg-blue-50 dark:bg-blue-900/20"
-                    title="Shared with others (Splitwise)"
-                  >
-                    <Users className="h-3 w-3 inline mr-1" />
-                    Shared
-                  </Badge>
-                )}
-                {row.original.is_split && (
-                  <Badge 
-                    variant="outline" 
-                    className="text-xs border-purple-500 text-purple-600 dark:text-purple-400 shrink-0 bg-purple-50 dark:bg-purple-900/20"
-                    title="Part of a split transaction"
-                  >
-                    ⚡ Split
-                  </Badge>
-                )}
-                {row.original.link_parent_id && (
-                  <Badge 
-                    variant="outline" 
-                    className="text-xs border-green-500 text-green-600 dark:text-green-400 shrink-0 bg-green-50 dark:bg-green-900/20"
-                    title="Refund of another transaction"
-                  >
-                    ↩︎ Refund
-                  </Badge>
-                )}
-                {hasLinkedChildren && (
-                  <Badge 
-                    variant="outline" 
-                    className="text-xs border-amber-500 text-amber-600 dark:text-amber-400 shrink-0 bg-amber-50 dark:bg-amber-900/20"
-                    title={`${linkedChildren.length} refund${linkedChildren.length > 1 ? 's' : ''}`}
-                  >
-                    ↩︎ Has Refunds
-                  </Badge>
-                )}
               </div>
             </div>
           );
@@ -698,223 +664,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         size: 130,
       }),
       
-       // Shared toggle column
-       columnHelper.display({
-         id: "shared",
-         header: () => (
-           <div className="flex items-center justify-center gap-1 text-sm font-medium">
-             <Users className="h-4 w-4" />
-             Shared
-           </div>
-         ),
-         cell: ({ row }) => {
-           const transaction = row.original;
-           return (
-             <div className="flex justify-center items-center">
-               <Button
-                 variant="ghost"
-                 size="sm"
-                 className={cn(
-                   "h-8 w-8 p-0 rounded-full transition-all duration-200",
-                   transaction.is_shared
-                     ? "bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-400 dark:hover:bg-blue-800"
-                     : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700"
-                 )}
-                 onClick={() => {
-                   setSelectedTransactionForSplit(transaction);
-                   setIsSplitEditorOpen(true);
-                 }}
-                 title={transaction.is_shared ? "Mark as personal" : "Mark as shared"}
-               >
-                 <Users className="h-4 w-4" />
-               </Button>
-             </div>
-           );
-         },
-        size: 80,
-      }),
-      
-      // Links column
-      columnHelper.display({
-        id: "links",
-        header: () => (
-          <div className="flex items-center justify-center gap-1 text-sm font-medium">
-            <Link2 className="h-4 w-4" />
-            Links
-          </div>
-        ),
-        cell: ({ row }) => {
-          const transaction = row.original;
-          return (
-            <LinksColumn
-              transaction={transaction}
-              allTransactions={allTransactions}
-              onLinkRefund={async (childId, parentId) => {
-                try {
-                  await updateTransaction.mutateAsync({
-                    id: childId,
-                    updates: {
-                      link_parent_id: parentId,
-                      is_refund: true,
-                    },
-                  });
-                  toast.success("Refund linked successfully", {
-                    action: {
-                      label: "Undo",
-                      onClick: async () => {
-                        await updateTransaction.mutateAsync({
-                          id: childId,
-                          updates: {
-                            link_parent_id: undefined,
-                            is_refund: false,
-                          },
-                        });
-                      },
-                    },
-                  });
-                } catch (error) {
-                  toast.error("Failed to link refund");
-                  console.error("Link refund error:", error);
-                }
-              }}
-              onUnlinkRefund={async (childId) => {
-                try {
-                  await updateTransaction.mutateAsync({
-                    id: childId,
-                    updates: {
-                      link_parent_id: undefined,
-                      is_refund: false,
-                    },
-                  });
-                  toast.success("Refund unlinked successfully", {
-                    action: {
-                      label: "Undo",
-                      onClick: async () => {
-                        // This would need the original parent ID to restore
-                        // For now, we'll just show the toast without undo
-                      },
-                    },
-                  });
-                } catch (error) {
-                  toast.error("Failed to unlink refund");
-                  console.error("Unlink refund error:", error);
-                }
-              }}
-              onGroupTransfer={async (transactionIds) => {
-                try {
-                  await apiClient.groupTransfer(transactionIds);
-                  toast.success(`Grouped ${transactionIds.length} transactions as a transfer`, {
-                    action: {
-                      label: "Undo",
-                      onClick: async () => {
-                        // Ungroup by setting transaction_group_id to undefined for all
-                        const updatePromises = transactionIds.map(id => 
-                          updateTransaction.mutateAsync({
-                            id,
-                            updates: { transaction_group_id: undefined },
-                          })
-                        );
-                        await Promise.all(updatePromises);
-                      },
-                    },
-                  });
-                } catch (error) {
-                  toast.error("Failed to group transfer");
-                  console.error("Group transfer error:", error);
-                }
-              }}
-              onUngroupTransfer={async (transactionId) => {
-                try {
-                  await updateTransaction.mutateAsync({
-                    id: transactionId,
-                    updates: { transaction_group_id: undefined },
-                  });
-                  toast.success("Transfer ungrouped successfully", {
-                    action: {
-                      label: "Undo",
-                      onClick: async () => {
-                        // This would need the original group ID to restore
-                        // For now, we'll just show the toast without undo
-                      },
-                    },
-                  });
-                } catch (error) {
-                  toast.error("Failed to ungroup transfer");
-                  console.error("Ungroup transfer error:", error);
-                }
-              }}
-              onAddToTransferGroup={async (transactionIds) => {
-                try {
-                  const targetGroupId = transaction.transaction_group_id;
-                  const updatePromises = transactionIds.map(id => 
-                    updateTransaction.mutateAsync({
-                      id,
-                      updates: { transaction_group_id: targetGroupId },
-                    })
-                  );
-                  await Promise.all(updatePromises);
-                  toast.success(`Added ${transactionIds.length} transactions to transfer group`, {
-                    action: {
-                      label: "Undo",
-                      onClick: async () => {
-                        const unlinkPromises = transactionIds.map(id => 
-                          updateTransaction.mutateAsync({
-                            id,
-                            updates: { transaction_group_id: undefined },
-                          })
-                        );
-                        await Promise.all(unlinkPromises);
-                      },
-                    },
-                  });
-                } catch (error) {
-                  toast.error("Failed to add to transfer group");
-                  console.error("Add to transfer group error:", error);
-                }
-              }}
-              onRemoveFromTransferGroup={async (transactionId) => {
-                try {
-                  await updateTransaction.mutateAsync({
-                    id: transactionId,
-                    updates: { transaction_group_id: undefined },
-                  });
-                  toast.success("Transaction removed from transfer group", {
-                    action: {
-                      label: "Undo",
-                      onClick: async () => {
-                        // This would need the original group ID to restore
-                        // For now, we'll just show the toast without undo
-                      },
-                    },
-                  });
-                } catch (error) {
-                  toast.error("Failed to remove from transfer group");
-                  console.error("Remove from transfer group error:", error);
-                }
-              }}
-              onHighlightTransactions={handleHighlightTransactions}
-              onClearHighlight={handleClearHighlight}
-              onOpenDrawer={(transactionOrId) => {
-                // Accept either a transaction object or a transaction ID
-                if (typeof transactionOrId === 'string') {
-                  // If it's an ID, find the fresh transaction from allTransactions
-                  const freshTransaction = allTransactions.find(t => t.id === transactionOrId);
-                  if (freshTransaction) {
-                    setDrawerTransaction(freshTransaction);
-                    setIsDrawerOpen(true);
-                  }
-                } else {
-                  // If it's a transaction object, use it directly
-                  setDrawerTransaction(transactionOrId);
-                  setIsDrawerOpen(true);
-                }
-              }}
-            />
-          );
-        },
-        size: 100,
-      }),
-      
       // Tags column
       columnHelper.accessor("tags", {
          header: () => (
@@ -980,48 +729,201 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             </div>
           );
          },
-        size: 200,
+        size: 150,
       }),
       
-      // Actions column (3-dot menu)
+      // Actions column - 5 buttons: Shared, Transfer, Parent, Split, Links
       columnHelper.display({
         id: "actions",
         header: () => null,
         cell: ({ row }) => {
           const transaction = row.original;
+          
+          // Find parent transaction for refunds (if this transaction is a child/refund)
+          const parentTransaction = transaction.link_parent_id
+            ? allTransactions.find(t => t.id === transaction.link_parent_id)
+            : undefined;
+
+          // Find children transactions (if this transaction is a parent)
+          const childTransactions = allTransactions.filter(t => t.link_parent_id === transaction.id);
+
+          // Find transaction group for transfers or splits
+          const transactionGroup = transaction.transaction_group_id
+            ? allTransactions.filter(t => t.transaction_group_id === transaction.transaction_group_id)
+            : [];
+
+          // Determine if this is a transfer group or split group
+          const isTransferGroup = !!transaction.transaction_group_id && !transaction.is_split && transactionGroup.length > 0;
+          const isSplitGroup = !!transaction.transaction_group_id && transaction.is_split && transactionGroup.length > 0;
+
+          // This transaction is part of a refund link if it has a parent OR has children
+          const isRefundLinked = (!!transaction.link_parent_id && !!parentTransaction) || childTransactions.length > 0;
+          const isCredit = transaction.direction === "credit";
+
+          const handleRefundClick = () => {
+            if (isRefundLinked) {
+              // Active: open drawer to view relationship
+              setDrawerTransaction(transaction);
+              setIsDrawerOpen(true);
+            } else if (isCredit) {
+              // Inactive: open modal to link (only for credits)
+              setLinkParentModalTransaction(transaction);
+            }
+          };
+
+          const handleTransferClick = (e: React.MouseEvent) => {
+            e.stopPropagation();
+            e.preventDefault();
+            
+            if (isTransferGroup) {
+              // Active: open drawer to view group
+              setDrawerTransaction(transaction);
+              setIsDrawerOpen(true);
+            } else if (!isSplitGroup) {
+              // Inactive: open modal to group (only if not already in a split group)
+              setGroupTransferModalTransaction(transaction);
+            }
+          };
+
+          const handleSplitClick = (e: React.MouseEvent) => {
+            e.stopPropagation();
+            e.preventDefault();
+            
+            if (isSplitGroup) {
+              // Active: open drawer to view split group
+              setDrawerTransaction(transaction);
+              setIsDrawerOpen(true);
+            }
+          };
+
+          const handleRefundHover = () => {
+            if (isRefundLinked) {
+              // Highlight parent + current, OR current + all children
+              if (parentTransaction) {
+                handleHighlightTransactions([parentTransaction.id, transaction.id]);
+              } else if (childTransactions.length > 0) {
+                handleHighlightTransactions([transaction.id, ...childTransactions.map(c => c.id)]);
+              }
+            }
+          };
+
+          const handleTransferHover = () => {
+            if (isTransferGroup) {
+              handleHighlightTransactions(transactionGroup.map(t => t.id));
+            }
+          };
+
+          const handleSplitGroupHover = () => {
+            if (isSplitGroup) {
+              handleHighlightTransactions(transactionGroup.map(t => t.id));
+            }
+          };
+
           return (
-            <div className="flex justify-center items-center opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => {
-                    setSelectedTransactionId(transaction.id);
-                    setIsEditModalOpen(true);
-                  }}>
-                    <Edit3 className="h-4 w-4 mr-2" />
-                    Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setEditingTagsForTransaction(transaction.id)}>
-                    <TagIcon className="h-4 w-4 mr-2" />
-                    Edit Tags
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => {
+            <div className="flex justify-center items-center gap-1">
+              {/* 1. Shared button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-7 w-7 p-0 rounded-full transition-all duration-200",
+                  transaction.is_shared
+                    ? "bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-400 dark:hover:bg-blue-800"
+                    : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700"
+                )}
+                onClick={() => {
+                  setSelectedTransactionForSplit(transaction);
+                  setIsSplitEditorOpen(true);
+                }}
+                title={transaction.is_shared ? "Shared expense (mark as personal)" : "Share expenses"}
+              >
+                <Users className="h-3.5 w-3.5" />
+              </Button>
+
+              {/* 2. Transfer button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-7 w-7 p-0 rounded-full transition-all duration-200",
+                  isTransferGroup
+                    ? "bg-sky-100 text-sky-600 hover:bg-sky-200 dark:bg-sky-900 dark:text-sky-400 dark:hover:bg-sky-800"
+                    : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
+                  isSplitGroup && "opacity-50 cursor-not-allowed"
+                )}
+                onClick={handleTransferClick}
+                onMouseEnter={handleTransferHover}
+                onMouseLeave={handleClearHighlight}
+                title={isTransferGroup ? "View transfer group" : isSplitGroup ? "Cannot group (part of split)" : "Group as transfer"}
+                disabled={isSplitGroup}
+              >
+                <span className="text-sm">⇄</span>
+              </Button>
+
+              {/* 3. Parent/Refund button - show for credits (to link) or any with children (to view) */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-7 w-7 p-0 rounded-full transition-all duration-200",
+                  isRefundLinked
+                    ? "bg-emerald-100 text-emerald-600 hover:bg-emerald-200 dark:bg-emerald-900 dark:text-emerald-400 dark:hover:bg-emerald-800"
+                    : isCredit
+                      ? "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700"
+                      : "bg-gray-50 text-gray-300 dark:bg-gray-900 dark:text-gray-600 cursor-not-allowed",
+                  !isCredit && !isRefundLinked && "opacity-30"
+                )}
+                onClick={handleRefundClick}
+                onMouseEnter={handleRefundHover}
+                onMouseLeave={handleClearHighlight}
+                title={isRefundLinked ? "View refund relationship" : isCredit ? "Link to parent purchase" : "Not applicable for debits"}
+                disabled={!isCredit && !isRefundLinked}
+              >
+                <span className="text-sm">↩︎</span>
+              </Button>
+
+              {/* 4. Split button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-7 w-7 p-0 rounded-full transition-all duration-200",
+                  isSplitGroup
+                    ? "bg-purple-100 text-purple-600 hover:bg-purple-200 dark:bg-purple-900 dark:text-purple-400 dark:hover:bg-purple-800"
+                    : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700"
+                )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isSplitGroup) {
+                    handleSplitClick(e);
+                  } else {
                     setSelectedTransactionForSplitting(transaction);
                     setIsSplitTransactionModalOpen(true);
-                  }}>
-                    <Split className="h-4 w-4 mr-2" />
-                    Split Transaction
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  }
+                }}
+                onMouseEnter={handleSplitGroupHover}
+                onMouseLeave={handleClearHighlight}
+                title={isSplitGroup ? "View split transaction group" : "Split transaction"}
+              >
+                <Split className="h-3.5 w-3.5" />
+              </Button>
+
+              {/* 5. Links button (dummy) */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 rounded-full transition-all duration-200 bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700"
+                onClick={() => {
+                  toast.info("Links functionality coming soon");
+                }}
+                title="Links (coming soon)"
+              >
+                <Link2 className="h-3.5 w-3.5" />
+              </Button>
             </div>
           );
         },
-        size: 50,
+        size: 200,
       }),
       ];
     },
@@ -1178,7 +1080,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           className="flex-shrink-0 w-full overflow-x-auto bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-md z-50"
           onScroll={handleHeaderScroll}
         >
-          <table className={`w-full ${isMultiSelectMode ? 'min-w-[1140px]' : 'min-w-[1100px]'} table-auto md:table-fixed`}>
+          <table className={`w-full ${isMultiSelectMode ? 'min-w-[1220px]' : 'min-w-[1180px]'} table-auto md:table-fixed`}>
             <colgroup>
               {isMultiSelectMode && <col className="w-[40px]" />}
               <col className="w-[100px]" />
@@ -1186,10 +1088,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               <col className="w-[120px]" />
               <col className="w-[130px]" />
               <col className="w-[130px]" />
-              <col className="w-[80px]" />
-              <col className="w-[100px]" />
+              <col className="w-[150px]" />
               <col className="w-[200px]" />
-              <col className="w-[50px]" />
             </colgroup>
             <thead>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -1223,7 +1123,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           className="flex-1 overflow-auto relative w-full"
           onScroll={handleBodyScroll}
         >
-          <table className={`w-full ${isMultiSelectMode ? 'min-w-[1140px]' : 'min-w-[1100px]'} table-auto md:table-fixed`}>
+          <table className={`w-full ${isMultiSelectMode ? 'min-w-[1220px]' : 'min-w-[1180px]'} table-auto md:table-fixed`}>
             <colgroup>
               {isMultiSelectMode && <col className="w-[40px]" />}
               <col className="w-[100px]" />
@@ -1231,10 +1131,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               <col className="w-[120px]" />
               <col className="w-[130px]" />
               <col className="w-[130px]" />
-              <col className="w-[80px]" />
-              <col className="w-[100px]" />
+              <col className="w-[150px]" />
               <col className="w-[200px]" />
-              <col className="w-[50px]" />
             </colgroup>
             <tbody className="[&_tr:last-child]:border-0">
             {rows.map((row) => (
@@ -1345,6 +1243,123 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           onClose={() => {
             setIsSplitTransactionModalOpen(false);
             setSelectedTransactionForSplitting(null);
+          }}
+        />
+      )}
+
+      {/* Link Parent Modal */}
+      {linkParentModalTransaction && (
+        <LinkParentModal
+          transaction={linkParentModalTransaction}
+          parentTransaction={
+            linkParentModalTransaction.link_parent_id
+              ? allTransactions.find(t => t.id === linkParentModalTransaction.link_parent_id)
+              : undefined
+          }
+          allTransactions={allTransactions}
+          isOpen={!!linkParentModalTransaction}
+          onClose={() => setLinkParentModalTransaction(null)}
+          onLink={async (parentId) => {
+            try {
+              await updateTransaction.mutateAsync({
+                id: linkParentModalTransaction.id,
+                updates: {
+                  link_parent_id: parentId,
+                  is_refund: true,
+                },
+              });
+              toast.success("Refund linked successfully");
+              setLinkParentModalTransaction(null);
+            } catch (error) {
+              toast.error("Failed to link refund");
+              console.error("Link refund error:", error);
+            }
+          }}
+          onUnlink={async () => {
+            try {
+              await updateTransaction.mutateAsync({
+                id: linkParentModalTransaction.id,
+                updates: {
+                  link_parent_id: undefined,
+                  is_refund: false,
+                },
+              });
+              toast.success("Refund unlinked successfully");
+              setLinkParentModalTransaction(null);
+            } catch (error) {
+              toast.error("Failed to unlink refund");
+              console.error("Unlink refund error:", error);
+            }
+          }}
+        />
+      )}
+
+      {/* Group Transfer Modal */}
+      {groupTransferModalTransaction && (
+        <GroupTransferModal
+          transaction={groupTransferModalTransaction}
+          transferGroup={
+            groupTransferModalTransaction.transaction_group_id
+              ? allTransactions.filter(t => 
+                  t.transaction_group_id === groupTransferModalTransaction.transaction_group_id && 
+                  !t.is_split
+                )
+              : []
+          }
+          allTransactions={allTransactions}
+          isOpen={!!groupTransferModalTransaction}
+          onClose={() => setGroupTransferModalTransaction(null)}
+          onGroup={async (transactionIds) => {
+            try {
+              await apiClient.groupTransfer(transactionIds);
+              toast.success(`Grouped ${transactionIds.length} transactions as a transfer`);
+              setGroupTransferModalTransaction(null);
+            } catch (error) {
+              toast.error("Failed to group transfer");
+              console.error("Group transfer error:", error);
+            }
+          }}
+          onUngroup={async () => {
+            try {
+              await updateTransaction.mutateAsync({
+                id: groupTransferModalTransaction.id,
+                updates: { transaction_group_id: undefined },
+              });
+              toast.success("Transfer ungrouped successfully");
+              setGroupTransferModalTransaction(null);
+            } catch (error) {
+              toast.error("Failed to ungroup transfer");
+              console.error("Ungroup transfer error:", error);
+            }
+          }}
+          onAddToGroup={async (transactionIds) => {
+            try {
+              const targetGroupId = groupTransferModalTransaction.transaction_group_id;
+              const updatePromises = transactionIds.map(id => 
+                updateTransaction.mutateAsync({
+                  id,
+                  updates: { transaction_group_id: targetGroupId },
+                })
+              );
+              await Promise.all(updatePromises);
+              toast.success(`Added ${transactionIds.length} transactions to transfer group`);
+              setGroupTransferModalTransaction(null);
+            } catch (error) {
+              toast.error("Failed to add to transfer group");
+              console.error("Add to transfer group error:", error);
+            }
+          }}
+          onRemoveFromGroup={async (transactionId) => {
+            try {
+              await updateTransaction.mutateAsync({
+                id: transactionId,
+                updates: { transaction_group_id: undefined },
+              });
+              toast.success("Transaction removed from transfer group");
+            } catch (error) {
+              toast.error("Failed to remove from transfer group");
+              console.error("Remove from transfer group error:", error);
+            }
           }}
         />
       )}

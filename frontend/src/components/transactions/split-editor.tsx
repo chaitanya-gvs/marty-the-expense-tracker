@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { X, Plus, Minus, Users, Calculator } from "lucide-react";
 import { Transaction, SplitBreakdown, SplitEntry } from "@/lib/types";
 import { formatCurrency } from "@/lib/format-utils";
+import { ParticipantCombobox } from "./participant-combobox";
 
 interface SplitEditorProps {
   transaction: Transaction;
@@ -161,7 +162,7 @@ export function SplitEditor({ transaction, isOpen, isLoading = false, onClose, o
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            Split Transaction
+            Share Expenses
           </DialogTitle>
         </DialogHeader>
 
@@ -239,14 +240,16 @@ export function SplitEditor({ transaction, isOpen, isLoading = false, onClose, o
             
             {/* Add Participant */}
             <div className="flex gap-2">
-              <Input
-                placeholder="Add participant name"
-                value={newParticipant}
-                onChange={(e) => setNewParticipant(e.target.value)}
-                onKeyPress={(e) => e.key === "Enter" && addParticipant()}
-                className="flex-1"
-              />
-              <Button onClick={addParticipant} size="sm" variant="outline">
+              <div className="flex-1">
+                <ParticipantCombobox
+                  value={newParticipant}
+                  onChange={setNewParticipant}
+                  placeholder="Select or add participant"
+                  excludeParticipants={entries.map(e => e.participant)}
+                  onAddNew={() => {}}
+                />
+              </div>
+              <Button onClick={addParticipant} size="sm" variant="outline" disabled={!newParticipant.trim()}>
                 <Plus className="h-4 w-4" />
               </Button>
             </div>

@@ -17,6 +17,7 @@ import { Transaction } from "@/lib/types";
 import { Check, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { CategoryAutocomplete } from "./category-autocomplete";
+import { FieldAutocomplete } from "./field-autocomplete";
 
 interface TransactionInlineEditProps {
   transaction: Transaction;
@@ -85,17 +86,33 @@ export function TransactionInlineEdit({
 
   const renderInput = () => {
     switch (field) {
-              case "category":
-                return (
-                  <CategoryAutocomplete
-                    value={value}
-                    onValueChange={setValue}
-                    onSave={handleSave}
-                    onCancel={onCancel}
-                    placeholder="Type category..."
-                    className="w-full"
-                  />
-                );
+      case "category":
+        return (
+          <CategoryAutocomplete
+            value={value}
+            onValueChange={setValue}
+            onSave={handleSave}
+            onCancel={onCancel}
+            placeholder="Type category..."
+            className="w-full"
+          />
+        );
+
+      case "description":
+      case "notes":
+      case "account":
+      case "paid_by":
+        return (
+          <FieldAutocomplete
+            fieldName={field}
+            value={value}
+            onValueChange={setValue}
+            onSave={handleSave}
+            onCancel={onCancel}
+            placeholder={`Type ${field}...`}
+            className="w-full"
+          />
+        );
 
       case "direction":
         return (
@@ -137,8 +154,8 @@ export function TransactionInlineEdit({
     }
   };
 
-  // For category field, the autocomplete component handles its own actions
-  if (field === "category") {
+  // For category and field autocomplete components, they handle their own actions
+  if (field === "category" || field === "description" || field === "notes" || field === "account" || field === "paid_by") {
     return renderInput();
   }
 

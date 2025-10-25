@@ -375,11 +375,13 @@ export function GroupTransferModal({
               <ResultItem
                 key={sug.id}
                 selected={selectedIds.has(sug.id)}
+                onClick={() => handleSelectTransaction(sug.id)}
               >
-                <label className="flex items-center gap-3 cursor-pointer">
+                <div className="flex items-center gap-3">
                   <Checkbox
                     checked={selectedIds.has(sug.id)}
                     onCheckedChange={() => handleSelectTransaction(sug.id)}
+                    onClick={(e) => e.stopPropagation()}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm text-[var(--modal-text)]">
@@ -411,7 +413,7 @@ export function GroupTransferModal({
                       </div>
                     </div>
                   </div>
-                </label>
+                </div>
               </ResultItem>
             ))}
         </div>

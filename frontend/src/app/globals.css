@@ -110,6 +110,20 @@
   --sidebar-accent-foreground: oklch(0.985 0.002 247.839);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.551 0.027 264.364);
+  
+  /* Modal Design Tokens */
+  --modal-bg: #0b1220;
+  --modal-panel: #0f172a;
+  --modal-panel-header: #0b1324;
+  --modal-border: #1f2937;
+  --modal-muted: #94a3b8;
+  --modal-text: #e5e7eb;
+  --modal-accent: #6366f1;
+  --modal-accent-2: #06b6d4;
+  --modal-accent-3: #f59e0b;
+  --modal-danger: #ef4444;
+  --modal-success: #22c55e;
+  --modal-shadow: 0 10px 40px rgba(0,0,0,0.45);
 }
 
 @layer base {

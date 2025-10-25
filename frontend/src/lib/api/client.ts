@@ -228,6 +228,19 @@ class ApiClient {
     return this.request<Transaction[]>(`/transactions/search?${params.toString()}`);
   }
 
+  async getFieldValues(
+    fieldName: string,
+    query?: string,
+    limit: number = 20
+  ): Promise<ApiResponse<string[]>> {
+    const params = new URLSearchParams();
+    if (query) {
+      params.append("query", query);
+    }
+    params.append("limit", String(limit));
+    return this.request<string[]>(`/transactions/field-values/${fieldName}?${params.toString()}`);
+  }
+
   // Budgets
   async getBudgets(): Promise<ApiResponse<Budget[]>> {
     return this.request<Budget[]>("/budgets");
