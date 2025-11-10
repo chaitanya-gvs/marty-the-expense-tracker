@@ -22,6 +22,7 @@ class Category(Base):
     color: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    transaction_type: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 'debit', 'credit', or None for both
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     
@@ -34,6 +35,7 @@ class Category(Base):
         Index('ix_categories_active', 'is_active'),
         Index('ix_categories_parent', 'parent_id'),
         Index('ix_categories_slug', 'slug'),
+        Index('ix_categories_transaction_type', 'transaction_type'),
         UniqueConstraint('parent_id', 'name', name='uq_categories_parent_name'),
         UniqueConstraint('slug', name='uq_categories_slug'),
     )

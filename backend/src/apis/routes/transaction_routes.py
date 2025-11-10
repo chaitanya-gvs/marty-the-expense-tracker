@@ -16,6 +16,7 @@ import asyncpg
 
 from src.services.database_manager.operations import TransactionOperations, CategoryOperations, TagOperations
 from src.services.database_manager.connection import get_session_factory, refresh_connection_pool
+from src.services.email_ingestion.client import EmailClient
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -68,6 +69,7 @@ class TransactionCreate(BaseModel):
     is_refund: bool = False
     is_split: bool = False
     is_transfer: bool = False
+    is_flagged: bool = False
     split_breakdown: Optional[Dict[str, Any]] = None
     link_parent_id: Optional[str] = None
     transaction_group_id: Optional[str] = None
@@ -92,12 +94,16 @@ class TransactionUpdate(BaseModel):
     is_refund: Optional[bool] = None
     is_split: Optional[bool] = None
     is_transfer: Optional[bool] = None
+    is_flagged: Optional[bool] = None
     split_breakdown: Optional[Dict[str, Any]] = None
+    paid_by: Optional[str] = None
     link_parent_id: Optional[str] = None
     transaction_group_id: Optional[str] = None
     related_mails: Optional[List[str]] = None
     source_file: Optional[str] = None
     raw_data: Optional[Dict[str, Any]] = None
+    is_deleted: Optional[bool] = None
+    deleted_at: Optional[datetime] = None
 
 
 class BulkTransactionUpdate(BaseModel):
@@ -123,6 +129,7 @@ class TransactionResponse(BaseModel):
     is_refund: bool
     is_split: bool
     is_transfer: bool
+    is_flagged: Optional[bool] = False
     split_breakdown: Optional[Dict[str, Any]] = None
     paid_by: Optional[str] = None
     link_parent_id: Optional[str] = None
@@ -133,6 +140,8 @@ class TransactionResponse(BaseModel):
     created_at: str
     updated_at: str
     status: str = "reviewed"
+    is_deleted: bool = False
+    deleted_at: Optional[str] = None
 
 
 class TransactionFilters(BaseModel):
@@ -146,6 +155,8 @@ class TransactionFilters(BaseModel):
     direction: Optional[str] = Field(None, pattern="^(debit|credit)$")
     transaction_type: Optional[str] = Field(None, pattern="^(all|shared|refunds|transfers)$")
     search: Optional[str] = None
+    include_uncategorized: Optional[bool] = None
+    is_flagged: Optional[bool] = None
 
 
 class TransactionSort(BaseModel):
@@ -198,6 +209,7 @@ class CategoryCreate(BaseModel):
     color: Optional[str] = Field(None, pattern="^#[0-9A-Fa-f]{6}$")
     parent_id: Optional[str] = None
     sort_order: Optional[int] = Field(None, ge=0)
+    transaction_type: Optional[str] = Field(None, description="Transaction type: 'debit', 'credit', or None for both")
 
 
 class CategoryUpdate(BaseModel):
@@ -206,6 +218,7 @@ class CategoryUpdate(BaseModel):
     color: Optional[str] = Field(None, pattern="^#[0-9A-Fa-f]{6}$")
     parent_id: Optional[str] = None
     sort_order: Optional[int] = Field(None, ge=0)
+    transaction_type: Optional[str] = Field(None, description="Transaction type: 'debit', 'credit', or None for both")
 
 
 class SubcategoryCreate(BaseModel):
@@ -409,6 +422,11 @@ def _parse_raw_data(raw_data: Any) -> Optional[Dict[str, Any]]:
 
 def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> TransactionResponse:
     """Convert database transaction to API response format."""
+    is_flagged = transaction.get('is_flagged')
+    # Handle None or missing is_flagged - default to False
+    if is_flagged is None:
+        is_flagged = False
+    
     return TransactionResponse(
         id=str(transaction.get('id', '')),
         date=transaction.get('transaction_date', '').isoformat() if transaction.get('transaction_date') else '',
@@ -425,6 +443,7 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
         is_refund=transaction.get('is_partial_refund', False),
         is_split=transaction.get('is_split', False),
         is_transfer=bool(transaction.get('transaction_group_id')),
+        is_flagged=is_flagged,
         split_breakdown=transaction.get('split_breakdown'),
         paid_by=transaction.get('paid_by'),
         link_parent_id=str(transaction.get('link_parent_id')) if transaction.get('link_parent_id') else None,
@@ -434,7 +453,9 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
         raw_data=_parse_raw_data(transaction.get('raw_data')),
         created_at=transaction.get('created_at', '').isoformat() if transaction.get('created_at') else '',
         updated_at=transaction.get('updated_at', '').isoformat() if transaction.get('updated_at') else '',
-        status="reviewed"
+        status="reviewed",
+        is_deleted=transaction.get('is_deleted', False),
+        deleted_at=transaction.get('deleted_at', '').isoformat() if transaction.get('deleted_at') else None
     )
 
 
@@ -485,13 +506,14 @@ async def get_transactions(
     date_range_end: Optional[date] = Query(None, description="End date for filtering"),
     accounts: Optional[str] = Query(None, description="Comma-separated account names"),
     categories: Optional[str] = Query(None, description="Comma-separated category names"),
-    subcategories: Optional[str] = Query(None, description="Comma-separated subcategory names"),
+    include_uncategorized: bool = Query(False, description="Include uncategorized transactions when filtering by category"),
     tags: Optional[str] = Query(None, description="Comma-separated tag names"),
     amount_min: Optional[float] = Query(None, description="Minimum amount"),
     amount_max: Optional[float] = Query(None, description="Maximum amount"),
     direction: Optional[str] = Query(None, pattern="^(debit|credit)$", description="Transaction direction"),
     transaction_type: Optional[str] = Query(None, pattern="^(all|shared|refunds|transfers)$", description="Transaction type filter"),
     search: Optional[str] = Query(None, description="Search in description and notes"),
+    is_flagged: Optional[bool] = Query(None, description="Filter transactions by flagged status"),
     sort_field: Optional[str] = Query("date", description="Field to sort by"),
     sort_direction: Optional[str] = Query("desc", pattern="^(asc|desc)$", description="Sort direction"),
     page: int = Query(1, ge=1, description="Page number"),
@@ -517,25 +539,35 @@ async def get_transactions(
                 order_by="DESC" if sort_direction == "desc" else "ASC"
             )
         
+        # Prepare filter values
+        account_filter_values = [account.strip() for account in accounts.split(',')] if accounts else []
+        account_filter_values = [account for account in account_filter_values if account]
+        category_filter_values = [category.strip() for category in categories.split(',')] if categories else []
+        category_filter_values = [category for category in category_filter_values if category]
+        tag_filter_values = [tag.strip() for tag in tags.split(',')] if tags else []
+        tag_filter_values = [tag for tag in tag_filter_values if tag]
+
         # Apply additional filters
         filtered_transactions = []
         for transaction in transactions:
             # Apply account filter
-            if accounts and transaction.get('account') not in accounts.split(','):
+            if account_filter_values and transaction.get('account') not in account_filter_values:
                 continue
             
             # Apply category filter
-            if categories and transaction.get('category') not in categories.split(','):
-                continue
-            
-            # Apply subcategory filter
-            if subcategories and transaction.get('sub_category') not in subcategories.split(','):
+            transaction_category = transaction.get('category')
+            is_transaction_uncategorized = transaction_category is None or str(transaction_category).strip() == ''
+            if category_filter_values:
+                if transaction_category not in category_filter_values:
+                    if not (include_uncategorized and is_transaction_uncategorized):
+                        continue
+            elif include_uncategorized and not is_transaction_uncategorized:
                 continue
             
             # Apply tag filter
-            if tags:
+            if tag_filter_values:
                 transaction_tags = transaction.get('tags', []) or []
-                if not any(tag in transaction_tags for tag in tags.split(',')):
+                if not any(tag in transaction_tags for tag in tag_filter_values):
                     continue
             
             # Apply amount filter
@@ -547,6 +579,14 @@ async def get_transactions(
             # Apply direction filter
             if direction and transaction.get('direction') != direction:
                 continue
+
+            # Apply flagged filter
+            if is_flagged is not None:
+                transaction_flagged = transaction.get('is_flagged')
+                if transaction_flagged is None:
+                    transaction_flagged = False
+                if bool(transaction_flagged) != is_flagged:
+                    continue
             
             # Apply transaction type filter
             if transaction_type:
@@ -917,6 +957,13 @@ async def bulk_update_transactions(request: BulkTransactionUpdate):
                     else:
                         update_data[field] = value
                 
+                # Extract paid_by from split_breakdown if present
+                if "split_breakdown" in update_data:
+                    split_breakdown = update_data["split_breakdown"]
+                    if split_breakdown and isinstance(split_breakdown, dict):
+                        if "paid_by" in split_breakdown and "paid_by" not in update_data:
+                            update_data["paid_by"] = split_breakdown["paid_by"]
+                
                 # Handle tags separately - remove from update_data to handle via TagOperations
                 tag_names = None
                 if "tags" in update_data:
@@ -998,18 +1045,25 @@ async def update_transaction(transaction_id: str, updates: TransactionUpdate):
                 update_data[field] = value
         
         # Auto-calculate split_share_amount if split_breakdown is provided but split_share_amount is not
-        if "split_breakdown" in update_data and "split_share_amount" not in update_data:
+        # Also extract paid_by from split_breakdown if present
+        if "split_breakdown" in update_data:
             split_breakdown = update_data["split_breakdown"]
             if split_breakdown and isinstance(split_breakdown, dict):
-                # Get the transaction to access the total amount
-                current_transaction = await handle_database_operation(
-                    TransactionOperations.get_transaction_by_id,
-                    transaction_id
-                )
-                if current_transaction:
-                    total_amount = float(current_transaction.get('amount', 0))
-                    split_share_amount = _calculate_split_share_amount(split_breakdown, total_amount)
-                    update_data["split_share_amount"] = split_share_amount
+                # Extract paid_by from split_breakdown and store it as a top-level field
+                if "paid_by" in split_breakdown and "paid_by" not in update_data:
+                    update_data["paid_by"] = split_breakdown["paid_by"]
+                
+                # Calculate split_share_amount if not provided
+                if "split_share_amount" not in update_data:
+                    # Get the transaction to access the total amount
+                    current_transaction = await handle_database_operation(
+                        TransactionOperations.get_transaction_by_id,
+                        transaction_id
+                    )
+                    if current_transaction:
+                        total_amount = float(current_transaction.get('amount', 0))
+                        split_share_amount = _calculate_split_share_amount(split_breakdown, total_amount)
+                        update_data["split_share_amount"] = split_share_amount
         
         # Handle tags separately - remove from update_data to handle via TagOperations
         tag_names = None
@@ -1244,13 +1298,23 @@ async def split_transaction(request: SplitTransactionRequest):
             raise HTTPException(status_code=404, detail="Transaction not found")
         
         # Validate that the sum of parts equals the original amount
+        # For shared transactions, validate against split_share_amount (the user's share)
+        # For regular transactions, validate against the full amount
         total_parts_amount = sum(part.amount for part in request.parts)
-        original_amount = abs(float(original_transaction.get('amount', 0)))
+        is_shared = original_transaction.get('is_shared', False)
+        split_share_amount = original_transaction.get('split_share_amount')
         
-        if abs(float(total_parts_amount) - original_amount) > 0.01:  # Allow small floating point differences
+        if is_shared and split_share_amount is not None:
+            # Splitting a shared transaction - validate against the user's share
+            expected_amount = abs(float(split_share_amount))
+        else:
+            # Splitting a regular transaction - validate against the full amount
+            expected_amount = abs(float(original_transaction.get('amount', 0)))
+        
+        if abs(float(total_parts_amount) - expected_amount) > 0.01:  # Allow small floating point differences
             raise HTTPException(
                 status_code=400, 
-                detail=f"Sum of split parts ({total_parts_amount}) does not equal original amount ({original_amount})"
+                detail=f"Sum of split parts ({total_parts_amount}) does not equal expected amount ({expected_amount})"
             )
         
         # Generate a transaction group ID for the split
@@ -1258,8 +1322,41 @@ async def split_transaction(request: SplitTransactionRequest):
         
         # Create new transactions for each split part
         created_transactions = []
+        
+        # Preserve shared transaction properties if applicable
+        original_is_shared = original_transaction.get('is_shared', False)
+        original_split_breakdown = original_transaction.get('split_breakdown')
+        original_paid_by = original_transaction.get('paid_by')
+        
         for part in request.parts:
             try:
+                # For shared transactions, each split part inherits the shared properties
+                # but with a new split_breakdown that represents just this portion
+                if original_is_shared and original_split_breakdown:
+                    # This part represents a portion of the user's share
+                    # Create a simplified split_breakdown showing that:
+                    # - Total amount is the part amount
+                    # - User's share is the full part amount (since we're splitting their share)
+                    # - Original payer information is preserved
+                    part_split_share_amount = part.amount
+                    part_is_shared = True
+                    
+                    # Create a split_breakdown with just "me" as participant for this part
+                    # This ensures settlement calculations work correctly
+                    part_split_breakdown = {
+                        "mode": "custom",
+                        "include_me": True,
+                        "entries": [
+                            {"participant": "me", "amount": part.amount}
+                        ],
+                        "paid_by": original_paid_by,
+                        "total_participants": 1
+                    }
+                else:
+                    part_split_share_amount = None
+                    part_is_shared = False
+                    part_split_breakdown = None
+                
                 # Create the split transaction with the same base properties as the original
                 transaction_id = await handle_database_operation(
                     TransactionOperations.create_transaction,
@@ -1271,11 +1368,12 @@ async def split_transaction(request: SplitTransactionRequest):
                     category=part.category or original_transaction.get('category'),
                     description=part.description,
                     transaction_time=original_transaction.get('transaction_time'),
-                    split_share_amount=None,
+                    split_share_amount=part_split_share_amount,
                     is_partial_refund=False,
-                    is_shared=False,
+                    is_shared=part_is_shared,
                     is_split=True,  # Mark as a split transaction
-                    split_breakdown=None,
+                    split_breakdown=part_split_breakdown,
+                    paid_by=original_paid_by if original_is_shared else None,
                     sub_category=part.subcategory or original_transaction.get('sub_category'),
                     tags=part.tags,
                     notes=part.notes,
@@ -1295,7 +1393,7 @@ async def split_transaction(request: SplitTransactionRequest):
                 created_transactions.append(_convert_db_transaction_to_response(created_transaction))
                 
             except Exception as e:
-                logger.error(f"Failed to create split part: {e}")
+                logger.error(f"Failed to create split part {part.description} (amount: {part.amount}): {e}")
                 # Continue with other parts even if one fails
                 continue
         
@@ -1343,10 +1441,12 @@ async def split_transaction(request: SplitTransactionRequest):
 # ============================================================================
 
 @router.get("/categories/", response_model=ApiResponse)
-async def get_categories():
-    """Get all active categories."""
+async def get_categories(
+    transaction_type: Optional[str] = Query(None, description="Filter by transaction type: 'debit' or 'credit'")
+):
+    """Get all active categories, optionally filtered by transaction type."""
     try:
-        categories = await CategoryOperations.get_all_categories()
+        categories = await CategoryOperations.get_all_categories(transaction_type=transaction_type)
         return ApiResponse(data=categories)
         
     except Exception as e:
@@ -1357,11 +1457,12 @@ async def get_categories():
 @router.get("/categories/search", response_model=ApiResponse)
 async def search_categories(
     query: str = Query(..., description="Search query for category names"),
-    limit: int = Query(20, ge=1, le=100, description="Maximum number of results")
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of results"),
+    transaction_type: Optional[str] = Query(None, description="Filter by transaction type: 'debit' or 'credit'")
 ):
-    """Search categories by name."""
+    """Search categories by name, optionally filtered by transaction type."""
     try:
-        categories = await CategoryOperations.search_categories(query, limit)
+        categories = await CategoryOperations.search_categories(query, limit, transaction_type=transaction_type)
         return ApiResponse(data=categories)
         
     except Exception as e:
@@ -1394,7 +1495,8 @@ async def create_category(category_data: CategoryCreate):
             name=category_data.name,
             color=category_data.color,
             parent_id=category_data.parent_id,
-            sort_order=category_data.sort_order
+            sort_order=category_data.sort_order,
+            transaction_type=category_data.transaction_type
         )
         
         return ApiResponse(data={"id": category_id}, message="Category created successfully")
@@ -1415,7 +1517,8 @@ async def update_category(category_id: str, category_data: CategoryUpdate):
             name=category_data.name,
             color=category_data.color,
             parent_id=category_data.parent_id,
-            sort_order=category_data.sort_order
+            sort_order=category_data.sort_order,
+            transaction_type=category_data.transaction_type
         )
         
         if not success:
@@ -1449,12 +1552,22 @@ async def delete_category(category_id: str):
 async def upsert_category(category_data: CategoryCreate):
     """Upsert a category (create if not exists, update if exists)."""
     try:
+        # For upsert, we need to update the method to accept transaction_type
+        # For now, we'll create/update without transaction_type in upsert
+        # This can be enhanced later if needed
         category_id = await CategoryOperations.upsert_category(
             name=category_data.name,
             color=category_data.color,
             parent_id=category_data.parent_id,
             sort_order=category_data.sort_order
         )
+        
+        # If transaction_type is provided, update it
+        if category_data.transaction_type is not None:
+            await CategoryOperations.update_category(
+                category_id=category_id,
+                transaction_type=category_data.transaction_type
+            )
         
         return ApiResponse(data={"id": category_id}, message="Category upserted successfully")
         
@@ -1546,4 +1659,250 @@ async def get_suggestions_summary():
         
     except Exception as e:
         logger.error(f"Failed to get suggestions summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# EMAIL LINKING ROUTES
+# ============================================================================
+
+class EmailSearchFilters(BaseModel):
+    """Filters for searching emails related to a transaction."""
+    date_offset_days: int = Field(1, ge=0, le=30, description="Days to search before/after transaction date")
+    include_amount_filter: bool = Field(True, description="Whether to filter by amount")
+    start_date: Optional[str] = Field(None, description="Custom start date (YYYY-MM-DD)")
+    end_date: Optional[str] = Field(None, description="Custom end date (YYYY-MM-DD)")
+
+
+class EmailLinkRequest(BaseModel):
+    """Request to link an email to a transaction."""
+    message_id: str = Field(..., description="Gmail message ID to link")
+
+
+@router.get("/{transaction_id}/emails/search", response_model=ApiResponse)
+async def search_transaction_emails(
+    transaction_id: str,
+    date_offset_days: int = Query(1, ge=0, le=30, description="Days to search before/after transaction date"),
+    include_amount_filter: bool = Query(True, description="Whether to filter by amount"),
+    start_date: Optional[str] = Query(None, description="Custom start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="Custom end date (YYYY-MM-DD)"),
+    custom_search_term: Optional[str] = Query(None, description="Custom search term (e.g., 'Uber', 'Ola', 'Swiggy')"),
+    search_amount: Optional[float] = Query(None, description="Optional override for search amount (e.g., rounded amount for UPI)"),
+    also_search_amount_minus_one: bool = Query(False, description="Also search for amount-1 (for UPI rounding scenarios)")
+):
+    """Search Gmail for emails related to a transaction across both accounts."""
+    try:
+        # Get transaction details
+        transaction = await handle_database_operation(
+            TransactionOperations.get_transaction_by_id,
+            transaction_id
+        )
+        
+        if not transaction:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        
+        all_emails = []
+        
+        # Search primary account
+        try:
+            logger.info("Searching primary Gmail account...")
+            primary_client = EmailClient(account_id="primary")
+            primary_emails = primary_client.search_emails_for_transaction(
+                transaction_date=str(transaction["transaction_date"]),
+                transaction_amount=float(transaction["amount"]),
+                date_offset_days=date_offset_days,
+                include_amount_filter=include_amount_filter,
+                start_date=start_date,
+                end_date=end_date,
+                custom_search_term=custom_search_term,
+                search_amount=search_amount,
+                also_search_amount_minus_one=also_search_amount_minus_one
+            )
+            all_emails.extend(primary_emails)
+            logger.info(f"Found {len(primary_emails)} emails in primary account")
+        except Exception as e:
+            logger.error(f"Error searching primary account: {e}")
+            # Continue to secondary account even if primary fails
+        
+        # Search secondary account if configured
+        try:
+            from src.utils.settings import get_settings
+            settings = get_settings()
+            if settings.GOOGLE_REFRESH_TOKEN_2:
+                logger.info("Searching secondary Gmail account...")
+                secondary_client = EmailClient(account_id="secondary")
+                secondary_emails = secondary_client.search_emails_for_transaction(
+                    transaction_date=str(transaction["transaction_date"]),
+                    transaction_amount=float(transaction["amount"]),
+                    date_offset_days=date_offset_days,
+                    include_amount_filter=include_amount_filter,
+                    start_date=start_date,
+                    end_date=end_date,
+                    custom_search_term=custom_search_term,
+                    search_amount=search_amount,
+                    also_search_amount_minus_one=also_search_amount_minus_one
+                )
+                all_emails.extend(secondary_emails)
+                logger.info(f"Found {len(secondary_emails)} emails in secondary account")
+            else:
+                logger.info("Secondary account not configured, skipping")
+        except Exception as e:
+            logger.error(f"Error searching secondary account: {e}")
+            # Continue even if secondary fails
+        
+        # Sort by date (most recent first)
+        all_emails.sort(key=lambda x: x.get("date", ""), reverse=True)
+        
+        return ApiResponse(data=all_emails, message=f"Found {len(all_emails)} emails across accounts")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to search emails for transaction {transaction_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{transaction_id}/emails/{message_id}", response_model=ApiResponse)
+async def get_email_details(transaction_id: str, message_id: str):
+    """Get full details of a specific email from either account."""
+    try:
+        # Verify transaction exists
+        transaction = await handle_database_operation(
+            TransactionOperations.get_transaction_by_id,
+            transaction_id
+        )
+        
+        if not transaction:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        
+        email_content = None
+        last_error = None
+        
+        # Try primary account first
+        try:
+            primary_client = EmailClient(account_id="primary")
+            email_content = primary_client.get_email_content(message_id)
+            logger.info(f"Email {message_id} found in primary account")
+        except Exception as e:
+            last_error = e
+            logger.warning(f"Email {message_id} not found in primary account: {e}")
+            
+            # Try secondary account
+            try:
+                from src.utils.settings import get_settings
+                settings = get_settings()
+                if settings.GOOGLE_REFRESH_TOKEN_2:
+                    secondary_client = EmailClient(account_id="secondary")
+                    email_content = secondary_client.get_email_content(message_id)
+                    logger.info(f"Email {message_id} found in secondary account")
+            except Exception as e2:
+                last_error = e2
+                logger.warning(f"Email {message_id} not found in secondary account: {e2}")
+        
+        if not email_content:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Email not found in any account. Last error: {str(last_error)}"
+            )
+        
+        return ApiResponse(data=email_content, message="Email retrieved successfully")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get email {message_id} for transaction {transaction_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{transaction_id}/emails/link", response_model=ApiResponse)
+async def link_email_to_transaction(transaction_id: str, request: EmailLinkRequest):
+    """Link an email to a transaction by adding its message ID to related_mails."""
+    try:
+        # Get current transaction
+        transaction = await handle_database_operation(
+            TransactionOperations.get_transaction_by_id,
+            transaction_id
+        )
+        
+        if not transaction:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        
+        # Get current related_mails list
+        related_mails = transaction.get("related_mails", []) or []
+        
+        # Add new message ID if not already present
+        if request.message_id not in related_mails:
+            related_mails.append(request.message_id)
+        
+        # Update transaction
+        updated_count = await handle_database_operation(
+            TransactionOperations.update_transaction,
+            transaction_id=transaction_id,
+            related_mails=related_mails
+        )
+        
+        if updated_count == 0:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        
+        # Fetch updated transaction
+        updated_transaction = await handle_database_operation(
+            TransactionOperations.get_transaction_by_id,
+            transaction_id
+        )
+        
+        response_transaction = _convert_db_transaction_to_response(updated_transaction)
+        
+        return ApiResponse(data=response_transaction, message="Email linked successfully")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to link email to transaction {transaction_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{transaction_id}/emails/{message_id}", response_model=ApiResponse)
+async def unlink_email_from_transaction(transaction_id: str, message_id: str):
+    """Remove an email link from a transaction."""
+    try:
+        # Get current transaction
+        transaction = await handle_database_operation(
+            TransactionOperations.get_transaction_by_id,
+            transaction_id
+        )
+        
+        if not transaction:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        
+        # Get current related_mails list
+        related_mails = transaction.get("related_mails", []) or []
+        
+        # Remove message ID if present
+        if message_id in related_mails:
+            related_mails.remove(message_id)
+        
+        # Update transaction
+        updated_count = await handle_database_operation(
+            TransactionOperations.update_transaction,
+            transaction_id=transaction_id,
+            related_mails=related_mails
+        )
+        
+        if updated_count == 0:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        
+        # Fetch updated transaction
+        updated_transaction = await handle_database_operation(
+            TransactionOperations.get_transaction_by_id,
+            transaction_id
+        )
+        
+        response_transaction = _convert_db_transaction_to_response(updated_transaction)
+        
+        return ApiResponse(data=response_transaction, message="Email unlinked successfully")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to unlink email from transaction {transaction_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

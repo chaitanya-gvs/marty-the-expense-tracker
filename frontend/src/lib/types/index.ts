@@ -14,16 +14,19 @@ export interface Transaction {
   is_refund: boolean;
   is_split: boolean;
   is_transfer: boolean;
+  is_flagged?: boolean;
   split_breakdown?: SplitBreakdown;
   paid_by?: string;
   link_parent_id?: string;
   transaction_group_id?: string;
-  related_mails?: RelatedMail[];
+  related_mails?: string[]; // Array of Gmail message IDs
   source_file?: string;
   raw_data?: any;
   created_at: string;
   updated_at: string;
   status: "reviewed" | "needs_review" | "uncertain";
+  is_deleted?: boolean;
+  deleted_at?: string | null;
 }
 
 export interface SplitEntry {
@@ -67,15 +70,9 @@ export interface Category {
   parent_id?: string;
   sort_order: number;
   is_active: boolean;
+  transaction_type?: "debit" | "credit" | null;
   created_at: string;
   updated_at: string;
-}
-
-export interface Subcategory {
-  id: string;
-  name: string;
-  color: string;
-  is_hidden: boolean;
 }
 
 export interface Tag {
@@ -126,7 +123,6 @@ export interface TransactionFilters {
   };
   accounts?: string[];
   categories?: string[];
-  subcategories?: string[];
   tags?: string[];
   amount_range?: {
     min: number;
@@ -135,6 +131,8 @@ export interface TransactionFilters {
   direction?: "debit" | "credit";
   transaction_type?: "all" | "shared" | "refunds" | "transfers";
   search?: string;
+  include_uncategorized?: boolean;
+  flagged?: boolean;
 }
 
 export interface TransactionSort {
@@ -169,4 +167,49 @@ export interface RefundSuggestion {
   child: Transaction;
   confidence: number;
   reason: string;
+}
+
+export interface EmailMetadata {
+  id: string;
+  subject: string;
+  sender: string;
+  date: string;
+  snippet: string;
+  account?: string; // "primary" or "secondary"
+}
+
+export interface EmailAttachment {
+  filename: string;
+  mime_type: string;
+  size: number;
+  attachment_id?: string;
+}
+
+export interface UberTripInfo {
+  amount?: string;
+  date?: string;
+  start_time?: string;
+  end_time?: string;
+  from_location?: string;
+  to_location?: string;
+  distance?: string;
+  duration?: string;
+  vehicle_type?: string;
+}
+
+export interface EmailDetails extends EmailMetadata {
+  body: string;
+  attachments?: EmailAttachment[];
+  raw_message?: any;
+  uber_trip_info?: UberTripInfo;
+}
+
+export interface EmailSearchFilters {
+  date_offset_days?: number;
+  start_date?: string;
+  end_date?: string;
+  include_amount_filter: boolean;
+  custom_search_term?: string;
+  search_amount?: number; // Optional override for search amount (e.g., rounded amount for UPI)
+  also_search_amount_minus_one?: boolean; // Also search for amount-1 (for UPI rounding scenarios)
 }

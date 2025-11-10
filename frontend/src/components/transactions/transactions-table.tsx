@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { useInfiniteTransactions, useUpdateTransactionSplit, useClearTransactionSplit, useUpdateTransaction } from "@/hooks/use-transactions";
+import { useInfiniteTransactions, useUpdateTransactionSplit, useClearTransactionSplit, useUpdateTransaction, useBulkDeleteTransactions, useDeleteTransaction } from "@/hooks/use-transactions";
 import { useTags } from "@/hooks/use-tags";
 import { useCategories } from "@/hooks/use-categories";
 import { Transaction, TransactionFilters, TransactionSort, SplitBreakdown, Tag, Category } from "@/lib/types";
@@ -43,7 +43,10 @@ import {
   Square,
   Edit,
   Unlink,
-  Split
+  Split,
+  RefreshCcw,
+  AlertCircle,
+  Trash2
 } from "lucide-react";
 import { format } from "date-fns";
 import { TransactionEditModal } from "./transaction-edit-modal";
@@ -57,6 +60,8 @@ import { RelatedTransactionsDrawer } from "./related-transactions-drawer";
 import { SplitTransactionModal } from "./split-transaction-modal";
 import { LinkParentModal } from "./link-parent-modal";
 import { GroupTransferModal } from "./group-transfer-modal";
+import { EmailLinksDrawer } from "./email-links-drawer";
+import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
 
 const columnHelper = createColumnHelper<Transaction>();
@@ -116,6 +121,17 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [linkParentModalTransaction, setLinkParentModalTransaction] = useState<Transaction | null>(null);
   const [groupTransferModalTransaction, setGroupTransferModalTransaction] = useState<Transaction | null>(null);
+  const [emailLinksTransaction, setEmailLinksTransaction] = useState<Transaction | null>(null);
+  const [isEmailLinksDrawerOpen, setIsEmailLinksDrawerOpen] = useState(false);
+  const [isDeleteConfirmationOpen, setIsDeleteConfirmationOpen] = useState(false);
+  const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null);
+  
+  // Keyboard navigation state
+  const [focusedRowIndex, setFocusedRowIndex] = useState<number>(-1);
+  const [focusedColumnId, setFocusedColumnId] = useState<string | null>(null);
+  const [isKeyboardNavigationMode, setIsKeyboardNavigationMode] = useState(false);
+  const [focusedActionButton, setFocusedActionButton] = useState<number>(-1);
+  
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
@@ -123,6 +139,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const updateTransactionSplit = useUpdateTransactionSplit();
   const clearTransactionSplit = useClearTransactionSplit();
   const updateTransaction = useUpdateTransaction();
+  const bulkDeleteTransactions = useBulkDeleteTransactions();
+  const deleteTransaction = useDeleteTransaction();
   const { data: allTags = [] } = useTags();
   const { data: allCategories = [] } = useCategories();
 
@@ -368,6 +386,284 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     return children.reduce((sum, t) => sum + Math.abs(t.amount), 0);
   }, [getLinkedChildren]);
 
+  // Handle action button clicks from keyboard navigation
+  const handleActionButtonClick = useCallback((transaction: Transaction, buttonIndex: number) => {
+    switch (buttonIndex) {
+      case 0: // Shared button
+        setSelectedTransactionForSplit(transaction);
+        setIsSplitEditorOpen(true);
+        break;
+      case 1: // Transfer button
+        const isTransferGroup = !!transaction.transaction_group_id && !transaction.is_split;
+        if (isTransferGroup) {
+          setDrawerTransaction(transaction);
+          setIsDrawerOpen(true);
+        } else {
+          setGroupTransferModalTransaction(transaction);
+        }
+        break;
+      case 2: // Parent/Refund button
+        const isRefundLinked = !!transaction.link_parent_id || 
+          allTransactions.some(t => t.link_parent_id === transaction.id);
+        if (isRefundLinked) {
+          setDrawerTransaction(transaction);
+          setIsDrawerOpen(true);
+        } else if (transaction.direction === "credit") {
+          setLinkParentModalTransaction(transaction);
+        }
+        break;
+      case 3: // Split button
+        const isSplitGroup = !!transaction.transaction_group_id && transaction.is_split;
+        if (isSplitGroup) {
+          setDrawerTransaction(transaction);
+          setIsDrawerOpen(true);
+        } else {
+          setSelectedTransactionForSplitting(transaction);
+          setIsSplitTransactionModalOpen(true);
+        }
+        break;
+      case 4: // Links button
+        setEmailLinksTransaction(transaction);
+        setIsEmailLinksDrawerOpen(true);
+        break;
+      case 5: // Flag button
+        updateTransaction.mutate({
+          id: transaction.id,
+          updates: {
+            is_flagged: !(transaction.is_flagged === true),
+          },
+        });
+        break;
+      case 6: { // Toggle direction button
+        const nextDirection = transaction.direction === "debit" ? "credit" : "debit";
+        void updateTransaction
+          .mutateAsync({
+            id: transaction.id,
+            updates: {
+              direction: nextDirection,
+            },
+          })
+          .then(() => {
+            toast.success(`Marked as ${nextDirection === "credit" ? "credit (money in)" : "debit (money out)"}`);
+          })
+          .catch((error) => {
+            console.error("Failed to toggle direction:", error);
+            toast.error("Failed to toggle transaction direction");
+          });
+        break;
+      }
+      case 7: // Delete button
+        setTransactionToDelete(transaction);
+        setIsDeleteConfirmationOpen(true);
+        break;
+    }
+  }, [allTransactions, updateTransaction]);
+
+  // Keyboard navigation helpers
+  const editableColumns = useMemo(() => {
+    const columns = ['description', 'category', 'tags', 'actions'];
+    if (isMultiSelectMode) {
+      return ['select', ...columns];
+    }
+    return columns;
+  }, [isMultiSelectMode]);
+
+  const getNextEditableColumn = useCallback((currentColumnId: string | null, direction: 'left' | 'right' = 'right') => {
+    if (!currentColumnId) return editableColumns[0];
+    
+    const currentIndex = editableColumns.indexOf(currentColumnId);
+    if (currentIndex === -1) return editableColumns[0];
+    
+    if (direction === 'right') {
+      return editableColumns[currentIndex + 1] || editableColumns[0];
+    } else {
+      return editableColumns[currentIndex - 1] || editableColumns[editableColumns.length - 1];
+    }
+  }, [editableColumns]);
+
+  const handleKeyboardNavigation = useCallback((e: KeyboardEvent) => {
+    const { key } = e;
+    
+    // Handle Tab key - should work like Enter (save and move) when in edit mode
+    if (key === 'Tab' && (editingRow || editingField || editingTagsForTransaction || editingCategoryForTransaction)) {
+      // Let the edit components handle Tab navigation
+      return;
+    }
+    
+    // Only handle other keys when not in edit mode
+    if (editingRow || editingField || editingTagsForTransaction || editingCategoryForTransaction) {
+      return;
+    }
+    
+    switch (key) {
+      case 'Tab':
+        e.preventDefault();
+        isUserNavigating.current = false; // Reset navigation flag for Tab
+        if (focusedRowIndex >= 0 && focusedColumnId) {
+          const nextColumn = getNextEditableColumn(focusedColumnId, e.shiftKey ? 'left' : 'right');
+          setFocusedColumnId(nextColumn);
+          
+          // If we wrapped around, move to next/previous row
+          if (nextColumn === editableColumns[0] && !e.shiftKey) {
+            const nextRowIndex = Math.min(focusedRowIndex + 1, allTransactions.length - 1);
+            setFocusedRowIndex(nextRowIndex);
+          } else if (nextColumn === editableColumns[editableColumns.length - 1] && e.shiftKey) {
+            const prevRowIndex = Math.max(focusedRowIndex - 1, 0);
+            setFocusedRowIndex(prevRowIndex);
+          }
+        } else {
+          // Start navigation from first row, first column
+          setFocusedRowIndex(0);
+          setFocusedColumnId(editableColumns[0]);
+          setIsKeyboardNavigationMode(true);
+        }
+        break;
+        
+      case 'Enter':
+        e.preventDefault();
+        isUserNavigating.current = false; // Reset navigation flag
+        if (focusedRowIndex >= 0 && focusedColumnId && focusedColumnId !== 'select') {
+          const transaction = allTransactions[focusedRowIndex];
+          if (transaction) {
+            if (focusedColumnId === 'tags') {
+              setEditingTagsForTransaction(transaction.id);
+            } else if (focusedColumnId === 'category') {
+              setEditingCategoryForTransaction(transaction.id);
+            } else if (focusedColumnId === 'actions') {
+              if (focusedActionButton >= 0) {
+                // Trigger the focused action button
+                handleActionButtonClick(transaction, focusedActionButton);
+              } else {
+                // Focus first action button when entering actions column
+                setFocusedActionButton(0);
+              }
+            } else {
+              setEditingRow(transaction.id);
+              setEditingField(focusedColumnId as keyof Transaction);
+            }
+            setIsKeyboardNavigationMode(false);
+          }
+        }
+        break;
+        
+      case 'ArrowUp':
+        e.preventDefault();
+        if (focusedRowIndex > 0) {
+          isUserNavigating.current = true;
+          setFocusedRowIndex(focusedRowIndex - 1);
+        }
+        break;
+        
+      case 'ArrowDown':
+        e.preventDefault();
+        if (focusedRowIndex < allTransactions.length - 1) {
+          isUserNavigating.current = true;
+          setFocusedRowIndex(focusedRowIndex + 1);
+        }
+        break;
+        
+      case 'ArrowLeft':
+        e.preventDefault();
+        if (focusedColumnId === 'actions' && focusedActionButton > 0) {
+          // Navigate between action buttons
+          setFocusedActionButton(focusedActionButton - 1);
+        } else if (focusedColumnId) {
+          setFocusedColumnId(getNextEditableColumn(focusedColumnId, 'left'));
+          setFocusedActionButton(-1);
+        }
+        break;
+        
+      case 'ArrowRight':
+        e.preventDefault();
+        if (focusedColumnId === 'actions' && focusedActionButton < 7) { // 8 action buttons (0-7)
+          // Navigate between action buttons
+          setFocusedActionButton(focusedActionButton + 1);
+        } else if (focusedColumnId) {
+          setFocusedColumnId(getNextEditableColumn(focusedColumnId, 'right'));
+          setFocusedActionButton(-1);
+        }
+        break;
+        
+      case 'Escape':
+        e.preventDefault();
+        if (focusedActionButton >= 0) {
+          // Exit action button focus, stay in actions column
+          setFocusedActionButton(-1);
+        } else {
+          // Exit keyboard navigation completely
+          setIsKeyboardNavigationMode(false);
+          setFocusedRowIndex(-1);
+          setFocusedColumnId(null);
+        }
+        break;
+    }
+  }, [
+    editingRow, 
+    editingField, 
+    editingTagsForTransaction, 
+    editingCategoryForTransaction,
+    focusedRowIndex, 
+    focusedColumnId, 
+    focusedActionButton,
+    getNextEditableColumn, 
+    editableColumns, 
+    allTransactions,
+    handleActionButtonClick
+  ]);
+
+  // Auto-scroll to keep focused cell in view
+  const scrollToFocusedCell = useCallback(() => {
+    if (focusedRowIndex >= 0 && bodyScrollRef.current) {
+      const tableBody = bodyScrollRef.current;
+      const table = tableBody.querySelector('table');
+      if (!table) return;
+
+      const rows = table.querySelectorAll('tbody tr');
+      const focusedRow = rows[focusedRowIndex] as HTMLElement;
+      
+      if (!focusedRow) return;
+
+      // Use scrollIntoView for more reliable scrolling
+      focusedRow.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center', // Center the row in the viewport
+        inline: 'nearest'
+      });
+    }
+  }, [focusedRowIndex]);
+
+  // Track previous row index to only scroll when row actually changes
+  const prevFocusedRowIndex = useRef<number>(-1);
+  const isUserNavigating = useRef<boolean>(false);
+  
+  // Auto-scroll when focused row changes (only for up/down navigation)
+  useEffect(() => {
+    if (isKeyboardNavigationMode && focusedRowIndex >= 0 && focusedRowIndex !== prevFocusedRowIndex.current && isUserNavigating.current) {
+      // Only scroll if the row index actually changed AND user is actively navigating
+      prevFocusedRowIndex.current = focusedRowIndex;
+      // Small delay to ensure DOM is updated
+      setTimeout(scrollToFocusedCell, 10);
+    } else if (!isKeyboardNavigationMode) {
+      // Reset when exiting keyboard navigation mode
+      prevFocusedRowIndex.current = -1;
+      isUserNavigating.current = false;
+    }
+  }, [focusedRowIndex, isKeyboardNavigationMode, scrollToFocusedCell]);
+
+  // Add keyboard event listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle if we're not in an input field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
+        return;
+      }
+      handleKeyboardNavigation(e);
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyboardNavigation]);
+
   const columns = useMemo(
     () => {
       const baseColumns = [];
@@ -463,10 +759,102 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 onCancel={() => {
                   setEditingRow(null);
                   setEditingField(null);
+                  // Maintain keyboard navigation state after canceling description edit
+                  const currentRowIndex = allTransactions.findIndex(t => t.id === row.original.id);
+                  setFocusedRowIndex(currentRowIndex);
+                  setFocusedColumnId("description");
+                  setIsKeyboardNavigationMode(true);
                 }}
                 onSuccess={() => {
                   setEditingRow(null);
                   setEditingField(null);
+                  // Maintain keyboard navigation state after description edit
+                  const currentRowIndex = allTransactions.findIndex(t => t.id === row.original.id);
+                  setFocusedRowIndex(currentRowIndex);
+                  setFocusedColumnId("description");
+                  setIsKeyboardNavigationMode(true);
+                }}
+                onTabNext={() => {
+                  // Close current edit
+                  setEditingRow(null);
+                  setEditingField(null);
+                  
+                  // Move to next editable cell
+                  const currentRowIndex = allTransactions.findIndex(t => t.id === row.original.id);
+                  const nextColumn = getNextEditableColumn("description", "right");
+                  
+                  if (nextColumn === editableColumns[0]) {
+                    // Wrapped to next row
+                    const nextRowIndex = Math.min(currentRowIndex + 1, allTransactions.length - 1);
+                    const nextTransaction = allTransactions[nextRowIndex];
+                    if (nextTransaction) {
+                      setFocusedRowIndex(nextRowIndex);
+                      setFocusedColumnId(nextColumn);
+                      // Open edit for next cell
+                      if (nextColumn === 'description') {
+                        setEditingRow(nextTransaction.id);
+                        setEditingField('description');
+                      } else if (nextColumn === 'category') {
+                        setEditingCategoryForTransaction(nextTransaction.id);
+                      } else if (nextColumn === 'tags') {
+                        setEditingTagsForTransaction(nextTransaction.id);
+                      }
+                    }
+                  } else {
+                    setFocusedRowIndex(currentRowIndex);
+                    setFocusedColumnId(nextColumn);
+                    // Open edit for next cell in same row
+                    if (nextColumn === 'description') {
+                      setEditingRow(row.original.id);
+                      setEditingField('description');
+                    } else if (nextColumn === 'category') {
+                      setEditingCategoryForTransaction(row.original.id);
+                    } else if (nextColumn === 'tags') {
+                      setEditingTagsForTransaction(row.original.id);
+                    }
+                  }
+                  setIsKeyboardNavigationMode(true);
+                }}
+                onTabPrevious={() => {
+                  // Close current edit
+                  setEditingRow(null);
+                  setEditingField(null);
+                  
+                  // Move to previous editable cell
+                  const currentRowIndex = allTransactions.findIndex(t => t.id === row.original.id);
+                  const prevColumn = getNextEditableColumn("description", "left");
+                  
+                  if (prevColumn === editableColumns[editableColumns.length - 1]) {
+                    // Wrapped to previous row
+                    const prevRowIndex = Math.max(currentRowIndex - 1, 0);
+                    const prevTransaction = allTransactions[prevRowIndex];
+                    if (prevTransaction) {
+                      setFocusedRowIndex(prevRowIndex);
+                      setFocusedColumnId(prevColumn);
+                      // Open edit for previous cell
+                      if (prevColumn === 'description') {
+                        setEditingRow(prevTransaction.id);
+                        setEditingField('description');
+                      } else if (prevColumn === 'category') {
+                        setEditingCategoryForTransaction(prevTransaction.id);
+                      } else if (prevColumn === 'tags') {
+                        setEditingTagsForTransaction(prevTransaction.id);
+                      }
+                    }
+                  } else {
+                    setFocusedRowIndex(currentRowIndex);
+                    setFocusedColumnId(prevColumn);
+                    // Open edit for previous cell in same row
+                    if (prevColumn === 'description') {
+                      setEditingRow(row.original.id);
+                      setEditingField('description');
+                    } else if (prevColumn === 'category') {
+                      setEditingCategoryForTransaction(row.original.id);
+                    } else if (prevColumn === 'tags') {
+                      setEditingTagsForTransaction(row.original.id);
+                    }
+                  }
+                  setIsKeyboardNavigationMode(true);
                 }}
               />
             );
@@ -595,7 +983,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             </div>
          );
        },
-       size: 130,
+       size: 110,
      }),
      
      // Category column (moved after amount)
@@ -617,8 +1005,103 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               <InlineCategoryDropdown
                 transactionId={transaction.id}
                 currentCategory={categoryName || ""}
-                onCancel={() => setEditingCategoryForTransaction(null)}
-                onSuccess={() => setEditingCategoryForTransaction(null)}
+                transactionDirection={transaction.direction}
+                onCancel={() => {
+                  setEditingCategoryForTransaction(null);
+                  // Maintain keyboard navigation state after canceling category edit
+                  const currentRowIndex = allTransactions.findIndex(t => t.id === transaction.id);
+                  setFocusedRowIndex(currentRowIndex);
+                  setFocusedColumnId("category");
+                  setIsKeyboardNavigationMode(true);
+                }}
+                onSuccess={() => {
+                  setEditingCategoryForTransaction(null);
+                  // Maintain keyboard navigation state after category selection
+                  const currentRowIndex = allTransactions.findIndex(t => t.id === transaction.id);
+                  setFocusedRowIndex(currentRowIndex);
+                  setFocusedColumnId("category");
+                  setIsKeyboardNavigationMode(true);
+                }}
+                onTabNext={() => {
+                  // Close current edit
+                  setEditingCategoryForTransaction(null);
+                  
+                  // Move to next editable cell
+                  const currentRowIndex = allTransactions.findIndex(t => t.id === transaction.id);
+                  const nextColumn = getNextEditableColumn("category", "right");
+                  
+                  if (nextColumn === editableColumns[0]) {
+                    // Wrapped to next row
+                    const nextRowIndex = Math.min(currentRowIndex + 1, allTransactions.length - 1);
+                    const nextTransaction = allTransactions[nextRowIndex];
+                    if (nextTransaction) {
+                      setFocusedRowIndex(nextRowIndex);
+                      setFocusedColumnId(nextColumn);
+                      // Open edit for next cell
+                      if (nextColumn === 'description') {
+                        setEditingRow(nextTransaction.id);
+                        setEditingField('description');
+                      } else if (nextColumn === 'category') {
+                        setEditingCategoryForTransaction(nextTransaction.id);
+                      } else if (nextColumn === 'tags') {
+                        setEditingTagsForTransaction(nextTransaction.id);
+                      }
+                    }
+                  } else {
+                    setFocusedRowIndex(currentRowIndex);
+                    setFocusedColumnId(nextColumn);
+                    // Open edit for next cell in same row
+                    if (nextColumn === 'description') {
+                      setEditingRow(transaction.id);
+                      setEditingField('description');
+                    } else if (nextColumn === 'category') {
+                      setEditingCategoryForTransaction(transaction.id);
+                    } else if (nextColumn === 'tags') {
+                      setEditingTagsForTransaction(transaction.id);
+                    }
+                  }
+                  setIsKeyboardNavigationMode(true);
+                }}
+                onTabPrevious={() => {
+                  // Close current edit
+                  setEditingCategoryForTransaction(null);
+                  
+                  // Move to previous editable cell
+                  const currentRowIndex = allTransactions.findIndex(t => t.id === transaction.id);
+                  const prevColumn = getNextEditableColumn("category", "left");
+                  
+                  if (prevColumn === editableColumns[editableColumns.length - 1]) {
+                    // Wrapped to previous row
+                    const prevRowIndex = Math.max(currentRowIndex - 1, 0);
+                    const prevTransaction = allTransactions[prevRowIndex];
+                    if (prevTransaction) {
+                      setFocusedRowIndex(prevRowIndex);
+                      setFocusedColumnId(prevColumn);
+                      // Open edit for previous cell
+                      if (prevColumn === 'description') {
+                        setEditingRow(prevTransaction.id);
+                        setEditingField('description');
+                      } else if (prevColumn === 'category') {
+                        setEditingCategoryForTransaction(prevTransaction.id);
+                      } else if (prevColumn === 'tags') {
+                        setEditingTagsForTransaction(prevTransaction.id);
+                      }
+                    }
+                  } else {
+                    setFocusedRowIndex(currentRowIndex);
+                    setFocusedColumnId(prevColumn);
+                    // Open edit for previous cell in same row
+                    if (prevColumn === 'description') {
+                      setEditingRow(transaction.id);
+                      setEditingField('description');
+                    } else if (prevColumn === 'category') {
+                      setEditingCategoryForTransaction(transaction.id);
+                    } else if (prevColumn === 'tags') {
+                      setEditingTagsForTransaction(transaction.id);
+                    }
+                  }
+                  setIsKeyboardNavigationMode(true);
+                }}
               />
             );
           }
@@ -661,7 +1144,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             </div>
           );
         },
-        size: 130,
+        size: 110,
       }),
       
       // Tags column
@@ -685,15 +1168,109 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                <InlineTagDropdown
                  transactionId={transaction.id}
                  currentTags={tagNames || []}
-                 onCancel={() => setEditingTagsForTransaction(null)}
-                 onSuccess={() => setEditingTagsForTransaction(null)}
+                 onCancel={() => {
+                   setEditingTagsForTransaction(null);
+                   // Maintain keyboard navigation state after canceling tags edit
+                   const currentRowIndex = allTransactions.findIndex(t => t.id === transaction.id);
+                   setFocusedRowIndex(currentRowIndex);
+                   setFocusedColumnId("tags");
+                   setIsKeyboardNavigationMode(true);
+                 }}
+                 onSuccess={() => {
+                   setEditingTagsForTransaction(null);
+                   // Maintain keyboard navigation state after tags selection
+                   const currentRowIndex = allTransactions.findIndex(t => t.id === transaction.id);
+                   setFocusedRowIndex(currentRowIndex);
+                   setFocusedColumnId("tags");
+                   setIsKeyboardNavigationMode(true);
+                 }}
+                 onTabNext={() => {
+                   // Close current edit
+                   setEditingTagsForTransaction(null);
+                   
+                   // Move to next editable cell
+                   const currentRowIndex = allTransactions.findIndex(t => t.id === transaction.id);
+                   const nextColumn = getNextEditableColumn("tags", "right");
+                   
+                   if (nextColumn === editableColumns[0]) {
+                     // Wrapped to next row
+                     const nextRowIndex = Math.min(currentRowIndex + 1, allTransactions.length - 1);
+                     const nextTransaction = allTransactions[nextRowIndex];
+                     if (nextTransaction) {
+                       setFocusedRowIndex(nextRowIndex);
+                       setFocusedColumnId(nextColumn);
+                       // Open edit for next cell
+                       if (nextColumn === 'description') {
+                         setEditingRow(nextTransaction.id);
+                         setEditingField('description');
+                       } else if (nextColumn === 'category') {
+                         setEditingCategoryForTransaction(nextTransaction.id);
+                       } else if (nextColumn === 'tags') {
+                         setEditingTagsForTransaction(nextTransaction.id);
+                       }
+                     }
+                   } else {
+                     setFocusedRowIndex(currentRowIndex);
+                     setFocusedColumnId(nextColumn);
+                     // Open edit for next cell in same row
+                     if (nextColumn === 'description') {
+                       setEditingRow(transaction.id);
+                       setEditingField('description');
+                     } else if (nextColumn === 'category') {
+                       setEditingCategoryForTransaction(transaction.id);
+                     } else if (nextColumn === 'tags') {
+                       setEditingTagsForTransaction(transaction.id);
+                     }
+                   }
+                   setIsKeyboardNavigationMode(true);
+                 }}
+                 onTabPrevious={() => {
+                   // Close current edit
+                   setEditingTagsForTransaction(null);
+                   
+                   // Move to previous editable cell
+                   const currentRowIndex = allTransactions.findIndex(t => t.id === transaction.id);
+                   const prevColumn = getNextEditableColumn("tags", "left");
+                   
+                   if (prevColumn === editableColumns[editableColumns.length - 1]) {
+                     // Wrapped to previous row
+                     const prevRowIndex = Math.max(currentRowIndex - 1, 0);
+                     const prevTransaction = allTransactions[prevRowIndex];
+                     if (prevTransaction) {
+                       setFocusedRowIndex(prevRowIndex);
+                       setFocusedColumnId(prevColumn);
+                       // Open edit for previous cell
+                       if (prevColumn === 'description') {
+                         setEditingRow(prevTransaction.id);
+                         setEditingField('description');
+                       } else if (prevColumn === 'category') {
+                         setEditingCategoryForTransaction(prevTransaction.id);
+                       } else if (prevColumn === 'tags') {
+                         setEditingTagsForTransaction(prevTransaction.id);
+                       }
+                     }
+                   } else {
+                     setFocusedRowIndex(currentRowIndex);
+                     setFocusedColumnId(prevColumn);
+                     // Open edit for previous cell in same row
+                     if (prevColumn === 'description') {
+                       setEditingRow(transaction.id);
+                       setEditingField('description');
+                     } else if (prevColumn === 'category') {
+                       setEditingCategoryForTransaction(transaction.id);
+                     } else if (prevColumn === 'tags') {
+                       setEditingTagsForTransaction(transaction.id);
+                     }
+                   }
+                   setIsKeyboardNavigationMode(true);
+                 }}
                />
              );
            }
            
           return (
             <div 
-              className="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-thumb]:bg-gray-700 dark:hover:[&::-webkit-scrollbar-thumb]:bg-gray-600 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-1 rounded max-w-[180px]"
+              className="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-thumb]:bg-gray-700 dark:hover:[&::-webkit-scrollbar-thumb]:bg-gray-600 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-1 rounded max-w-[140px]"
               onClick={() => setEditingTagsForTransaction(transaction.id)}
               title="Click to edit tags"
             >
@@ -729,10 +1306,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             </div>
           );
          },
-        size: 150,
+        size: 120,
       }),
       
-      // Actions column - 5 buttons: Shared, Transfer, Parent, Split, Links
+      // Actions column - 6 buttons: Shared, Transfer, Parent, Split, Links, Flag
       columnHelper.display({
         id: "actions",
         header: () => null,
@@ -819,6 +1396,9 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             }
           };
 
+          const isFocusedRow = isKeyboardNavigationMode && focusedRowIndex === allTransactions.findIndex(t => t.id === transaction.id);
+          const isFocusedActionsColumn = isFocusedRow && focusedColumnId === 'actions';
+          
           return (
             <div className="flex justify-center items-center gap-1">
               {/* 1. Shared button */}
@@ -829,7 +1409,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   "h-7 w-7 p-0 rounded-full transition-all duration-200",
                   transaction.is_shared
                     ? "bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-400 dark:hover:bg-blue-800"
-                    : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700"
+                    : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
+                  isFocusedActionsColumn && focusedActionButton === 0 && "ring-2 ring-blue-500 ring-inset"
                 )}
                 onClick={() => {
                   setSelectedTransactionForSplit(transaction);
@@ -849,7 +1430,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   isTransferGroup
                     ? "bg-sky-100 text-sky-600 hover:bg-sky-200 dark:bg-sky-900 dark:text-sky-400 dark:hover:bg-sky-800"
                     : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
-                  isSplitGroup && "opacity-50 cursor-not-allowed"
+                  isSplitGroup && "opacity-50 cursor-not-allowed",
+                  isFocusedActionsColumn && focusedActionButton === 1 && "ring-2 ring-blue-500 ring-inset"
                 )}
                 onClick={handleTransferClick}
                 onMouseEnter={handleTransferHover}
@@ -871,7 +1453,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     : isCredit
                       ? "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700"
                       : "bg-gray-50 text-gray-300 dark:bg-gray-900 dark:text-gray-600 cursor-not-allowed",
-                  !isCredit && !isRefundLinked && "opacity-30"
+                  !isCredit && !isRefundLinked && "opacity-30",
+                  isFocusedActionsColumn && focusedActionButton === 2 && "ring-2 ring-blue-500 ring-inset"
                 )}
                 onClick={handleRefundClick}
                 onMouseEnter={handleRefundHover}
@@ -890,7 +1473,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   "h-7 w-7 p-0 rounded-full transition-all duration-200",
                   isSplitGroup
                     ? "bg-purple-100 text-purple-600 hover:bg-purple-200 dark:bg-purple-900 dark:text-purple-400 dark:hover:bg-purple-800"
-                    : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700"
+                    : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
+                  isFocusedActionsColumn && focusedActionButton === 3 && "ring-2 ring-blue-500 ring-inset"
                 )}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -908,22 +1492,112 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 <Split className="h-3.5 w-3.5" />
               </Button>
 
-              {/* 5. Links button (dummy) */}
+              {/* 5. Links button */}
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 w-7 p-0 rounded-full transition-all duration-200 bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700"
-                onClick={() => {
-                  toast.info("Links functionality coming soon");
+                className={cn(
+                  "h-7 w-7 p-0 rounded-full transition-all duration-200",
+                  transaction.related_mails && transaction.related_mails.length > 0
+                    ? "bg-amber-100 text-amber-600 hover:bg-amber-200 dark:bg-amber-900 dark:text-amber-400 dark:hover:bg-amber-800"
+                    : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
+                  isFocusedActionsColumn && focusedActionButton === 4 && "ring-2 ring-blue-500 ring-inset"
+                )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEmailLinksTransaction(transaction);
+                  setIsEmailLinksDrawerOpen(true);
                 }}
-                title="Links (coming soon)"
+                title={
+                  transaction.related_mails && transaction.related_mails.length > 0
+                    ? `${transaction.related_mails.length} email(s) linked`
+                    : "Link emails"
+                }
               >
                 <Link2 className="h-3.5 w-3.5" />
+              </Button>
+
+              {/* 6. Warning/Flag button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border",
+                  transaction.is_flagged === true
+                    ? "border-orange-500 text-orange-600 hover:border-orange-600 hover:text-orange-700 dark:border-orange-400 dark:text-orange-400 dark:hover:border-orange-300 dark:hover:text-orange-300 bg-orange-50 dark:bg-orange-950"
+                    : "border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500 dark:border-gray-600 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-400 bg-transparent",
+                  isFocusedActionsColumn && focusedActionButton === 5 && "ring-2 ring-blue-500 ring-inset"
+                )}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  try {
+                    await updateTransaction.mutateAsync({
+                      id: transaction.id,
+                      updates: {
+                        is_flagged: !(transaction.is_flagged === true),
+                      },
+                    });
+                    toast.success(transaction.is_flagged === true ? "Warning removed" : "Transaction marked for review");
+                  } catch (error) {
+                    console.error("Failed to update flag status:", error);
+                    toast.error("Failed to update warning status");
+                  }
+                }}
+                title={transaction.is_flagged === true ? "Remove warning" : "Mark for review"}
+              >
+                <AlertCircle className="h-3.5 w-3.5" />
+              </Button>
+
+              {/* 7. Toggle direction button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:text-gray-300 bg-transparent",
+                  isFocusedActionsColumn && focusedActionButton === 6 && "ring-2 ring-blue-500 ring-inset"
+                )}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  const nextDirection = transaction.direction === "debit" ? "credit" : "debit";
+                  try {
+                    await updateTransaction.mutateAsync({
+                      id: transaction.id,
+                      updates: {
+                        direction: nextDirection,
+                      },
+                    });
+                    toast.success(`Marked as ${nextDirection === "credit" ? "credit (money in)" : "debit (money out)"}`);
+                  } catch (error) {
+                    console.error("Failed to toggle direction:", error);
+                    toast.error("Failed to toggle transaction direction");
+                  }
+                }}
+                title={`Mark as ${transaction.direction === "debit" ? "credit" : "debit"}`}
+              >
+                <RefreshCcw className="h-3.5 w-3.5" />
+              </Button>
+
+              {/* 8. Delete button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500 dark:border-gray-600 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-400 bg-transparent",
+                  isFocusedActionsColumn && focusedActionButton === 7 && "ring-2 ring-blue-500 ring-inset"
+                )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setTransactionToDelete(transaction);
+                  setIsDeleteConfirmationOpen(true);
+                }}
+                title="Delete transaction"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </div>
           );
         },
-        size: 200,
+        size: 250,
       }),
       ];
     },
@@ -973,9 +1647,21 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-              Transactions ({allTransactions.length} loaded{data?.pages?.[0]?.pagination?.total ? ` of ${data.pages[0].pagination.total}` : ''})
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                Transactions ({allTransactions.length} loaded{data?.pages?.[0]?.pagination?.total ? ` of ${data.pages[0].pagination.total}` : ''})
+              </h3>
+              {isKeyboardNavigationMode && (
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs">
+                    ⌨️ Keyboard Navigation Active
+                  </Badge>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    Tab: Save & move right • Enter: Edit • Arrow keys: Navigate • Esc: Exit
+                  </span>
+                </div>
+              )}
+            </div>
             {!isMultiSelectMode && (
               <Button
                 variant="outline"
@@ -1052,6 +1738,17 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   Unlink/Ungroup
                 </Button>
                 <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setIsDeleteConfirmationOpen(true)}
+                  className="flex items-center gap-2"
+                  disabled={selectedTransactionIds.size === 0}
+                  title="Delete selected transactions"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </Button>
+                <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => {
@@ -1080,16 +1777,16 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           className="flex-shrink-0 w-full overflow-x-auto bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-md z-50"
           onScroll={handleHeaderScroll}
         >
-          <table className={`w-full ${isMultiSelectMode ? 'min-w-[1220px]' : 'min-w-[1180px]'} table-auto md:table-fixed`}>
+          <table className={`w-full ${isMultiSelectMode ? 'min-w-[1180px]' : 'min-w-[1140px]'} table-auto md:table-fixed`}>
             <colgroup>
               {isMultiSelectMode && <col className="w-[40px]" />}
               <col className="w-[100px]" />
               <col className="w-[350px] md:w-[320px]" />
               <col className="w-[120px]" />
-              <col className="w-[130px]" />
-              <col className="w-[130px]" />
-              <col className="w-[150px]" />
-              <col className="w-[200px]" />
+              <col className="w-[110px]" />
+              <col className="w-[110px]" />
+              <col className="w-[120px]" />
+              <col className="w-[220px]" />
             </colgroup>
             <thead>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -1123,44 +1820,52 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           className="flex-1 overflow-auto relative w-full"
           onScroll={handleBodyScroll}
         >
-          <table className={`w-full ${isMultiSelectMode ? 'min-w-[1220px]' : 'min-w-[1180px]'} table-auto md:table-fixed`}>
+          <table className={`w-full ${isMultiSelectMode ? 'min-w-[1180px]' : 'min-w-[1140px]'} table-auto md:table-fixed`}>
             <colgroup>
               {isMultiSelectMode && <col className="w-[40px]" />}
               <col className="w-[100px]" />
               <col className="w-[350px] md:w-[320px]" />
               <col className="w-[120px]" />
-              <col className="w-[130px]" />
-              <col className="w-[130px]" />
-              <col className="w-[150px]" />
-              <col className="w-[200px]" />
+              <col className="w-[110px]" />
+              <col className="w-[110px]" />
+              <col className="w-[120px]" />
+              <col className="w-[220px]" />
             </colgroup>
             <tbody className="[&_tr:last-child]:border-0">
-            {rows.map((row) => (
-              <tr
-                key={row.id}
-                className={cn(
-                  "group hover:bg-gray-50 dark:hover:bg-gray-800 border-b border-gray-100 dark:border-gray-800 transition-colors duration-150 h-12",
-                  editingRow === row.original.id && "bg-blue-50 dark:bg-blue-900/20",
-                  highlightedTransactionIds.has(row.original.id) && "bg-blue-50 dark:bg-blue-900/10 border-l-2 border-l-blue-500"
-                )}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <td 
-                    key={cell.id} 
-                    className={cn(
-                      "px-3 py-2 text-sm align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
-                      editingTagsForTransaction === row.original.id && cell.column.id === "tags" && "relative",
-                      editingCategoryForTransaction === row.original.id && cell.column.id === "category" && "relative"
-                    )}
-                  >
-                    {flexRender(
-                      cell.column.columnDef.cell,
-                      cell.getContext()
-                    )}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {rows.map((row, rowIndex) => {
+              const isFocusedRow = isKeyboardNavigationMode && focusedRowIndex === rowIndex;
+              return (
+                <tr
+                  key={row.id}
+                  className={cn(
+                    "group hover:bg-gray-50 dark:hover:bg-gray-800 border-b border-gray-100 dark:border-gray-800 transition-colors duration-150 h-12",
+                    editingRow === row.original.id && "bg-blue-50 dark:bg-blue-900/20",
+                    highlightedTransactionIds.has(row.original.id) && "bg-blue-50 dark:bg-blue-900/10 border-l-2 border-l-blue-500",
+                    isFocusedRow && "bg-blue-100 dark:bg-blue-900/30 border-l-2 border-l-blue-500"
+                  )}
+                >
+                  {row.getVisibleCells().map((cell) => {
+                    const isFocusedCell = isFocusedRow && focusedColumnId === cell.column.id;
+                    return (
+                      <td 
+                        key={cell.id} 
+                        className={cn(
+                          "px-3 py-2 text-sm align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+                          editingTagsForTransaction === row.original.id && cell.column.id === "tags" && "relative",
+                          editingCategoryForTransaction === row.original.id && cell.column.id === "category" && "relative",
+                          isFocusedCell && "ring-2 ring-blue-500 ring-inset bg-blue-50 dark:bg-blue-900/20"
+                        )}
+                      >
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext()
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
             </tbody>
           </table>
         </div>
@@ -1441,6 +2146,60 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           }}
         />
       )}
+
+      {/* Email Links Drawer */}
+      {emailLinksTransaction && (
+        <EmailLinksDrawer
+          transaction={emailLinksTransaction}
+          isOpen={isEmailLinksDrawerOpen}
+          onClose={() => {
+            setIsEmailLinksDrawerOpen(false);
+            setEmailLinksTransaction(null);
+          }}
+          onTransactionUpdate={(updatedTransaction) => {
+            // Update the transaction in the cache
+            // The hook will automatically refetch and update the UI
+            updateTransaction.mutate({
+              id: updatedTransaction.id,
+              updates: {
+                related_mails: updatedTransaction.related_mails,
+              },
+            });
+          }}
+        />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        isOpen={isDeleteConfirmationOpen}
+        onClose={() => {
+          setIsDeleteConfirmationOpen(false);
+          setTransactionToDelete(null);
+        }}
+        onConfirm={async () => {
+          try {
+            if (transactionToDelete) {
+              // Single transaction deletion
+              await deleteTransaction.mutateAsync(transactionToDelete.id);
+              toast.success("Transaction deleted successfully");
+            } else {
+              // Bulk deletion
+              const transactionIds = Array.from(selectedTransactionIds);
+              await bulkDeleteTransactions.mutateAsync(transactionIds);
+              toast.success(`Successfully deleted ${transactionIds.length} transaction${transactionIds.length > 1 ? 's' : ''}`);
+              setSelectedTransactionIds(new Set());
+              setIsMultiSelectMode(false);
+            }
+            setIsDeleteConfirmationOpen(false);
+            setTransactionToDelete(null);
+          } catch (error) {
+            console.error("Failed to delete transaction(s):", error);
+            toast.error("Failed to delete transaction(s)");
+          }
+        }}
+        transactions={transactionToDelete ? [transactionToDelete] : allTransactions.filter(t => selectedTransactionIds.has(t.id))}
+        isLoading={deleteTransaction.isPending || bulkDeleteTransactions.isPending}
+      />
     </div>
   );
 }

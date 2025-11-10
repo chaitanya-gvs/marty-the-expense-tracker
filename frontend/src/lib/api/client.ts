@@ -1,4 +1,4 @@
-import { ApiResponse, Transaction, Budget, Category, Tag, TransactionFilters, TransactionSort, PaginationParams, TransferSuggestion, RefundSuggestion, SplitBreakdown } from "@/lib/types";
+import { ApiResponse, Transaction, Budget, Category, Tag, TransactionFilters, TransactionSort, PaginationParams, TransferSuggestion, RefundSuggestion, SplitBreakdown, EmailMetadata, EmailDetails, EmailSearchFilters } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
@@ -62,9 +62,6 @@ class ApiClient {
       if (filters.categories) {
         params.append("categories", filters.categories.join(","));
       }
-      if (filters.subcategories) {
-        params.append("subcategories", filters.subcategories.join(","));
-      }
       if (filters.tags) {
         params.append("tags", filters.tags.join(","));
       }
@@ -84,6 +81,12 @@ class ApiClient {
       }
       if (filters.search) {
         params.append("search", filters.search);
+      }
+      if (filters.include_uncategorized) {
+        params.append("include_uncategorized", "true");
+      }
+      if (filters.flagged !== undefined) {
+        params.append("is_flagged", String(filters.flagged));
       }
     }
 
@@ -124,6 +127,7 @@ class ApiClient {
       body: JSON.stringify({
         split_breakdown: splitBreakdown,
         split_share_amount: myShareAmount,
+        paid_by: splitBreakdown.paid_by,
         is_shared: true
       }),
     });
@@ -314,12 +318,28 @@ class ApiClient {
   }
 
   // Categories
-  async getCategories(): Promise<ApiResponse<Category[]>> {
-    return this.request<Category[]>("/transactions/categories/");
+  async getCategories(transactionType?: "debit" | "credit"): Promise<ApiResponse<Category[]>> {
+    const params = new URLSearchParams();
+    if (transactionType) {
+      params.append("transaction_type", transactionType);
+    }
+    const queryString = params.toString();
+    const url = `/transactions/categories/${queryString ? `?${queryString}` : ""}`;
+    return this.request<Category[]>(url);
   }
 
-  async searchCategories(query: string, limit: number = 20): Promise<ApiResponse<Category[]>> {
-    return this.request<Category[]>(`/transactions/categories/search?query=${encodeURIComponent(query)}&limit=${limit}`);
+  async searchCategories(
+    query: string,
+    limit: number = 20,
+    transactionType?: "debit" | "credit"
+  ): Promise<ApiResponse<Category[]>> {
+    const params = new URLSearchParams();
+    params.append("query", query);
+    params.append("limit", limit.toString());
+    if (transactionType) {
+      params.append("transaction_type", transactionType);
+    }
+    return this.request<Category[]>(`/transactions/categories/search?${params.toString()}`);
   }
 
   async getCategory(categoryId: string): Promise<ApiResponse<Category>> {
@@ -331,6 +351,7 @@ class ApiClient {
     color?: string;
     parent_id?: string;
     sort_order?: number;
+    transaction_type?: "debit" | "credit" | null;
   }): Promise<ApiResponse<{ id: string }>> {
     return this.request<{ id: string }>("/transactions/categories/", {
       method: "POST",
@@ -345,6 +366,7 @@ class ApiClient {
       color?: string;
       parent_id?: string;
       sort_order?: number;
+      transaction_type?: "debit" | "credit" | null;
     }
   ): Promise<ApiResponse<any>> {
     return this.request<any>(`/transactions/categories/${categoryId}`, {
@@ -364,12 +386,14 @@ class ApiClient {
     color?: string;
     parent_id?: string;
     sort_order?: number;
+    transaction_type?: "debit" | "credit" | null;
   }): Promise<ApiResponse<{ id: string }>> {
     return this.request<{ id: string }>("/transactions/categories/upsert", {
       method: "POST",
       body: JSON.stringify(categoryData),
     });
   }
+}
 
   // Suggestions (now under transactions)
   async getTransferSuggestions(): Promise<ApiResponse<TransferSuggestion[]>> {
@@ -437,6 +461,74 @@ class ApiClient {
 
   async getSettlementParticipants(): Promise<ApiResponse<{ participants: string[] }>> {
     return this.request<{ participants: string[] }>('/settlements/participants');
+  }
+
+  // Email linking
+  async searchTransactionEmails(
+    transactionId: string,
+    filters: EmailSearchFilters
+  ): Promise<ApiResponse<EmailMetadata[]>> {
+    const params = new URLSearchParams();
+    
+    if (filters.date_offset_days !== undefined) {
+      params.append('date_offset_days', filters.date_offset_days.toString());
+    }
+    if (filters.include_amount_filter !== undefined) {
+      params.append('include_amount_filter', filters.include_amount_filter.toString());
+    }
+    if (filters.start_date) {
+      params.append('start_date', filters.start_date);
+    }
+    if (filters.end_date) {
+      params.append('end_date', filters.end_date);
+    }
+    if (filters.custom_search_term) {
+      params.append('custom_search_term', filters.custom_search_term);
+    }
+    if (filters.search_amount !== undefined) {
+      params.append('search_amount', filters.search_amount.toString());
+    }
+    if (filters.also_search_amount_minus_one !== undefined) {
+      params.append('also_search_amount_minus_one', filters.also_search_amount_minus_one.toString());
+    }
+    
+    return this.request<EmailMetadata[]>(
+      `/transactions/${transactionId}/emails/search?${params.toString()}`
+    );
+  }
+
+  async getEmailDetails(
+    transactionId: string,
+    messageId: string
+  ): Promise<ApiResponse<EmailDetails>> {
+    return this.request<EmailDetails>(
+      `/transactions/${transactionId}/emails/${messageId}`
+    );
+  }
+
+  async linkEmailToTransaction(
+    transactionId: string,
+    messageId: string
+  ): Promise<ApiResponse<Transaction>> {
+    return this.request<Transaction>(
+      `/transactions/${transactionId}/emails/link`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ message_id: messageId }),
+      }
+    );
+  }
+
+  async unlinkEmailFromTransaction(
+    transactionId: string,
+    messageId: string
+  ): Promise<ApiResponse<Transaction>> {
+    return this.request<Transaction>(
+      `/transactions/${transactionId}/emails/${messageId}`,
+      {
+        method: 'DELETE',
+      }
+    );
   }
 }
 

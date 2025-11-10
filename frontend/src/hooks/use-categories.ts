@@ -9,19 +9,23 @@ import { toast } from "sonner";
 const CATEGORIES_QUERY_KEY = ["categories"];
 
 // Get all categories
-export function useCategories() {
+export function useCategories(transactionType?: "debit" | "credit") {
   return useQuery({
-    queryKey: CATEGORIES_QUERY_KEY,
-    queryFn: () => apiClient.getCategories(),
+    queryKey: [...CATEGORIES_QUERY_KEY, transactionType || "all"],
+    queryFn: () => apiClient.getCategories(transactionType),
     select: (response) => response.data || [],
   });
 }
 
 // Search categories
-export function useSearchCategories(query: string, enabled: boolean = true) {
+export function useSearchCategories(
+  query: string,
+  enabled: boolean = true,
+  transactionType?: "debit" | "credit"
+) {
   return useQuery({
-    queryKey: [...CATEGORIES_QUERY_KEY, "search", query],
-    queryFn: () => apiClient.searchCategories(query),
+    queryKey: [...CATEGORIES_QUERY_KEY, "search", query, transactionType || "all"],
+    queryFn: () => apiClient.searchCategories(query, 20, transactionType),
     select: (response) => response.data || [],
     enabled: enabled && query.length > 0,
   });
@@ -47,6 +51,7 @@ export function useCreateCategory() {
       color?: string;
       parent_id?: string;
       sort_order?: number;
+      transaction_type?: "debit" | "credit" | null;
     }) => apiClient.createCategory(categoryData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: CATEGORIES_QUERY_KEY });
@@ -74,6 +79,7 @@ export function useUpdateCategory() {
         color?: string;
         parent_id?: string;
         sort_order?: number;
+        transaction_type?: "debit" | "credit" | null;
       };
     }) => apiClient.updateCategory(categoryId, categoryData),
     onSuccess: () => {
@@ -114,6 +120,7 @@ export function useUpsertCategory() {
       color?: string;
       parent_id?: string;
       sort_order?: number;
+      transaction_type?: "debit" | "credit" | null;
     }) => apiClient.upsertCategory(categoryData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: CATEGORIES_QUERY_KEY });

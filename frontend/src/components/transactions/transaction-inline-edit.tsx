@@ -24,6 +24,8 @@ interface TransactionInlineEditProps {
   field: keyof Transaction;
   onCancel: () => void;
   onSuccess: () => void;
+  onTabNext?: () => void;
+  onTabPrevious?: () => void;
 }
 
 export function TransactionInlineEdit({
@@ -31,6 +33,8 @@ export function TransactionInlineEdit({
   field,
   onCancel,
   onSuccess,
+  onTabNext,
+  onTabPrevious,
 }: TransactionInlineEditProps) {
   const [value, setValue] = useState<string>(String(transaction[field] || ""));
   const updateTransaction = useUpdateTransaction();
@@ -76,11 +80,22 @@ export function TransactionInlineEdit({
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = async (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
-      handleSave();
+      e.preventDefault();
+      await handleSave();
     } else if (e.key === "Escape") {
+      e.preventDefault();
       onCancel();
+    } else if (e.key === "Tab") {
+      e.preventDefault();
+      // Save and move to next/previous cell
+      await handleSave();
+      if (e.shiftKey) {
+        onTabPrevious?.();
+      } else {
+        onTabNext?.();
+      }
     }
   };
 
@@ -95,6 +110,7 @@ export function TransactionInlineEdit({
             onCancel={onCancel}
             placeholder="Type category..."
             className="w-full"
+            transactionDirection={transaction.direction}
           />
         );
 
@@ -109,6 +125,8 @@ export function TransactionInlineEdit({
             onValueChange={setValue}
             onSave={handleSave}
             onCancel={onCancel}
+            onTabNext={onTabNext}
+            onTabPrevious={onTabPrevious}
             placeholder={`Type ${field}...`}
             className="w-full"
           />
@@ -135,7 +153,7 @@ export function TransactionInlineEdit({
             step="0.01"
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleKeyPress}
             className="w-full"
             autoFocus
           />
@@ -146,7 +164,7 @@ export function TransactionInlineEdit({
           <Input
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleKeyPress}
             className="w-full"
             autoFocus
           />

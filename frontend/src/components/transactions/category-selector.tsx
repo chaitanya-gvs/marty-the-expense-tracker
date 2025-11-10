@@ -36,6 +36,7 @@ interface CategorySelectorProps {
   onValueChange: (value: string) => void;
   placeholder?: string;
   className?: string;
+  transactionDirection?: "debit" | "credit"; // Transaction direction to filter categories
 }
 
 export function CategorySelector({
@@ -43,6 +44,7 @@ export function CategorySelector({
   onValueChange,
   placeholder = "Select category...",
   className,
+  transactionDirection,
 }: CategorySelectorProps) {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newCategory, setNewCategory] = useState({
@@ -50,8 +52,8 @@ export function CategorySelector({
     color: "#3B82F6",
   });
 
-  // Use hooks for data fetching
-  const { data: categories = [], isLoading: categoriesLoading, error } = useCategories();
+  // Filter categories by transaction direction if provided
+  const { data: categories = [], isLoading: categoriesLoading, error } = useCategories(transactionDirection);
   const createCategoryMutation = useCreateCategory();
 
   const handleCreateCategory = async () => {
@@ -64,6 +66,7 @@ export function CategorySelector({
       const response = await createCategoryMutation.mutateAsync({
         name: newCategory.name,
         color: newCategory.color,
+        transaction_type: transactionDirection || null, // Set transaction_type based on transaction direction
       });
 
       onValueChange(response.data.id);

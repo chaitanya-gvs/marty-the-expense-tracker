@@ -26,6 +26,7 @@ interface CategoryAutocompleteProps {
   onCancel?: () => void;
   placeholder?: string;
   className?: string;
+  transactionDirection?: "debit" | "credit"; // Transaction direction to filter categories
 }
 
 export function CategoryAutocomplete({
@@ -35,6 +36,7 @@ export function CategoryAutocomplete({
   onCancel,
   placeholder = "Type category...",
   className,
+  transactionDirection,
 }: CategoryAutocompleteProps) {
   // console.log("CategoryAutocomplete rendered with value:", value);
   const [inputValue, setInputValue] = useState(value);
@@ -55,7 +57,8 @@ export function CategoryAutocomplete({
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
   
-  const { data: categories = [], isLoading } = useCategories();
+  // Filter categories by transaction direction if provided
+  const { data: categories = [], isLoading } = useCategories(transactionDirection);
   const createCategoryMutation = useCreateCategory();
   const updateCategoryMutation = useUpdateCategory();
   const deleteCategoryMutation = useDeleteCategory();
@@ -196,13 +199,17 @@ export function CategoryAutocomplete({
   };
 
   const handleConfirmCreateCategory = async () => {
-    if (!createForm.name.trim()) return;
+    if (!createForm.name.trim()) {
+      toast.error("Category name is required");
+      return;
+    }
 
     try {
       setIsCreating(true);
       await createCategoryMutation.mutateAsync({
         name: createForm.name.trim(),
         color: createForm.color,
+        transaction_type: transactionDirection || null, // Set transaction_type based on transaction direction
       });
       
       toast.success(`Category "${createForm.name.trim()}" created successfully`);

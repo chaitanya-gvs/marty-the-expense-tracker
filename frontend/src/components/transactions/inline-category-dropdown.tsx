@@ -29,15 +29,21 @@ import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 interface InlineCategoryDropdownProps {
   transactionId: string;
   currentCategory: string;
+  transactionDirection?: "debit" | "credit"; // Transaction direction to filter categories
   onCancel: () => void;
   onSuccess: () => void;
+  onTabNext?: () => void;
+  onTabPrevious?: () => void;
 }
 
 export function InlineCategoryDropdown({
   transactionId,
   currentCategory,
+  transactionDirection,
   onCancel,
   onSuccess,
+  onTabNext,
+  onTabPrevious,
 }: InlineCategoryDropdownProps) {
   const [open, setOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
@@ -52,8 +58,10 @@ export function InlineCategoryDropdown({
   const [editForm, setEditForm] = useState({ name: "", color: "#3B82F6" });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [categoryToDelete, setCategoryToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [focusedCategoryIndex, setFocusedCategoryIndex] = useState<number>(-1);
   
-  const { data: allCategories = [] } = useCategories();
+  // Filter categories by transaction direction if provided
+  const { data: allCategories = [] } = useCategories(transactionDirection);
   const updateTransaction = useUpdateTransaction();
   const createCategoryMutation = useCreateCategory();
   const updateCategoryMutation = useUpdateCategory();
@@ -86,8 +94,23 @@ export function InlineCategoryDropdown({
     }
   }, [open]);
 
-  const handleSelectCategory = (category: Category) => {
+  const handleSelectCategory = async (category: Category) => {
     setSelectedCategory(category);
+    // Auto-save when category is selected
+    try {
+      await updateTransaction.mutateAsync({
+        id: transactionId,
+        updates: {
+          category: category.name,
+        },
+      });
+      toast.success("Category updated successfully");
+      setOpen(false);
+      onSuccess();
+    } catch (error) {
+      toast.error("Failed to update category");
+      console.error("Update category error:", error);
+    }
   };
 
   const handleClearCategory = () => {
@@ -107,13 +130,26 @@ export function InlineCategoryDropdown({
       const response = await createCategoryMutation.mutateAsync({
         name: nameToCreate,
         color: colorToUse,
+        transaction_type: transactionDirection || null, // Set transaction_type based on transaction direction
       });
 
-      // Find the created category in the list using the returned ID
-      const createdCategory = allCategories.find((cat) => cat.id === response.data.id);
-      if (createdCategory) {
-        setSelectedCategory(createdCategory);
-      }
+      // Create a temporary category object from the response to select immediately
+      // The full category will be available after the query refetches
+      const tempCategory: Category = {
+        id: response.data.id,
+        name: nameToCreate,
+        slug: nameToCreate.toLowerCase().replace(/\s+/g, '-'),
+        color: colorToUse,
+        sort_order: 0,
+        is_active: true,
+        transaction_type: transactionDirection || null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      
+      // Select the category immediately using the temporary object
+      // This will trigger the transaction update
+      await handleSelectCategory(tempCategory);
       
       setShowCreateDialog(false);
       setSearchQuery("");
@@ -223,6 +259,15 @@ export function InlineCategoryDropdown({
       searchQuery === "" || category.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Auto-focus first category when search results change
+  useEffect(() => {
+    if (availableCategories.length > 0 && searchQuery) {
+      setFocusedCategoryIndex(0);
+    } else {
+      setFocusedCategoryIndex(-1);
+    }
+  }, [searchQuery, availableCategories.length]);
+
   // Check if search query matches any existing category
   const exactMatch = allCategories.find(
     (category) => category.name.toLowerCase() === searchQuery.toLowerCase()
@@ -282,9 +327,34 @@ export function InlineCategoryDropdown({
                   placeholder="Type to search or create..."
                   className="h-7 text-xs"
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && canCreateFromSearch) {
+                    if (e.key === "Enter") {
                       e.preventDefault();
-                      handleCreateFromSearch();
+                      // If a category is focused (via arrow keys), select it
+                      if (focusedCategoryIndex >= 0 && focusedCategoryIndex < availableCategories.length) {
+                        handleSelectCategory(availableCategories[focusedCategoryIndex]);
+                      } else if (canCreateFromSearch) {
+                        // Only create new category if no category is focused
+                        handleCreateFromSearch();
+                      }
+                    } else if (e.key === "Tab") {
+                      e.preventDefault();
+                      // Save and move to next/previous cell
+                      handleSave();
+                      if (e.shiftKey) {
+                        onTabPrevious?.();
+                      } else {
+                        onTabNext?.();
+                      }
+                    } else if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      setFocusedCategoryIndex(prev => 
+                        prev < availableCategories.length - 1 ? prev + 1 : 0
+                      );
+                    } else if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      setFocusedCategoryIndex(prev => 
+                        prev > 0 ? prev - 1 : availableCategories.length - 1
+                      );
                     }
                   }}
                 />
@@ -339,11 +409,17 @@ export function InlineCategoryDropdown({
                     {searchQuery ? "No matching categories found" : "No categories available"}
                   </div>
                 ) : (
-                  availableCategories.map((category) => (
+                  availableCategories.map((category, index) => (
                     <div
                       key={category.id}
-                      className="flex items-center space-x-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded cursor-pointer group"
-                      onMouseEnter={() => setHoveredCategoryId(category.id)}
+                      className={cn(
+                        "flex items-center space-x-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded cursor-pointer group",
+                        focusedCategoryIndex === index && "bg-blue-100 dark:bg-blue-900/30"
+                      )}
+                      onMouseEnter={() => {
+                        setHoveredCategoryId(category.id);
+                        setFocusedCategoryIndex(index);
+                      }}
                       onMouseLeave={() => setHoveredCategoryId(null)}
                     >
                       <div 

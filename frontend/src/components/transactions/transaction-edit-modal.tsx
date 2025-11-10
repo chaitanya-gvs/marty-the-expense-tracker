@@ -238,16 +238,7 @@ export function TransactionEditModal({
                     onValueChange={(value) => handleInputChange("category", value)}
                     placeholder="Select category"
                     className="w-full"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="subcategory">Subcategory</Label>
-                  <Input
-                    id="subcategory"
-                    value={formData.subcategory || ""}
-                    onChange={(e) => handleInputChange("subcategory", e.target.value)}
-                    placeholder="Optional subcategory"
+                    transactionDirection={formData.direction}
                   />
                 </div>
 

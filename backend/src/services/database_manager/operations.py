@@ -21,9 +21,12 @@ class AccountOperations:
     @staticmethod
     async def get_all_accounts() -> List[dict]:
         """Get all active bank accounts"""
-        session_factory = get_session_factory()
-        session = session_factory()
         try:
+            logger.info("Retrieving all active bank accounts")
+            session_factory = get_session_factory()
+            session = session_factory()
+            logger.debug("Database session created")
+            
             result = await session.execute(
                 text("""
                     SELECT 
@@ -38,16 +41,24 @@ class AccountOperations:
                 """)
             )
             rows = result.fetchall()
-            return [dict(row._mapping) for row in rows]
+            accounts = [dict(row._mapping) for row in rows]
+            logger.info(f"Retrieved {len(accounts)} active accounts")
+            return accounts
+        except Exception as e:
+            logger.error(f"Error retrieving all accounts: {e}", exc_info=True)
+            raise
         finally:
             await session.close()
     
     @staticmethod
     async def get_accounts_by_type(account_type: str) -> List[dict]:
         """Get accounts by type (credit_card, savings, current)"""
-        session_factory = get_session_factory()
-        session = session_factory()
         try:
+            logger.info(f"Retrieving accounts of type: {account_type}")
+            session_factory = get_session_factory()
+            session = session_factory()
+            logger.debug("Database session created")
+            
             result = await session.execute(
                 text("""
                     SELECT * FROM accounts 
@@ -56,7 +67,12 @@ class AccountOperations:
                 """), {"account_type": account_type}
             )
             rows = result.fetchall()
-            return [dict(row._mapping) for row in rows]
+            accounts = [dict(row._mapping) for row in rows]
+            logger.info(f"Retrieved {len(accounts)} accounts of type {account_type}")
+            return accounts
+        except Exception as e:
+            logger.error(f"Error retrieving accounts by type {account_type}: {e}", exc_info=True)
+            raise
         finally:
             await session.close()
     
@@ -337,6 +353,7 @@ class TransactionOperations:
                     FROM transactions t
                     LEFT JOIN categories c ON t.category_id = c.id
                     WHERE t.id = :transaction_id
+                      AND t.is_deleted = false
                 """), {"transaction_id": transaction_id}
             )
             row = result.fetchone()
@@ -366,6 +383,7 @@ class TransactionOperations:
                     LEFT JOIN categories c ON t.category_id = c.id
                     LEFT JOIN transaction_tags tt ON t.id = tt.transaction_id
                     LEFT JOIN tags tag ON tt.tag_id = tag.id AND tag.is_active = true
+                    WHERE t.is_deleted = false
                     GROUP BY t.id, c.name
                     ORDER BY t.transaction_date {order_by}, t.created_at {order_by}
                     LIMIT :limit OFFSET :offset
@@ -406,6 +424,7 @@ class TransactionOperations:
                     FROM transactions t
                     LEFT JOIN categories c ON t.category_id = c.id
                     WHERE t.transaction_date BETWEEN :start_date AND :end_date
+                      AND t.is_deleted = false
                     ORDER BY t.transaction_date {order_by}, t.created_at {order_by}
                     LIMIT :limit OFFSET :offset
                 """), {
@@ -436,6 +455,7 @@ class TransactionOperations:
                     FROM transactions t
                     LEFT JOIN categories c ON t.category_id = c.id
                     WHERE t.account = :account
+                      AND t.is_deleted = false
                     ORDER BY t.transaction_date DESC, t.created_at DESC
                     LIMIT :limit OFFSET :offset
                 """), {
@@ -468,6 +488,7 @@ class TransactionOperations:
                 text("""
                     SELECT * FROM transactions 
                     WHERE category_id = :category_id
+                      AND is_deleted = false
                     ORDER BY transaction_date DESC, created_at DESC
                     LIMIT :limit OFFSET :offset
                 """), {
@@ -493,6 +514,7 @@ class TransactionOperations:
                     FROM transactions t
                     LEFT JOIN categories c ON t.category_id = c.id
                     WHERE t.is_shared = true
+                      AND t.is_deleted = false
                     ORDER BY t.transaction_date DESC, t.created_at DESC
                     LIMIT :limit OFFSET :offset
                 """), {
@@ -517,6 +539,7 @@ class TransactionOperations:
                     FROM transactions t
                     LEFT JOIN categories c ON t.category_id = c.id
                     WHERE t.transaction_group_id = :transaction_group_id
+                      AND t.is_deleted = false
                     ORDER BY t.transaction_date, t.created_at
                 """), {"transaction_group_id": transaction_group_id}
             )
@@ -537,6 +560,7 @@ class TransactionOperations:
                     FROM transactions t
                     LEFT JOIN categories c ON t.category_id = c.id
                     WHERE t.link_parent_id = :parent_id
+                      AND t.is_deleted = false
                     ORDER BY t.created_at
                 """), {"parent_id": parent_id}
             )
@@ -579,10 +603,10 @@ class TransactionOperations:
             for field, value in updates.items():
                 if field in [
                     'transaction_date', 'transaction_time', 'amount', 'split_share_amount',
-                    'direction', 'transaction_type', 'is_partial_refund', 'is_shared', 'split_breakdown',
+                    'direction', 'transaction_type', 'is_partial_refund', 'is_shared', 'is_flagged', 'split_breakdown',
                     'account', 'category_id', 'sub_category', 'tags', 'description', 'notes', 
                     'reference_number', 'related_mails', 'source_file', 'raw_data',
-                    'link_parent_id', 'transaction_group_id'
+                    'link_parent_id', 'transaction_group_id', 'is_deleted', 'deleted_at'
                 ]:
                     set_clauses.append(f"{field} = :{field}")
                     # Handle JSON fields that need to be encoded
@@ -615,9 +639,14 @@ class TransactionOperations:
         try:
             result = await session.execute(
                 text("""
-                    DELETE FROM transactions 
+                    UPDATE transactions
+                    SET is_deleted = true,
+                        deleted_at = COALESCE(deleted_at, NOW()),
+                        updated_at = NOW()
                     WHERE id = :transaction_id
-                """), {"transaction_id": transaction_id}
+                      AND is_deleted = false
+                """),
+                {"transaction_id": transaction_id}
             )
             await session.commit()
             return result.rowcount > 0
@@ -640,9 +669,12 @@ class TransactionOperations:
                     SELECT t.*, c.name as category
                     FROM transactions t
                     LEFT JOIN categories c ON t.category_id = c.id
-                    WHERE LOWER(t.description) LIKE :search_term
-                       OR LOWER(t.notes) LIKE :search_term
-                       OR LOWER(t.reference_number) LIKE :search_term
+                    WHERE t.is_deleted = false
+                      AND (
+                        LOWER(t.description) LIKE :search_term
+                        OR LOWER(t.notes) LIKE :search_term
+                        OR LOWER(t.reference_number) LIKE :search_term
+                      )
                     ORDER BY t.transaction_date DESC, t.created_at DESC
                     LIMIT :limit OFFSET :offset
                 """), {
@@ -672,6 +704,7 @@ class TransactionOperations:
                     FROM transactions t
                     LEFT JOIN categories c ON t.category_id = c.id
                     WHERE t.direction = :direction
+                      AND t.is_deleted = false
                     ORDER BY t.transaction_date DESC, t.created_at DESC
                     LIMIT :limit OFFSET :offset
                 """), {
@@ -701,6 +734,7 @@ class TransactionOperations:
                     FROM transactions t
                     LEFT JOIN categories c ON t.category_id = c.id
                     WHERE t.tags && :tags
+                      AND t.is_deleted = false
                     ORDER BY t.transaction_date DESC, t.created_at DESC
                     LIMIT :limit OFFSET :offset
                 """), {
@@ -730,6 +764,7 @@ class TransactionOperations:
                     FROM transactions t
                     LEFT JOIN categories c ON t.category_id = c.id
                     WHERE t.transaction_type = :transaction_type
+                      AND t.is_deleted = false
                     ORDER BY t.transaction_date DESC, t.created_at DESC
                     LIMIT :limit OFFSET :offset
                 """), {
@@ -769,6 +804,42 @@ class TransactionOperations:
         
         logger.info(f"Filtered {len(transactions)} -> {len(valid_transactions)} valid transactions")
         return valid_transactions
+    
+    @staticmethod
+    async def clear_all_transactions() -> Dict[str, Any]:
+        """Clear all transactions from the database"""
+        session_factory = get_session_factory()
+        session = session_factory()
+        try:
+            # Soft delete all active transactions
+            result = await session.execute(
+                text("""
+                    UPDATE transactions
+                    SET is_deleted = true,
+                        deleted_at = COALESCE(deleted_at, NOW()),
+                        updated_at = NOW()
+                    WHERE is_deleted = false
+                """)
+            )
+            await session.commit()
+            
+            deleted_count = result.rowcount
+            logger.info(f"Cleared {deleted_count} transactions from database")
+            
+            return {
+                "success": True,
+                "deleted_count": deleted_count
+            }
+        except Exception as e:
+            await session.rollback()
+            logger.error(f"Failed to clear transactions: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "deleted_count": 0
+            }
+        finally:
+            await session.close()
     
     @staticmethod
     async def bulk_insert_transactions(
@@ -831,24 +902,28 @@ class TransactionOperations:
                     insert_data.append(insert_row)
                 except Exception as e:
                     result["error_count"] += 1
-                    result["errors"].append(f"Error preparing transaction: {e}")
+                    error_msg = f"Error preparing transaction {transaction.get('description', 'unknown')}: {e}"
+                    result["errors"].append(error_msg)
+                    logger.error(error_msg)
+                    import traceback
+                    logger.error(f"Traceback: {traceback.format_exc()}")
                     continue
             
             if not insert_data:
                 logger.warning("No valid transactions to insert after preparation")
                 return result
             
-            # Perform bulk insert
+            # Perform bulk insert (category_id will be NULL, can be set later via API)
             insert_query = text("""
                 INSERT INTO transactions (
                     transaction_date, transaction_time, amount, split_share_amount,
                     direction, transaction_type, is_partial_refund, is_shared, split_breakdown,
-                    account, category, sub_category, tags, description, notes, reference_number,
+                    account, sub_category, tags, description, notes, reference_number,
                     related_mails, source_file, raw_data, link_parent_id, transaction_group_id
                 ) VALUES (
                     :transaction_date, :transaction_time, :amount, :split_share_amount,
                     :direction, :transaction_type, :is_partial_refund, :is_shared, :split_breakdown,
-                    :account, :category, :sub_category, :tags, :description, :notes, :reference_number,
+                    :account, :sub_category, :tags, :description, :notes, :reference_number,
                     :related_mails, :source_file, :raw_data, :link_parent_id, :transaction_group_id
                 )
             """)
@@ -907,6 +982,7 @@ class TransactionOperations:
                 SELECT transaction_date, amount, account, description, source_file, raw_data
                 FROM transactions 
                 WHERE transaction_date BETWEEN :min_date AND :max_date
+                  AND is_deleted = false
             """)
             
             result = await session.execute(existing_query, {
@@ -975,11 +1051,17 @@ class TransactionOperations:
     
     @staticmethod
     def _clean_data_for_json(data: Any) -> Any:
-        """Clean data for JSON serialization by converting NaN to None"""
+        """Clean data for JSON serialization by converting NaN to None and datetime to ISO format"""
+        from datetime import datetime, date, time
+        
         if isinstance(data, dict):
             return {k: TransactionOperations._clean_data_for_json(v) for k, v in data.items()}
         elif isinstance(data, list):
             return [TransactionOperations._clean_data_for_json(item) for item in data]
+        elif isinstance(data, (datetime, date)):
+            return data.isoformat()
+        elif isinstance(data, time):
+            return data.isoformat()
         elif pd.isna(data):
             return None
         else:
@@ -1049,20 +1131,30 @@ class TransactionOperations:
                     logger.warning(f"Could not parse transaction time: {transaction_time}")
                     transaction_time = None
         
+        # Determine if transaction is shared
+        has_split_breakdown = transaction.get('split_breakdown') is not None
+        is_shared = transaction.get('is_shared', False) or has_split_breakdown
+        
+        # Get my_share - for Splitwise transactions, this is explicitly provided
+        my_share = transaction.get('my_share', 0)
+        
+        # Get split_breakdown and convert to JSON if present
+        split_breakdown = transaction.get('split_breakdown')
+        if split_breakdown and isinstance(split_breakdown, dict):
+            split_breakdown = json.dumps(TransactionOperations._clean_data_for_json(split_breakdown))
+        
         # Map standardized fields to database fields
         return {
             "transaction_date": transaction_date,
             "transaction_time": transaction_time,
-            "amount": Decimal(str(transaction.get('amount', 0))),
-            "split_share_amount": Decimal(str(transaction.get('my_share', 0))) if transaction.get('is_shared', False) else None,
+            "amount": Decimal(str(transaction.get('amount', 0))),  # Full transaction amount
+            "split_share_amount": Decimal(str(my_share)) if (is_shared and my_share) else None,  # My share of the split
             "direction": transaction.get('transaction_type', 'debit'),  # Map transaction_type to direction (debit/credit)
             "transaction_type": "purchase",  # Default to purchase for Splitwise transactions
             "is_partial_refund": False,
-            "is_shared": transaction.get('is_shared', False),
-            "split_breakdown": transaction.get('split_breakdown'),
-            "paid_by": transaction.get('paid_by'),  # Who actually paid for this transaction
+            "is_shared": is_shared,
+            "split_breakdown": split_breakdown,
             "account": transaction.get('account', ''),
-                "category": transaction.get('category') or 'uncategorized',
             "sub_category": None,
             "tags": [],
             "description": transaction.get('description', ''),
@@ -1070,7 +1162,7 @@ class TransactionOperations:
             "reference_number": str(transaction.get('reference_number', '')),
             "related_mails": [],
             "source_file": transaction.get('source_file', ''),
-                "raw_data": json.dumps(TransactionOperations._clean_data_for_json(transaction.get('raw_data', {}))) if transaction.get('raw_data') else None,
+            "raw_data": json.dumps(TransactionOperations._clean_data_for_json(transaction.get('raw_data', {}))) if transaction.get('raw_data') else None,
             "link_parent_id": None,
             "transaction_group_id": None
         }
@@ -1460,20 +1552,32 @@ class CategoryOperations:
     """Operations for managing transaction categories"""
     
     @staticmethod
-    async def get_all_categories() -> List[dict]:
-        """Get all active categories"""
+    async def get_all_categories(transaction_type: Optional[str] = None) -> List[dict]:
+        """Get all active categories, optionally filtered by transaction_type
+        
+        Args:
+            transaction_type: Optional filter by 'debit', 'credit', or None for all
+        """
         session_factory = get_session_factory()
         session = session_factory()
         try:
-            result = await session.execute(
-                text("""
-                    SELECT id, name, slug, color, parent_id, sort_order,
-                           is_active, created_at, updated_at
-                    FROM categories 
-                    WHERE is_active = true
-                    ORDER BY sort_order, name
-                """)
-            )
+            query = """
+                SELECT id, name, slug, color, parent_id, sort_order,
+                       is_active, transaction_type, created_at, updated_at
+                FROM categories 
+                WHERE is_active = true
+            """
+            params = {}
+            
+            # Filter by transaction_type if provided
+            # If transaction_type is specified, show categories with that type OR categories with no type (applicable to both)
+            if transaction_type:
+                query += " AND (transaction_type = :transaction_type OR transaction_type IS NULL)"
+                params["transaction_type"] = transaction_type
+            
+            query += " ORDER BY sort_order, name"
+            
+            result = await session.execute(text(query), params)
             rows = result.fetchall()
             return [dict(row._mapping) for row in rows]
         finally:
@@ -1514,25 +1618,40 @@ class CategoryOperations:
             await session.close()
     
     @staticmethod
-    async def search_categories(query: str, limit: int = 20) -> List[dict]:
-        """Search categories by name (case-insensitive partial match)"""
+    async def search_categories(query: str, limit: int = 20, transaction_type: Optional[str] = None) -> List[dict]:
+        """Search categories by name (case-insensitive partial match)
+        
+        Args:
+            query: Search query string
+            limit: Maximum number of results
+            transaction_type: Optional filter by 'debit', 'credit', or None for all
+        """
         session_factory = get_session_factory()
         session = session_factory()
         try:
-            result = await session.execute(
-                text("""
-                    SELECT * FROM categories 
-                    WHERE LOWER(name) LIKE LOWER(:query) AND is_active = true
-                    ORDER BY 
-                        CASE WHEN LOWER(name) = LOWER(:exact_query) THEN 1 ELSE 2 END,
-                        name
-                    LIMIT :limit
-                """), {
-                    "query": f"%{query}%",
-                    "exact_query": query,
-                    "limit": limit
-                }
-            )
+            sql_query = """
+                SELECT * FROM categories 
+                WHERE LOWER(name) LIKE LOWER(:query) AND is_active = true
+            """
+            params = {
+                "query": f"%{query}%",
+                "exact_query": query,
+                "limit": limit
+            }
+            
+            # Filter by transaction_type if provided
+            if transaction_type:
+                sql_query += " AND (transaction_type = :transaction_type OR transaction_type IS NULL)"
+                params["transaction_type"] = transaction_type
+            
+            sql_query += """
+                ORDER BY 
+                    CASE WHEN LOWER(name) = LOWER(:exact_query) THEN 1 ELSE 2 END,
+                    name
+                LIMIT :limit
+            """
+            
+            result = await session.execute(text(sql_query), params)
             rows = result.fetchall()
             return [dict(row._mapping) for row in rows]
         finally:
@@ -1543,9 +1662,18 @@ class CategoryOperations:
         name: str,
         color: Optional[str] = None,
         parent_id: Optional[str] = None,
-        sort_order: Optional[int] = None
+        sort_order: Optional[int] = None,
+        transaction_type: Optional[str] = None
     ) -> str:
-        """Create a new category and return its ID"""
+        """Create a new category and return its ID
+        
+        Args:
+            name: Category name
+            color: Optional color hex code
+            parent_id: Optional parent category ID
+            sort_order: Optional sort order
+            transaction_type: Optional transaction type ('debit', 'credit', or None for both)
+        """
         session_factory = get_session_factory()
         session = session_factory()
         try:
@@ -1577,17 +1705,22 @@ class CategoryOperations:
                 )
                 sort_order = result.fetchone()[0]
             
+            # Validate transaction_type if provided
+            if transaction_type is not None and transaction_type not in ("debit", "credit"):
+                raise ValueError(f"Invalid transaction_type: {transaction_type}. Must be 'debit', 'credit', or None")
+            
             result = await session.execute(
                 text("""
-                    INSERT INTO categories (name, slug, color, parent_id, sort_order, is_active)
-                    VALUES (:name, :slug, :color, :parent_id, :sort_order, true)
+                    INSERT INTO categories (name, slug, color, parent_id, sort_order, is_active, transaction_type)
+                    VALUES (:name, :slug, :color, :parent_id, :sort_order, true, :transaction_type)
                     RETURNING id
                 """), {
                     "name": name,
                     "slug": slug,
                     "color": color,
                     "parent_id": parent_id,
-                    "sort_order": sort_order
+                    "sort_order": sort_order,
+                    "transaction_type": transaction_type
                 }
             )
             category_id = result.fetchone()[0]
@@ -1603,9 +1736,19 @@ class CategoryOperations:
         name: Optional[str] = None,
         color: Optional[str] = None,
         parent_id: Optional[str] = None,
-        sort_order: Optional[int] = None
+        sort_order: Optional[int] = None,
+        transaction_type: Optional[str] = None
     ) -> bool:
-        """Update a category"""
+        """Update a category
+        
+        Args:
+            category_id: Category ID to update
+            name: Optional new name
+            color: Optional new color
+            parent_id: Optional new parent ID
+            sort_order: Optional new sort order
+            transaction_type: Optional transaction type ('debit', 'credit', or None for both)
+        """
         session_factory = get_session_factory()
         session = session_factory()
         try:
@@ -1644,6 +1787,18 @@ class CategoryOperations:
             if sort_order is not None:
                 set_clauses.append("sort_order = :sort_order")
                 params["sort_order"] = sort_order
+            # Handle transaction_type update
+            # Allow setting to NULL by passing empty string, or setting to a value
+            if transaction_type is not None:
+                if transaction_type == "":
+                    # Empty string means set to NULL - use SQL NULL directly
+                    set_clauses.append("transaction_type = NULL")
+                else:
+                    # Validate transaction_type value
+                    if transaction_type not in ("debit", "credit"):
+                        raise ValueError(f"Invalid transaction_type: {transaction_type}. Must be 'debit', 'credit', or empty string for NULL")
+                    set_clauses.append("transaction_type = :transaction_type")
+                    params["transaction_type"] = transaction_type
             
             if not set_clauses:
                 return False
