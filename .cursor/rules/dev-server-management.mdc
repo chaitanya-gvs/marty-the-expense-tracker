@@ -1,0 +1,28 @@
+---
+alwaysApply: true
+---
+# Development Server Management
+
+## Hot Reload Configuration
+Both the backend and frontend development servers run with automatic reload/hot module replacement (HMR):
+- **Backend**: FastAPI with `uvicorn --reload` (automatically reloads on Python file changes)
+- **Frontend**: Next.js with `npm run dev` (automatically reloads on file changes)
+
+## Important Rules
+- **DO NOT restart the development servers** after making code changes unless explicitly requested by the user
+- The servers will automatically detect changes and reload
+- Only restart servers when:
+  - The user explicitly asks to restart them
+  - Configuration files are changed (e.g., `pyproject.toml`, `package.json`, environment variables)
+  - There are server-level issues that require a restart
+
+## Common Commands (Use Only When Explicitly Requested)
+Backend (from `backend/` directory):
+```bash
+poetry run uvicorn main:app --reload
+```
+
+Frontend (from `frontend/` directory):
+```bash
+npm run dev
+```

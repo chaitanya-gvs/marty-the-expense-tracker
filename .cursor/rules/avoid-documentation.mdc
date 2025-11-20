@@ -1,0 +1,25 @@
+---
+alwaysApply: true
+---
+# Documentation Generation Policy
+
+## Rule
+**DO NOT create markdown documentation files** (`.md` files) for every change or feature implementation unless explicitly requested by the user.
+
+## When NOT to Create Documentation
+- For routine code changes, bug fixes, or feature implementations
+- For refactoring or optimization work
+- For adding new endpoints, components, or services
+- For configuration changes
+
+## When Documentation IS Appropriate
+Only create documentation when:
+- The user explicitly asks for documentation to be written
+- The user requests a README, guide, or summary document
+- Creating setup instructions that are specifically requested
+
+## Focus Instead On
+- Writing clear, self-documenting code
+- Adding inline comments where necessary
+- Updating existing documentation if it becomes outdated
+- Implementing the requested features and changes directly
