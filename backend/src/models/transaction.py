@@ -23,6 +23,7 @@ class Transaction(Base):
     transaction_date: Mapped[date] = mapped_column(Date, nullable=False)
     transaction_time: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    user_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     amount: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     split_share_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric, nullable=True)
     direction: Mapped[str] = mapped_column(Text, nullable=False)  # credit, debit
