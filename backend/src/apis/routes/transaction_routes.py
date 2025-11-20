@@ -1046,6 +1046,149 @@ async def get_unique_field_values(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/analytics", response_model=ApiResponse)
+async def get_expense_analytics(
+    date_range_start: Optional[date] = Query(None, description="Start date for filtering"),
+    date_range_end: Optional[date] = Query(None, description="End date for filtering"),
+    accounts: Optional[str] = Query(None, description="Comma-separated account names"),
+    exclude_accounts: Optional[str] = Query(None, description="Comma-separated account names to exclude"),
+    categories: Optional[str] = Query(None, description="Comma-separated category names"),
+    exclude_categories: Optional[str] = Query(None, description="Comma-separated category names to exclude"),
+    tags: Optional[str] = Query(None, description="Comma-separated tag names"),
+    exclude_tags: Optional[str] = Query(None, description="Comma-separated tag names to exclude"),
+    direction: Optional[str] = Query("debit", pattern="^(debit|credit)$", description="Transaction direction"),
+    group_by: str = Query("category", description="Group by: category, tag, month, account, category_month, tag_month")
+):
+    """Get expense analytics aggregated by various dimensions."""
+    try:
+        # Parse filter values
+        account_filter_values = [account.strip() for account in accounts.split(',')] if accounts else []
+        account_filter_values = [account for account in account_filter_values if account]
+        exclude_account_values = [account.strip() for account in exclude_accounts.split(',')] if exclude_accounts else []
+        exclude_account_values = [account for account in exclude_account_values if account]
+        
+        category_filter_values = [category.strip() for category in categories.split(',')] if categories else []
+        category_filter_values = [category for category in category_filter_values if category]
+        exclude_category_values = [category.strip() for category in exclude_categories.split(',')] if exclude_categories else []
+        exclude_category_values = [category for category in exclude_category_values if category]
+        
+        tag_filter_values = [tag.strip() for tag in tags.split(',')] if tags else []
+        tag_filter_values = [tag for tag in tag_filter_values if tag]
+        exclude_tag_values = [tag.strip() for tag in exclude_tags.split(',')] if exclude_tags else []
+        exclude_tag_values = [tag for tag in exclude_tag_values if tag]
+        
+        # Validate group_by
+        valid_group_by = ["category", "tag", "month", "account", "category_month", "tag_month", "tag_category"]
+        if group_by not in valid_group_by:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid group_by. Must be one of: {', '.join(valid_group_by)}"
+            )
+        
+        # Get analytics data
+        analytics_data = await handle_database_operation(
+            TransactionOperations.get_expense_analytics,
+            start_date=date_range_start,
+            end_date=date_range_end,
+            accounts=account_filter_values if account_filter_values else None,
+            exclude_accounts=exclude_account_values if exclude_account_values else None,
+            categories=category_filter_values if category_filter_values else None,
+            exclude_categories=exclude_category_values if exclude_category_values else None,
+            tags=tag_filter_values if tag_filter_values else None,
+            exclude_tags=exclude_tag_values if exclude_tag_values else None,
+            direction=direction,
+            group_by=group_by
+        )
+        
+        return ApiResponse(data=analytics_data)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get expense analytics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/suggestions/transfers", response_model=ApiResponse)
+async def get_transfer_suggestions(
+    days_back: int = Query(30, ge=1, le=365, description="Days to look back for transactions"),
+    min_amount: float = Query(10.0, ge=0.01, description="Minimum transaction amount"),
+    max_time_diff_hours: int = Query(24, ge=1, le=168, description="Maximum time difference in hours")
+):
+    """Get suggestions for potential transfer pairs."""
+    try:
+        suggestions = await SuggestionOperations.find_transfer_suggestions(
+            days_back=days_back,
+            min_amount=min_amount,
+            max_time_diff_hours=max_time_diff_hours
+        )
+        
+        # Convert to response format
+        response_suggestions = []
+        for suggestion in suggestions:
+            response_suggestions.append(TransferSuggestion(
+                transactions=suggestion["transactions"],
+                confidence=suggestion["confidence"],
+                reason=suggestion["reason"]
+            ))
+        
+        return ApiResponse(data=response_suggestions)
+        
+    except Exception as e:
+        logger.error(f"Failed to get transfer suggestions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/suggestions/refunds", response_model=ApiResponse)
+async def get_refund_suggestions(
+    days_back: int = Query(90, ge=1, le=365, description="Days to look back for transactions"),
+    min_amount: float = Query(5.0, ge=0.01, description="Minimum transaction amount")
+):
+    """Get suggestions for potential refund pairs."""
+    try:
+        # Simplified refund suggestions - would need full implementation
+        suggestions = []
+        
+        return ApiResponse(data=suggestions)
+        
+    except Exception as e:
+        logger.error(f"Failed to get refund suggestions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/suggestions/summary", response_model=ApiResponse)
+async def get_suggestions_summary():
+    """Get summary of available suggestions."""
+    try:
+        # Get counts of potential suggestions
+        transfer_suggestions = await SuggestionOperations.find_transfer_suggestions(days_back=30)
+        
+        # Calculate confidence distribution
+        transfer_confidences = [s["confidence"] for s in transfer_suggestions]
+        
+        summary = {
+            "transfer_suggestions": {
+                "count": len(transfer_suggestions),
+                "high_confidence": len([c for c in transfer_confidences if c > 0.7]),
+                "medium_confidence": len([c for c in transfer_confidences if 0.4 <= c <= 0.7]),
+                "low_confidence": len([c for c in transfer_confidences if c < 0.4])
+            },
+            "refund_suggestions": {
+                "count": 0,
+                "high_confidence": 0,
+                "medium_confidence": 0,
+                "low_confidence": 0
+            },
+            "last_updated": datetime.now().isoformat()
+        }
+        
+        return ApiResponse(data=summary)
+        
+    except Exception as e:
+        logger.error(f"Failed to get suggestions summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{transaction_id}", response_model=ApiResponse)
 async def get_transaction(transaction_id: str):
     """Get a single transaction by ID."""
@@ -1987,154 +2130,6 @@ async def upsert_category(category_data: CategoryCreate):
         logger.error(f"Failed to upsert category: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-
-
-# ============================================================================
-# SUGGESTION ROUTES (within transactions)
-# ============================================================================
-
-@router.get("/suggestions/transfers", response_model=ApiResponse)
-async def get_transfer_suggestions(
-    days_back: int = Query(30, ge=1, le=365, description="Days to look back for transactions"),
-    min_amount: float = Query(10.0, ge=0.01, description="Minimum transaction amount"),
-    max_time_diff_hours: int = Query(24, ge=1, le=168, description="Maximum time difference in hours")
-):
-    """Get suggestions for potential transfer pairs."""
-    try:
-        suggestions = await SuggestionOperations.find_transfer_suggestions(
-            days_back=days_back,
-            min_amount=min_amount,
-            max_time_diff_hours=max_time_diff_hours
-        )
-        
-        # Convert to response format
-        response_suggestions = []
-        for suggestion in suggestions:
-            response_suggestions.append(TransferSuggestion(
-                transactions=suggestion["transactions"],
-                confidence=suggestion["confidence"],
-                reason=suggestion["reason"]
-            ))
-        
-        return ApiResponse(data=response_suggestions)
-        
-    except Exception as e:
-        logger.error(f"Failed to get transfer suggestions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/suggestions/refunds", response_model=ApiResponse)
-async def get_refund_suggestions(
-    days_back: int = Query(90, ge=1, le=365, description="Days to look back for transactions"),
-    min_amount: float = Query(5.0, ge=0.01, description="Minimum transaction amount")
-):
-    """Get suggestions for potential refund pairs."""
-    try:
-        # Simplified refund suggestions - would need full implementation
-        suggestions = []
-        
-        return ApiResponse(data=suggestions)
-        
-    except Exception as e:
-        logger.error(f"Failed to get refund suggestions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/suggestions/summary", response_model=ApiResponse)
-async def get_suggestions_summary():
-    """Get summary of available suggestions."""
-    try:
-        # Get counts of potential suggestions
-        transfer_suggestions = await SuggestionOperations.find_transfer_suggestions(days_back=30)
-        
-        # Calculate confidence distribution
-        transfer_confidences = [s["confidence"] for s in transfer_suggestions]
-        
-        summary = {
-            "transfer_suggestions": {
-                "count": len(transfer_suggestions),
-                "high_confidence": len([c for c in transfer_confidences if c > 0.7]),
-                "medium_confidence": len([c for c in transfer_confidences if 0.4 <= c <= 0.7]),
-                "low_confidence": len([c for c in transfer_confidences if c < 0.4])
-            },
-            "refund_suggestions": {
-                "count": 0,
-                "high_confidence": 0,
-                "medium_confidence": 0,
-                "low_confidence": 0
-            },
-            "last_updated": datetime.now().isoformat()
-        }
-        
-        return ApiResponse(data=summary)
-        
-    except Exception as e:
-        logger.error(f"Failed to get suggestions summary: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/analytics", response_model=ApiResponse)
-async def get_expense_analytics(
-    date_range_start: Optional[date] = Query(None, description="Start date for filtering"),
-    date_range_end: Optional[date] = Query(None, description="End date for filtering"),
-    accounts: Optional[str] = Query(None, description="Comma-separated account names"),
-    exclude_accounts: Optional[str] = Query(None, description="Comma-separated account names to exclude"),
-    categories: Optional[str] = Query(None, description="Comma-separated category names"),
-    exclude_categories: Optional[str] = Query(None, description="Comma-separated category names to exclude"),
-    tags: Optional[str] = Query(None, description="Comma-separated tag names"),
-    exclude_tags: Optional[str] = Query(None, description="Comma-separated tag names to exclude"),
-    direction: Optional[str] = Query("debit", pattern="^(debit|credit)$", description="Transaction direction"),
-    group_by: str = Query("category", description="Group by: category, tag, month, account, category_month, tag_month")
-):
-    """Get expense analytics aggregated by various dimensions."""
-    try:
-        # Parse filter values
-        account_filter_values = [account.strip() for account in accounts.split(',')] if accounts else []
-        account_filter_values = [account for account in account_filter_values if account]
-        exclude_account_values = [account.strip() for account in exclude_accounts.split(',')] if exclude_accounts else []
-        exclude_account_values = [account for account in exclude_account_values if account]
-        
-        category_filter_values = [category.strip() for category in categories.split(',')] if categories else []
-        category_filter_values = [category for category in category_filter_values if category]
-        exclude_category_values = [category.strip() for category in exclude_categories.split(',')] if exclude_categories else []
-        exclude_category_values = [category for category in exclude_category_values if category]
-        
-        tag_filter_values = [tag.strip() for tag in tags.split(',')] if tags else []
-        tag_filter_values = [tag for tag in tag_filter_values if tag]
-        exclude_tag_values = [tag.strip() for tag in exclude_tags.split(',')] if exclude_tags else []
-        exclude_tag_values = [tag for tag in exclude_tag_values if tag]
-        
-        # Validate group_by
-        valid_group_by = ["category", "tag", "month", "account", "category_month", "tag_month"]
-        if group_by not in valid_group_by:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid group_by. Must be one of: {', '.join(valid_group_by)}"
-            )
-        
-        # Get analytics data
-        analytics_data = await handle_database_operation(
-            TransactionOperations.get_expense_analytics,
-            start_date=date_range_start,
-            end_date=date_range_end,
-            accounts=account_filter_values if account_filter_values else None,
-            exclude_accounts=exclude_account_values if exclude_account_values else None,
-            categories=category_filter_values if category_filter_values else None,
-            exclude_categories=exclude_category_values if exclude_category_values else None,
-            tags=tag_filter_values if tag_filter_values else None,
-            exclude_tags=exclude_tag_values if exclude_tag_values else None,
-            direction=direction,
-            group_by=group_by
-        )
-        
-        return ApiResponse(data=analytics_data)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get expense analytics: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================
