@@ -115,19 +115,27 @@ class SplitwiseService:
                 first_name = expense_user.user.first_name or ""
                 last_name = expense_user.user.last_name or ""
                 user_name = f"{first_name} {last_name}".strip()
+                
+                # Check if this is the current user
+                is_current_user = expense_user.user.id == current_user.id
+                
+                # For the current user, use "me" in split_breakdown, but keep full name in participants list
+                participant_name = "me" if is_current_user else user_name
+                
                 participants.append(user_name)
                 
-                if expense_user.user.id == current_user.id:
+                if is_current_user:
                     my_share = expense_user.owed_share
                 
                 # Track who paid the most (primary payer)
                 if expense_user.paid_share > max_paid_amount:
                     max_paid_amount = expense_user.paid_share
-                    paid_by = user_name
+                    # Use "me" if current user paid, otherwise use their name
+                    paid_by = "me" if is_current_user else user_name
                 
                 # Add to split breakdown entries
                 split_breakdown["entries"].append({
-                    "participant": user_name,
+                    "participant": participant_name,
                     "amount": float(expense_user.owed_share),
                     "paid_share": float(expense_user.paid_share),
                     "net_balance": float(expense_user.net_balance) if expense_user.net_balance else 0.0
