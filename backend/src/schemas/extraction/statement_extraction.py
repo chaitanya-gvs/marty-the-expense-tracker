@@ -27,6 +27,11 @@ class CashbackSBICreditCard(BaseModel):
     """Pydantic model for extracting transaction tables from State Bank of India statements"""
     table: str = Field(description="The transaction table in markdown/html format called Transaction Details")
 
+
+class SBISavingsAccount(BaseModel):
+    """Pydantic model for extracting transaction tables from SBI Savings Account statements"""
+    table: str = Field(description="The transaction table in markdown/html format titled 'TRANSACTION OVERVIEW' with columns: Date, Transaction Reference, Ref.No./Chq.No., Credit, Debit, and Balance. Include all transaction rows.")
+
 class YesBankSavingsAccount(BaseModel):
     """Pydantic model for extracting transaction tables from Yes Bank statements"""
     table: str = Field(description="The transaction table in markdown/html format called Statement Of Transactions")
@@ -43,4 +48,6 @@ BANK_STATEMENT_MODELS: Dict[str, Type[BaseModel]] = {
     "cashback_sbi": CashbackSBICreditCard,
     "yes_bank_savings": YesBankSavingsAccount,
     "axis_bank_savings": AxisBankSavingsAccount,
+    # SBI savings account mapping (nickname 'SBI Savings Account' -> key 'sbi_savings')
+    "sbi_savings": SBISavingsAccount,
 }

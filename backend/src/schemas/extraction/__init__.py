@@ -9,7 +9,10 @@ from .statement_extraction import (
     SwiggyHDFCCreditCard,
     AmazonPayICICICreditCard,
     CashbackSBICreditCard,
-    BANK_STATEMENT_MODELS
+    YesBankSavingsAccount,
+    AxisBankSavingsAccount,
+    SBISavingsAccount,
+    BANK_STATEMENT_MODELS,
 )
 
 __all__ = [
@@ -17,5 +20,8 @@ __all__ = [
     "SwiggyHDFCCreditCard", 
     "AmazonPayICICICreditCard",
     "CashbackSBICreditCard",
+    "YesBankSavingsAccount",
+    "AxisBankSavingsAccount",
+    "SBISavingsAccount",
     "BANK_STATEMENT_MODELS",
 ]
