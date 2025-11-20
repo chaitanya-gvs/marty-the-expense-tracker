@@ -569,16 +569,24 @@ class StatementWorkflow:
             # Convert to DataFrame
             splitwise_data = []
             for transaction in splitwise_transactions:
+                # Extract split_breakdown from raw_data if it exists
+                split_breakdown = None
+                if transaction.raw_data and isinstance(transaction.raw_data, dict):
+                    split_breakdown = transaction.raw_data.get('split_breakdown')
+                
                 splitwise_data.append({
                     'date': transaction.date.strftime('%Y-%m-%d'),
                     'description': transaction.description,
-                    'amount': transaction.my_share,
+                    'amount': transaction.amount,  # Total amount, not my_share
+                    'my_share': transaction.my_share,  # User's share
                     'category': transaction.category,
                     'group_name': transaction.group_name,
                     'source': transaction.source,
                     'created_by': transaction.created_by,
                     'total_participants': transaction.total_participants,
                     'participants': ', '.join(transaction.participants),
+                    'paid_by': transaction.paid_by,  # Who paid for the transaction
+                    'split_breakdown': split_breakdown,  # Split breakdown data
                     'is_payment': transaction.is_payment,
                     'external_id': transaction.splitwise_id,
                     'raw_data': transaction.raw_data
@@ -783,7 +791,12 @@ class StatementWorkflow:
             return None
     
     
-    async def run_complete_workflow(self, resume_from_standardization: bool = False) -> Dict[str, Any]:
+    async def run_complete_workflow(
+        self,
+        resume_from_standardization: bool = False,
+        custom_start_date: Optional[str] = None,
+        custom_end_date: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Run the complete statement processing workflow
         
@@ -841,6 +854,14 @@ class StatementWorkflow:
             
             # Step 2: Calculate date range
             start_date, end_date = self._calculate_date_range()
+
+            # Override with custom date range if provided
+            if custom_start_date and custom_end_date:
+                logger.info(
+                    f"Using custom date range override: {custom_start_date} to {custom_end_date}"
+                )
+                start_date = custom_start_date
+                end_date = custom_end_date
             
             # Check if we should skip document extraction and resume from standardization
             if resume_from_standardization:
@@ -931,14 +952,17 @@ class StatementWorkflow:
                 logger.info("🔄 Step 6: Storing transactions in database")
                 db_result = await TransactionOperations.bulk_insert_transactions(
                     combined_data, 
-                    check_duplicates=True
+                    check_duplicates=True,
+                    upsert_splitwise=True  # Update existing Splitwise transactions with latest data
                 )
                 
                 if db_result.get("success"):
                     workflow_results["database_inserted_count"] = db_result.get("inserted_count", 0)
+                    workflow_results["database_updated_count"] = db_result.get("updated_count", 0)
                     workflow_results["database_skipped_count"] = db_result.get("skipped_count", 0)
                     workflow_results["database_error_count"] = db_result.get("error_count", 0)
                     logger.info(f"✅ Database storage: {db_result.get('inserted_count', 0)} inserted, "
+                               f"{db_result.get('updated_count', 0)} updated, "
                                f"{db_result.get('skipped_count', 0)} skipped, "
                                f"{db_result.get('error_count', 0)} errors")
                 else:
@@ -1296,19 +1320,61 @@ class StatementWorkflow:
 
 
 # Convenience function for running the workflow
-async def run_statement_workflow(account_ids: List[str] = None, enable_secondary_account: bool = None) -> Dict[str, Any]:
-    """Run the complete statement processing workflow"""
-    workflow = StatementWorkflow(account_ids=account_ids, enable_secondary_account=enable_secondary_account)
-    return await workflow.run_complete_workflow()
+async def run_statement_workflow(
+    account_ids: List[str] = None,
+    enable_secondary_account: bool = None,
+    custom_start_date: Optional[str] = None,
+    custom_end_date: Optional[str] = None,
+    clear_before_insert: bool = False,  # Currently unused, kept for CLI compatibility
+) -> Dict[str, Any]:
+    """Run the complete statement processing workflow."""
+    workflow = StatementWorkflow(
+        account_ids=account_ids,
+        enable_secondary_account=enable_secondary_account,
+    )
+    return await workflow.run_complete_workflow(
+        resume_from_standardization=False,
+        custom_start_date=custom_start_date,
+        custom_end_date=custom_end_date,
+    )
+
 
 # Convenience function for resuming the workflow
-async def run_resume_workflow(account_ids: List[str] = None, enable_secondary_account: bool = None) -> Dict[str, Any]:
-    """Run workflow resuming from standardization step (skip document extraction)"""
-    workflow = StatementWorkflow(account_ids=account_ids, enable_secondary_account=enable_secondary_account)
-    return await workflow.run_resume_workflow()
+async def run_resume_workflow(
+    account_ids: List[str] = None,
+    enable_secondary_account: bool = None,
+    custom_start_date: Optional[str] = None,
+    custom_end_date: Optional[str] = None,
+    clear_before_insert: bool = False,  # Currently unused, kept for CLI compatibility
+) -> Dict[str, Any]:
+    """Run workflow resuming from standardization step (skip document extraction)."""
+    workflow = StatementWorkflow(
+        account_ids=account_ids,
+        enable_secondary_account=enable_secondary_account,
+    )
+    return await workflow.run_complete_workflow(
+        resume_from_standardization=True,
+        custom_start_date=custom_start_date,
+        custom_end_date=custom_end_date,
+    )
+
 
 # Convenience function to check if resume is possible
-async def can_resume_workflow(account_ids: List[str] = None, enable_secondary_account: bool = None) -> bool:
-    """Check if workflow can be resumed (CSVs exist in cloud storage)"""
-    workflow = StatementWorkflow(account_ids=account_ids, enable_secondary_account=enable_secondary_account)
+async def can_resume_workflow(
+    account_ids: List[str] = None,
+    enable_secondary_account: bool = None,
+    custom_start_date: Optional[str] = None,
+    custom_end_date: Optional[str] = None,
+) -> bool:
+    """
+    Check if workflow can be resumed (CSVs exist in cloud storage).
+
+    Note: custom_start_date/custom_end_date are accepted for CLI compatibility
+    but are not currently used in the resume-check logic, since cloud layout
+    is organized by month.
+    """
+    workflow = StatementWorkflow(
+        account_ids=account_ids,
+        enable_secondary_account=enable_secondary_account,
+    )
     return await workflow.check_cloud_csvs_exist()
