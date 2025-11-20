@@ -122,8 +122,24 @@ export interface TransactionFilters {
     end: string;
   };
   accounts?: string[];
+  /**
+   * Accounts to explicitly exclude from results.
+   * Only one of accounts or exclude_accounts should typically be set.
+   */
+  exclude_accounts?: string[];
   categories?: string[];
+  /**
+   * Categories to explicitly exclude from results.
+   * Only one of categories or exclude_categories should typically be set.
+   */
+  exclude_categories?: string[];
   tags?: string[];
+  participants?: string[];
+  /**
+   * Participants to explicitly exclude from results.
+   * Only one of participants or exclude_participants should typically be set.
+   */
+  exclude_participants?: string[];
   amount_range?: {
     min: number;
     max: number;
@@ -132,7 +148,22 @@ export interface TransactionFilters {
   transaction_type?: "all" | "shared" | "refunds" | "transfers";
   search?: string;
   include_uncategorized?: boolean;
+  /**
+   * Filter by flagged status. When set to true, only flagged transactions are shown.
+   * When set to false, only non-flagged transactions are shown.
+   * When undefined, all transactions are shown.
+   */
   flagged?: boolean;
+  /**
+   * Direct filter by shared status. When set to false, only personal (non-shared) expenses are returned.
+   */
+  is_shared?: boolean;
+  /**
+   * Filter by split status. When set to false, split transactions (is_split=true) are excluded.
+   * When set to true, only split transactions are shown.
+   * When undefined, all transactions are shown.
+   */
+  is_split?: boolean;
 }
 
 export interface TransactionSort {
@@ -212,4 +243,39 @@ export interface EmailSearchFilters {
   custom_search_term?: string;
   search_amount?: number; // Optional override for search amount (e.g., rounded amount for UPI)
   also_search_amount_minus_one?: boolean; // Also search for amount-1 (for UPI rounding scenarios)
+}
+
+export interface ExpenseAnalyticsItem {
+  group_key: string;
+  color?: string | null;
+  amount: number;
+  count: number;
+  category?: string;
+  tag?: string;
+  month?: string;
+}
+
+export interface ExpenseAnalytics {
+  group_by: "category" | "tag" | "month" | "account" | "category_month" | "tag_month";
+  data: ExpenseAnalyticsItem[];
+  summary: {
+    total_amount: number;
+    total_count: number;
+    average_amount: number;
+  };
+}
+
+export interface ExpenseAnalyticsFilters {
+  date_range?: {
+    start: string;
+    end: string;
+  };
+  accounts?: string[];
+  exclude_accounts?: string[];
+  categories?: string[];
+  exclude_categories?: string[];
+  tags?: string[];
+  exclude_tags?: string[];
+  direction?: "debit" | "credit";
+  group_by?: "category" | "tag" | "month" | "account" | "category_month" | "tag_month";
 }

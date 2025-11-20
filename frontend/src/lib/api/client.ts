@@ -1,4 +1,4 @@
-import { ApiResponse, Transaction, Budget, Category, Tag, TransactionFilters, TransactionSort, PaginationParams, TransferSuggestion, RefundSuggestion, SplitBreakdown, EmailMetadata, EmailDetails, EmailSearchFilters } from "@/lib/types";
+import { ApiResponse, Transaction, Budget, Category, Tag, TransactionFilters, TransactionSort, PaginationParams, TransferSuggestion, RefundSuggestion, SplitBreakdown, EmailMetadata, EmailDetails, EmailSearchFilters, ExpenseAnalytics, ExpenseAnalyticsFilters } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
@@ -56,14 +56,26 @@ class ApiClient {
           params.append("date_range_end", filters.date_range.end);
         }
       }
-      if (filters.accounts) {
+      if (filters.accounts && filters.accounts.length > 0) {
         params.append("accounts", filters.accounts.join(","));
       }
-      if (filters.categories) {
+      if (filters.exclude_accounts && filters.exclude_accounts.length > 0) {
+        params.append("exclude_accounts", filters.exclude_accounts.join(","));
+      }
+      if (filters.categories && filters.categories.length > 0) {
         params.append("categories", filters.categories.join(","));
+      }
+      if (filters.exclude_categories && filters.exclude_categories.length > 0) {
+        params.append("exclude_categories", filters.exclude_categories.join(","));
       }
       if (filters.tags) {
         params.append("tags", filters.tags.join(","));
+      }
+      if (filters.participants && filters.participants.length > 0) {
+        params.append("participants", filters.participants.join(","));
+      }
+      if (filters.exclude_participants && filters.exclude_participants.length > 0) {
+        params.append("exclude_participants", filters.exclude_participants.join(","));
       }
       if (filters.amount_range) {
         if (filters.amount_range.min !== undefined && filters.amount_range.min !== null) {
@@ -88,6 +100,12 @@ class ApiClient {
       if (filters.flagged !== undefined) {
         params.append("is_flagged", String(filters.flagged));
       }
+      if (filters.is_shared !== undefined) {
+        params.append("is_shared", String(filters.is_shared));
+      }
+      if (filters.is_split !== undefined) {
+        params.append("is_split", String(filters.is_split));
+      }
     }
 
     if (sort) {
@@ -105,6 +123,41 @@ class ApiClient {
 
   async getTransaction(id: string): Promise<ApiResponse<Transaction>> {
     return this.request<Transaction>(`/transactions/${id}`);
+  }
+
+  async getRelatedTransactions(id: string): Promise<ApiResponse<{
+    transaction: Transaction;
+    parent: Transaction | null;
+    children: Transaction[];
+    group: Transaction[];
+  }>> {
+    return this.request<{
+      transaction: Transaction;
+      parent: Transaction | null;
+      children: Transaction[];
+      group: Transaction[];
+    }>(`/transactions/${id}/related`);
+  }
+
+  async getParentTransaction(id: string): Promise<ApiResponse<Transaction>> {
+    return this.request<Transaction>(`/transactions/${id}/parent`);
+  }
+
+  async getChildTransactions(id: string): Promise<ApiResponse<Transaction[]>> {
+    return this.request<Transaction[]>(`/transactions/${id}/children`);
+  }
+
+  async getGroupTransactions(id: string): Promise<ApiResponse<Transaction[]>> {
+    return this.request<Transaction[]>(`/transactions/${id}/group`);
+  }
+
+  async createTransaction(
+    transaction: Omit<Transaction, "id" | "created_at" | "updated_at" | "status">
+  ): Promise<ApiResponse<Transaction>> {
+    return this.request<Transaction>("/transactions/", {
+      method: "POST",
+      body: JSON.stringify(transaction),
+    });
   }
 
   async updateTransaction(
@@ -393,7 +446,6 @@ class ApiClient {
       body: JSON.stringify(categoryData),
     });
   }
-}
 
   // Suggestions (now under transactions)
   async getTransferSuggestions(): Promise<ApiResponse<TransferSuggestion[]>> {
@@ -529,6 +581,62 @@ class ApiClient {
         method: 'DELETE',
       }
     );
+  }
+
+  async getTransactionSourcePdf(transactionId: string): Promise<Blob> {
+    const url = `${this.baseUrl}/transactions/${transactionId}/source-pdf`;
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}. ${errorText}`);
+    }
+    
+    return response.blob();
+  }
+
+  // Analytics
+  async getExpenseAnalytics(
+    filters?: ExpenseAnalyticsFilters
+  ): Promise<ApiResponse<ExpenseAnalytics>> {
+    const params = new URLSearchParams();
+    
+    if (filters) {
+      if (filters.date_range) {
+        if (filters.date_range.start) {
+          params.append("date_range_start", filters.date_range.start);
+        }
+        if (filters.date_range.end) {
+          params.append("date_range_end", filters.date_range.end);
+        }
+      }
+      if (filters.accounts && filters.accounts.length > 0) {
+        params.append("accounts", filters.accounts.join(","));
+      }
+      if (filters.exclude_accounts && filters.exclude_accounts.length > 0) {
+        params.append("exclude_accounts", filters.exclude_accounts.join(","));
+      }
+      if (filters.categories && filters.categories.length > 0) {
+        params.append("categories", filters.categories.join(","));
+      }
+      if (filters.exclude_categories && filters.exclude_categories.length > 0) {
+        params.append("exclude_categories", filters.exclude_categories.join(","));
+      }
+      if (filters.tags && filters.tags.length > 0) {
+        params.append("tags", filters.tags.join(","));
+      }
+      if (filters.exclude_tags && filters.exclude_tags.length > 0) {
+        params.append("exclude_tags", filters.exclude_tags.join(","));
+      }
+      if (filters.direction) {
+        params.append("direction", filters.direction);
+      }
+      if (filters.group_by) {
+        params.append("group_by", filters.group_by);
+      }
+    }
+    
+    return this.request<ExpenseAnalytics>(`/transactions/analytics?${params.toString()}`);
   }
 }
 
