@@ -24,6 +24,36 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/settlements", tags=["settlements"])
 
+# Current user name variations to exclude from settlements
+CURRENT_USER_NAMES = {"me", "chaitanya gvs", "chaitanya"}
+
+
+def _normalize_participant_name(name: str) -> str:
+    """
+    Normalize participant name to a canonical form (title case).
+    This handles case variations like 'prachi rai' vs 'Prachi Rai'.
+    """
+    if not name:
+        return name
+    
+    # Keep "me" as-is (special case)
+    if name.lower() == "me":
+        return "me"
+    
+    # Convert to title case (e.g., "prachi rai" -> "Prachi Rai")
+    # Split by spaces and title-case each word
+    parts = name.split()
+    normalized = " ".join(word.capitalize() for word in parts)
+    
+    return normalized
+
+
+def _is_current_user(name: str) -> bool:
+    """Check if a participant name represents the current user."""
+    if not name:
+        return False
+    return name.lower() in CURRENT_USER_NAMES
+
 
 def _calculate_participant_share(split_breakdown: Dict[str, Any], participant: str, total_amount: float) -> float:
     """Calculate a participant's share from split breakdown."""
@@ -40,26 +70,89 @@ def _calculate_participant_share(split_breakdown: Dict[str, Any], participant: s
         return 0.0
     elif mode == "custom":
         # Custom split: find the participant's specific amount
+        # Use case-insensitive comparison for participant matching
+        normalized_participant = _normalize_participant_name(participant)
         for entry in entries:
-            if entry.get("participant") == participant:
+            entry_participant = entry.get("participant")
+            if entry_participant and _normalize_participant_name(entry_participant) == normalized_participant:
                 return float(entry.get("amount", 0))
         return 0.0
     
     return 0.0
 
 
-def _get_participants_from_split_breakdown(split_breakdown: Dict[str, Any]) -> List[str]:
-    """Extract all participants from split breakdown."""
+def _infer_paid_by(transaction: Dict[str, Any]) -> Optional[str]:
+    """
+    Infer who paid for a transaction when paid_by is None.
+    
+    Logic:
+    1. If account is not "Splitwise", it's likely from a bank statement, so "me" paid
+    2. Otherwise, check split_breakdown entries to find who has the highest paid_share
+    """
+    paid_by = transaction.get("paid_by")
+    if paid_by:
+        return paid_by
+    
+    # If account is not Splitwise, it's from a bank statement, so I likely paid
+    account = transaction.get("account", "")
+    if account and account.lower() != "splitwise":
+        return "me"
+    
+    # Otherwise, check split_breakdown to find who paid the most
+    split_breakdown = transaction.get("split_breakdown", {})
+    if not split_breakdown or not isinstance(split_breakdown, dict):
+        return None
+    
+    entries = split_breakdown.get("entries", [])
+    if not entries:
+        return None
+    
+    # Find the entry with the highest paid_share
+    max_paid_share = 0.0
+    payer = None
+    
+    for entry in entries:
+        paid_share = entry.get("paid_share", 0.0)
+        if paid_share > max_paid_share:
+            max_paid_share = paid_share
+            payer = entry.get("participant")
+    
+    return payer if max_paid_share > 0 else None
+
+
+def _get_participants_from_split_breakdown(split_breakdown: Dict[str, Any], normalize: bool = True) -> List[str]:
+    """
+    Extract all participants from split breakdown.
+    
+    Args:
+        split_breakdown: The split breakdown dictionary
+        normalize: If True, normalize names to canonical form and exclude current user
+    """
     if not split_breakdown or not isinstance(split_breakdown, dict):
         return []
     
     entries = split_breakdown.get("entries", [])
     participants = []
+    seen_normalized = set()
     
     for entry in entries:
         participant = entry.get("participant")
-        if participant and participant not in participants:
-            participants.append(participant)
+        if not participant:
+            continue
+        
+        # Exclude current user variations
+        if normalize and _is_current_user(participant):
+            continue
+        
+        # Normalize name if requested
+        if normalize:
+            normalized = _normalize_participant_name(participant)
+            if normalized not in seen_normalized:
+                seen_normalized.add(normalized)
+                participants.append(normalized)
+        else:
+            if participant not in participants:
+                participants.append(participant)
     
     return participants
 
@@ -74,11 +167,14 @@ async def _get_settlement_transactions(
     # Build the base query
     query = """
         SELECT 
-            id, transaction_date, description, amount, split_share_amount,
+            id, transaction_date, 
+            COALESCE(user_description, description) as description,
+            amount, split_share_amount,
             split_breakdown, paid_by, account, direction, transaction_type
         FROM transactions 
         WHERE is_shared = true 
         AND split_breakdown IS NOT NULL
+        AND is_deleted = false
     """
     
     params = {}
@@ -119,10 +215,11 @@ async def _get_settlement_transactions(
             "transaction_type": row.transaction_type,
         }
         
-        # Filter by participant if specified
+        # Filter by participant if specified (use normalized comparison)
         if participant:
-            participants = _get_participants_from_split_breakdown(transaction_dict["split_breakdown"])
-            if participant not in participants:
+            participants = _get_participants_from_split_breakdown(transaction_dict["split_breakdown"], normalize=True)
+            normalized_participant = _normalize_participant_name(participant)
+            if normalized_participant not in participants:
                 continue
         
         filtered_transactions.append(transaction_dict)
@@ -133,7 +230,7 @@ async def _get_settlement_transactions(
 def _calculate_settlements(transactions: List[Dict[str, Any]]) -> SettlementSummary:
     """Calculate settlements from transaction data."""
     
-    # Track balances per participant
+    # Track balances per participant (using normalized names)
     participant_balances: Dict[str, Dict[str, float]] = {}
     
     for transaction in transactions:
@@ -142,12 +239,15 @@ def _calculate_settlements(transactions: List[Dict[str, Any]]) -> SettlementSumm
             continue
         
         total_amount = transaction["amount"]
-        participants = _get_participants_from_split_breakdown(split_breakdown)
+        # Get normalized participants (excludes current user)
+        participants = _get_participants_from_split_breakdown(split_breakdown, normalize=True)
         
-        # Determine who paid from the transaction data
-        paid_by = transaction.get("paid_by")
+        # Infer who paid if paid_by is None
+        paid_by = _infer_paid_by(transaction)
+        normalized_paid_by = _normalize_participant_name(paid_by) if paid_by else None
         
         for participant in participants:
+            # participant is already normalized here
             if participant not in participant_balances:
                 participant_balances[participant] = {
                     "amount_owed_to_me": 0.0,
@@ -155,19 +255,24 @@ def _calculate_settlements(transactions: List[Dict[str, Any]]) -> SettlementSumm
                     "transaction_count": 0
                 }
             
+            # Calculate shares using original participant names from entries
             participant_share = _calculate_participant_share(split_breakdown, participant, total_amount)
             my_share = _calculate_participant_share(split_breakdown, "me", total_amount)
             
             # Handle settlement calculation based on who paid
-            if paid_by == "me" or paid_by is None:
-                # I paid (or unknown payer - assume I paid for backward compatibility), so participant owes me their share
-                participant_balances[participant]["amount_owed_to_me"] += participant_share
-            elif paid_by == participant:
-                # Participant paid, so I owe them my share
-                participant_balances[participant]["amount_i_owe"] += my_share
-            # If paid_by is someone else, we don't track that in our settlements (could be enhanced later)
+            # Only include transactions where either I paid or the participant paid
+            is_paid_by_me = normalized_paid_by == "me"
+            is_paid_by_participant = normalized_paid_by == participant or (paid_by and paid_by == participant)
             
-            participant_balances[participant]["transaction_count"] += 1
+            if is_paid_by_me:
+                # I paid for the participant's share, so they owe me their share
+                participant_balances[participant]["amount_owed_to_me"] += participant_share
+                participant_balances[participant]["transaction_count"] += 1
+            elif is_paid_by_participant:
+                # Participant paid for my share, so I owe them my share
+                participant_balances[participant]["amount_i_owe"] += my_share
+                participant_balances[participant]["transaction_count"] += 1
+            # If paid_by is someone else, we don't track that in our settlements (skip transaction)
     
     # Convert to settlement entries
     settlements = []
@@ -175,8 +280,9 @@ def _calculate_settlements(transactions: List[Dict[str, Any]]) -> SettlementSumm
     total_i_owe = 0.0
     
     for participant, balance in participant_balances.items():
-        if participant == "me":
-            continue  # Skip self-references
+        # Exclude current user variations (should already be filtered, but double-check)
+        if _is_current_user(participant):
+            continue
         
         net_balance = balance["amount_owed_to_me"] - balance["amount_i_owe"]
         
@@ -269,12 +375,25 @@ async def get_participant_settlement(
                 continue
             
             total_amount = transaction["amount"]
-            participant_share = _calculate_participant_share(split_breakdown, participant, total_amount)
+            # Normalize participant name for comparison
+            normalized_participant = _normalize_participant_name(participant)
+            participant_share = _calculate_participant_share(split_breakdown, normalized_participant, total_amount)
             my_share = _calculate_participant_share(split_breakdown, "me", total_amount)
             
-            # Determine who paid from the transaction data
-            paid_by = transaction.get("paid_by")
+            # Infer who paid if paid_by is None
+            paid_by = _infer_paid_by(transaction)
+            normalized_paid_by = _normalize_participant_name(paid_by) if paid_by else None
             
+            # Only include transactions where either I paid or the participant paid
+            # This ensures we don't show duplicate transactions paid by someone else
+            is_paid_by_me = normalized_paid_by == "me"
+            is_paid_by_participant = normalized_paid_by == normalized_participant or (paid_by and paid_by == participant)
+            
+            # Skip transactions where neither I nor the participant paid
+            if not (is_paid_by_me or is_paid_by_participant):
+                continue
+            
+            # Only include if there's a meaningful share for either party
             if participant_share > 0 or my_share > 0:
                 settlement_transaction = SettlementTransaction(
                     id=transaction["id"],
@@ -283,18 +402,24 @@ async def get_participant_settlement(
                     amount=total_amount,
                     my_share=my_share,
                     participant_share=participant_share,
-                    paid_by=paid_by,
+                    paid_by=paid_by or "Unknown",  # Show inferred payer or "Unknown" if still can't determine
                     split_breakdown=split_breakdown
                 )
                 
                 participant_transactions.append(settlement_transaction)
-                total_shared_amount += total_amount
+                # Only add the relevant shares to total, not the full amount
+                if is_paid_by_me:
+                    # I paid for the participant's share
+                    total_shared_amount += participant_share
+                elif is_paid_by_participant:
+                    # Participant paid for my share
+                    total_shared_amount += my_share
                 
-                if paid_by == "me" or paid_by is None:
-                    # I paid (or unknown payer - assume I paid for backward compatibility)
+                if is_paid_by_me:
+                    # I paid for the participant's share, so they owe me their share
                     amount_owed_to_me += participant_share
-                elif paid_by == participant:
-                    # Participant paid, so I owe them my share
+                elif is_paid_by_participant:
+                    # Participant paid for my share, so I owe them my share
                     amount_i_owe += my_share
         
         net_balance = amount_owed_to_me - amount_i_owe
@@ -333,15 +458,16 @@ async def get_all_participants(
         
         transactions = await _get_settlement_transactions(db_session, filters)
         
-        # Collect all unique participants
+        # Collect all unique participants (normalized)
         all_participants = set()
         for transaction in transactions:
             split_breakdown = transaction.get("split_breakdown", {})
-            participants = _get_participants_from_split_breakdown(split_breakdown)
+            # Get normalized participants (excludes current user automatically)
+            participants = _get_participants_from_split_breakdown(split_breakdown, normalize=True)
             all_participants.update(participants)
         
-        # Remove "me" from the list
-        all_participants.discard("me")
+        # Additional check to exclude current user variations (should already be filtered)
+        all_participants = {p for p in all_participants if not _is_current_user(p)}
         
         participants_list = sorted(list(all_participants))
         
