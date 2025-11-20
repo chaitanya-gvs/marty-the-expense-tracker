@@ -9,14 +9,18 @@ from decimal import Decimal
 from typing import List, Optional, Dict, Any
 import json
 from fastapi import APIRouter, HTTPException, Query, Depends
-from pydantic import BaseModel, Field
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 import asyncpg
+from pathlib import Path
+import tempfile
 
 from src.services.database_manager.operations import TransactionOperations, CategoryOperations, TagOperations
 from src.services.database_manager.connection import get_session_factory, refresh_connection_pool
 from src.services.email_ingestion.client import EmailClient
+from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -263,7 +267,30 @@ class CategoryResponse(BaseModel):
 class TagCreate(BaseModel):
     """Request model for creating a tag."""
     name: str = Field(..., min_length=1, max_length=50)
-    color: str = Field(..., pattern="^#[0-9A-Fa-f]{6}$")
+    color: str = Field(..., description="Color in hex format (e.g., #RRGGBB)")
+    
+    @field_validator('color')
+    @classmethod
+    def validate_color(cls, v: str) -> str:
+        """Validate and normalize color format"""
+        if not v:
+            return "#3B82F6"  # Default color
+        
+        # Remove # if present
+        color_hex = v.lstrip('#')
+        
+        # Expand shorthand (e.g., FFF -> FFFFFF)
+        if len(color_hex) == 3:
+            color_hex = ''.join(c * 2 for c in color_hex)
+        
+        # Validate hex format
+        if len(color_hex) != 6:
+            raise ValueError(f"Color must be 6 hex digits, got {len(color_hex)}: {v}")
+        
+        if not all(c in '0123456789ABCDEFabcdef' for c in color_hex):
+            raise ValueError(f"Invalid hex color format: {v}")
+        
+        return f"#{color_hex.upper()}"
 
 
 class TagUpdate(BaseModel):
@@ -422,10 +449,26 @@ def _parse_raw_data(raw_data: Any) -> Optional[Dict[str, Any]]:
 
 def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> TransactionResponse:
     """Convert database transaction to API response format."""
+    # Handle None values for boolean fields - default to False
     is_flagged = transaction.get('is_flagged')
-    # Handle None or missing is_flagged - default to False
     if is_flagged is None:
         is_flagged = False
+    
+    is_shared = transaction.get('is_shared')
+    if is_shared is None:
+        is_shared = False
+    
+    is_refund = transaction.get('is_partial_refund')
+    if is_refund is None:
+        is_refund = False
+    
+    is_split = transaction.get('is_split')
+    if is_split is None:
+        is_split = False
+    
+    is_deleted = transaction.get('is_deleted')
+    if is_deleted is None:
+        is_deleted = False
     
     return TransactionResponse(
         id=str(transaction.get('id', '')),
@@ -439,9 +482,9 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
         split_share_amount=float(transaction.get('split_share_amount')) if transaction.get('split_share_amount') else None,
         tags=transaction.get('tags', []) or [],
         notes=transaction.get('notes'),
-        is_shared=transaction.get('is_shared', False),
-        is_refund=transaction.get('is_partial_refund', False),
-        is_split=transaction.get('is_split', False),
+        is_shared=is_shared,
+        is_refund=is_refund,
+        is_split=is_split,
         is_transfer=bool(transaction.get('transaction_group_id')),
         is_flagged=is_flagged,
         split_breakdown=transaction.get('split_breakdown'),
@@ -454,17 +497,22 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
         created_at=transaction.get('created_at', '').isoformat() if transaction.get('created_at') else '',
         updated_at=transaction.get('updated_at', '').isoformat() if transaction.get('updated_at') else '',
         status="reviewed",
-        is_deleted=transaction.get('is_deleted', False),
+        is_deleted=is_deleted,
         deleted_at=transaction.get('deleted_at', '').isoformat() if transaction.get('deleted_at') else None
     )
 
 
 def _convert_db_tag_to_response(tag: Dict[str, Any]) -> TagResponse:
     """Convert database tag to API response format."""
+    # Convert UUID to string if needed
+    tag_id = tag.get("id")
+    if tag_id is not None:
+        tag_id = str(tag_id)
+    
     return TagResponse(
-        id=tag["id"],
-        name=tag["name"],
-        color=tag["color"],
+        id=tag_id or "",
+        name=tag.get("name", ""),
+        color=tag.get("color") or "#3B82F6",
         usage_count=tag.get("usage_count", 0)
     )
 
@@ -505,7 +553,9 @@ async def get_transactions(
     date_range_start: Optional[date] = Query(None, description="Start date for filtering"),
     date_range_end: Optional[date] = Query(None, description="End date for filtering"),
     accounts: Optional[str] = Query(None, description="Comma-separated account names"),
+    exclude_accounts: Optional[str] = Query(None, description="Comma-separated account names to exclude"),
     categories: Optional[str] = Query(None, description="Comma-separated category names"),
+    exclude_categories: Optional[str] = Query(None, description="Comma-separated category names to exclude"),
     include_uncategorized: bool = Query(False, description="Include uncategorized transactions when filtering by category"),
     tags: Optional[str] = Query(None, description="Comma-separated tag names"),
     amount_min: Optional[float] = Query(None, description="Minimum amount"),
@@ -514,6 +564,10 @@ async def get_transactions(
     transaction_type: Optional[str] = Query(None, pattern="^(all|shared|refunds|transfers)$", description="Transaction type filter"),
     search: Optional[str] = Query(None, description="Search in description and notes"),
     is_flagged: Optional[bool] = Query(None, description="Filter transactions by flagged status"),
+    is_shared: Optional[bool] = Query(None, description="Filter transactions by shared status"),
+    is_split: Optional[bool] = Query(None, description="Filter transactions by split status (False to exclude split transactions)"),
+    participants: Optional[str] = Query(None, description="Comma-separated participant names to include"),
+    exclude_participants: Optional[str] = Query(None, description="Comma-separated participant names to exclude"),
     sort_field: Optional[str] = Query("date", description="Field to sort by"),
     sort_direction: Optional[str] = Query("desc", pattern="^(asc|desc)$", description="Sort direction"),
     page: int = Query(1, ge=1, description="Page number"),
@@ -521,35 +575,99 @@ async def get_transactions(
 ):
     """Get transactions with filtering, sorting, and pagination."""
     try:
-        # Handle query parameters for backward compatibility
-        if date_range_start or date_range_end:
-            transactions = await handle_database_operation(
-                TransactionOperations.get_transactions_by_date_range,
-                start_date=date_range_start or date.min,
-                end_date=date_range_end or date.max,
-                limit=limit,
-                offset=(page - 1) * limit,
-                order_by="DESC" if sort_direction == "desc" else "ASC"
-            )
-        else:
-            transactions = await handle_database_operation(
-                TransactionOperations.get_all_transactions,
-                limit=limit,
-                offset=(page - 1) * limit,
-                order_by="DESC" if sort_direction == "desc" else "ASC"
-            )
-        
         # Prepare filter values
         account_filter_values = [account.strip() for account in accounts.split(',')] if accounts else []
         account_filter_values = [account for account in account_filter_values if account]
+        exclude_account_values = [account.strip() for account in exclude_accounts.split(',')] if exclude_accounts else []
+        exclude_account_values = [account for account in exclude_account_values if account]
+
         category_filter_values = [category.strip() for category in categories.split(',')] if categories else []
         category_filter_values = [category for category in category_filter_values if category]
+        exclude_category_values = [category.strip() for category in exclude_categories.split(',')] if exclude_categories else []
+        exclude_category_values = [category for category in exclude_category_values if category]
         tag_filter_values = [tag.strip() for tag in tags.split(',')] if tags else []
         tag_filter_values = [tag for tag in tag_filter_values if tag]
+        
+        participant_filter_values = [p.strip() for p in participants.split(',')] if participants else []
+        participant_filter_values = [p for p in participant_filter_values if p]
+        exclude_participant_values = [p.strip() for p in exclude_participants.split(',')] if exclude_participants else []
+        exclude_participant_values = [p for p in exclude_participant_values if p]
 
-        # Apply additional filters
+        # Check if any filters are present (excluding pagination params)
+        has_filters = bool(
+            date_range_start or date_range_end or
+            account_filter_values or exclude_account_values or
+            category_filter_values or exclude_category_values or include_uncategorized or
+            tag_filter_values or
+            participant_filter_values or exclude_participant_values or
+            amount_min is not None or amount_max is not None or
+            direction or transaction_type or search or
+            is_flagged is not None or is_shared is not None or is_split is not None
+        )
+
+        # If filters are present, fetch ALL transactions first, then filter and paginate
+        # If no filters, we can paginate at the database level for better performance
+        if has_filters:
+            # Fetch all transactions (use a very large limit to get all)
+            if date_range_start or date_range_end:
+                transactions = await handle_database_operation(
+                    TransactionOperations.get_transactions_by_date_range,
+                    start_date=date_range_start or date.min,
+                    end_date=date_range_end or date.max,
+                    limit=1000000,  # Very large limit to get all transactions in range
+                    offset=0,
+                    order_by="DESC" if sort_direction == "desc" else "ASC"
+                )
+            else:
+                transactions = await handle_database_operation(
+                    TransactionOperations.get_all_transactions,
+                    limit=1000000,  # Very large limit to get all transactions
+                    offset=0,
+                    order_by="DESC" if sort_direction == "desc" else "ASC"
+                )
+        else:
+            # No filters - paginate at database level for performance
+            if date_range_start or date_range_end:
+                transactions = await handle_database_operation(
+                    TransactionOperations.get_transactions_by_date_range,
+                    start_date=date_range_start or date.min,
+                    end_date=date_range_end or date.max,
+                    limit=limit,
+                    offset=(page - 1) * limit,
+                    order_by="DESC" if sort_direction == "desc" else "ASC"
+                )
+            else:
+                transactions = await handle_database_operation(
+                    TransactionOperations.get_all_transactions,
+                    limit=limit,
+                    offset=(page - 1) * limit,
+                    order_by="DESC" if sort_direction == "desc" else "ASC"
+                )
+
+        # Helper function to extract participants from transaction
+        def get_transaction_participants(txn: Dict[str, Any]) -> List[str]:
+            """Extract all participants from a transaction (from split_breakdown and paid_by)."""
+            participants_list = []
+            split_breakdown = txn.get('split_breakdown')
+            if split_breakdown and isinstance(split_breakdown, dict):
+                entries = split_breakdown.get("entries", [])
+                for entry in entries:
+                    participant = entry.get("participant")
+                    if participant and participant not in participants_list:
+                        participants_list.append(participant)
+            # Also include paid_by if present
+            paid_by = txn.get('paid_by')
+            if paid_by and paid_by not in participants_list:
+                participants_list.append(paid_by)
+            return participants_list
+
+        # Apply filters (if any filters were present, we filter all transactions; otherwise we already have the page)
         filtered_transactions = []
         for transaction in transactions:
+            # Apply excluded accounts filter first
+            if exclude_account_values and transaction.get('account') in exclude_account_values:
+                continue
+
             # Apply account filter
             if account_filter_values and transaction.get('account') not in account_filter_values:
                 continue
@@ -557,6 +675,10 @@ async def get_transactions(
             # Apply category filter
             transaction_category = transaction.get('category')
             is_transaction_uncategorized = transaction_category is None or str(transaction_category).strip() == ''
+            # Apply excluded categories filter
+            if exclude_category_values and transaction_category in exclude_category_values:
+                continue
+
             if category_filter_values:
                 if transaction_category not in category_filter_values:
                     if not (include_uncategorized and is_transaction_uncategorized):
@@ -596,6 +718,36 @@ async def get_transactions(
                     continue
                 elif transaction_type == "transfers" and not transaction.get('transaction_group_id'):
                     continue
+
+            # Apply direct is_shared filter (e.g., to hide shared expenses)
+            if is_shared is not None:
+                transaction_is_shared = transaction.get('is_shared')
+                if transaction_is_shared is None:
+                    transaction_is_shared = False
+                if bool(transaction_is_shared) != is_shared:
+                    continue
+            
+            # Apply is_split filter (e.g., to exclude split transactions)
+            if is_split is not None:
+                transaction_is_split = transaction.get('is_split')
+                if transaction_is_split is None:
+                    transaction_is_split = False
+                if bool(transaction_is_split) != is_split:
+                    continue
+            
+            # Apply participants filter
+            if participant_filter_values or exclude_participant_values:
+                transaction_participants = get_transaction_participants(transaction)
+                
+                # Apply exclude participants filter first
+                if exclude_participant_values:
+                    if any(p in transaction_participants for p in exclude_participant_values):
+                        continue
+                
+                # Apply include participants filter
+                if participant_filter_values:
+                    if not any(p in transaction_participants for p in participant_filter_values):
+                        continue
             
             # Apply search filter
             if search:
@@ -607,12 +759,43 @@ async def get_transactions(
             
             filtered_transactions.append(transaction)
         
-        # Convert to response format
-        response_transactions = [_convert_db_transaction_to_response(t) for t in filtered_transactions]
+        # If filters were applied, we now have all filtered transactions - paginate them
+        # If no filters, we already have the paginated results
+        if has_filters:
+            # Calculate total count before pagination
+            total_count = len(filtered_transactions)
+            total_pages = (total_count + limit - 1) // limit if limit > 0 else 1
+            
+            # Apply pagination to filtered results
+            start_idx = (page - 1) * limit
+            end_idx = start_idx + limit
+            paginated_transactions = filtered_transactions[start_idx:end_idx]
+        else:
+            # No filters - we already have the paginated results
+            # But we need to get the total count for pagination metadata
+            # Fetch total count separately (without pagination)
+            if date_range_start or date_range_end:
+                all_transactions_for_count = await handle_database_operation(
+                    TransactionOperations.get_transactions_by_date_range,
+                    start_date=date_range_start or date.min,
+                    end_date=date_range_end or date.max,
+                    limit=1000000,
+                    offset=0,
+                    order_by="DESC" if sort_direction == "desc" else "ASC"
+                )
+            else:
+                all_transactions_for_count = await handle_database_operation(
+                    TransactionOperations.get_all_transactions,
+                    limit=1000000,
+                    offset=0,
+                    order_by="DESC" if sort_direction == "desc" else "ASC"
+                )
+            total_count = len(all_transactions_for_count)
+            total_pages = (total_count + limit - 1) // limit if limit > 0 else 1
+            paginated_transactions = filtered_transactions  # Already paginated from DB
         
-        # Calculate pagination info
-        total_count = len(response_transactions)
-        total_pages = (total_count + limit - 1) // limit
+        # Convert to response format
+        response_transactions = [_convert_db_transaction_to_response(t) for t in paginated_transactions]
         
         return ApiResponse(
             data=response_transactions,
@@ -686,6 +869,21 @@ async def get_tag(tag_id: str):
 async def create_tag(tag_data: TagCreate):
     """Create a new tag."""
     try:
+        # Validate color format if provided
+        if tag_data.color and not tag_data.color.startswith('#'):
+            tag_data.color = f"#{tag_data.color}"
+        
+        # Ensure color is 6 hex digits
+        if tag_data.color:
+            # Remove # if present, then ensure it's 6 hex digits
+            color_hex = tag_data.color.lstrip('#')
+            if len(color_hex) == 3:
+                # Expand shorthand (e.g., #FFF -> #FFFFFF)
+                color_hex = ''.join(c * 2 for c in color_hex)
+            if len(color_hex) != 6 or not all(c in '0123456789ABCDEFabcdef' for c in color_hex):
+                raise HTTPException(status_code=400, detail=f"Invalid color format: {tag_data.color}. Expected format: #RRGGBB")
+            tag_data.color = f"#{color_hex.upper()}"
+        
         tag_id = await TagOperations.create_tag(
             name=tag_data.name,
             color=tag_data.color
@@ -693,11 +891,15 @@ async def create_tag(tag_data: TagCreate):
         
         return ApiResponse(data={"id": tag_id}, message="Tag created successfully")
         
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to create tag: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to create tag: {str(e)}")
 
 
 @router.put("/tags/{tag_id}", response_model=ApiResponse)
@@ -870,6 +1072,148 @@ async def get_transaction(transaction_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/{transaction_id}/related", response_model=ApiResponse)
+async def get_related_transactions(transaction_id: str):
+    """Get all related transactions for a transaction (parent, children, and group members)."""
+    try:
+        # Get the transaction first
+        transaction = await handle_database_operation(
+            TransactionOperations.get_transaction_by_id,
+            transaction_id
+        )
+        if not transaction:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        
+        related_data = {
+            "transaction": _convert_db_transaction_to_response(transaction),
+            "parent": None,
+            "children": [],
+            "group": []
+        }
+        
+        # Get parent transaction if this is a child (refund)
+        if transaction.get('link_parent_id'):
+            parent = await handle_database_operation(
+                TransactionOperations.get_transaction_by_id,
+                str(transaction.get('link_parent_id'))
+            )
+            if parent:
+                # Get tags for parent
+                parent_tags = await TagOperations.get_tags_for_transaction(str(parent.get('id')))
+                parent['tags'] = [tag['name'] for tag in parent_tags]
+                related_data["parent"] = _convert_db_transaction_to_response(parent)
+        
+        # Get child transactions if this is a parent
+        children = await handle_database_operation(
+            TransactionOperations.get_child_transactions,
+            transaction_id
+        )
+        if children:
+            # Tags are already included in get_child_transactions
+            related_data["children"] = [_convert_db_transaction_to_response(t) for t in children]
+        
+        # Get group members if this transaction is in a group
+        if transaction.get('transaction_group_id'):
+            group_members = await handle_database_operation(
+                TransactionOperations.get_transfer_group_transactions,
+                str(transaction.get('transaction_group_id'))
+            )
+            if group_members:
+                # Tags are already included in get_transfer_group_transactions
+                related_data["group"] = [_convert_db_transaction_to_response(t) for t in group_members]
+        
+        return ApiResponse(data=related_data)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get related transactions for {transaction_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{transaction_id}/parent", response_model=ApiResponse)
+async def get_parent_transaction(transaction_id: str):
+    """Get the parent transaction for a refund/child transaction."""
+    try:
+        transaction = await handle_database_operation(
+            TransactionOperations.get_transaction_by_id,
+            transaction_id
+        )
+        if not transaction:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        
+        if not transaction.get('link_parent_id'):
+            raise HTTPException(status_code=404, detail="This transaction does not have a parent")
+        
+        parent = await handle_database_operation(
+            TransactionOperations.get_transaction_by_id,
+            str(transaction.get('link_parent_id'))
+        )
+        if not parent:
+            raise HTTPException(status_code=404, detail="Parent transaction not found")
+        
+        # Get tags for parent
+        parent_tags = await TagOperations.get_tags_for_transaction(str(parent.get('id')))
+        parent['tags'] = [tag['name'] for tag in parent_tags]
+        
+        response_transaction = _convert_db_transaction_to_response(parent)
+        return ApiResponse(data=response_transaction)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get parent transaction for {transaction_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{transaction_id}/children", response_model=ApiResponse)
+async def get_child_transactions(transaction_id: str):
+    """Get all child transactions (refunds/adjustments) for a parent transaction."""
+    try:
+        children = await handle_database_operation(
+            TransactionOperations.get_child_transactions,
+            transaction_id
+        )
+        
+        # Tags are already included in get_child_transactions
+        response_transactions = [_convert_db_transaction_to_response(t) for t in children]
+        return ApiResponse(data=response_transactions)
+        
+    except Exception as e:
+        logger.error(f"Failed to get child transactions for {transaction_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{transaction_id}/group", response_model=ApiResponse)
+async def get_group_transactions(transaction_id: str):
+    """Get all transactions in the same group (transfer or split group)."""
+    try:
+        transaction = await handle_database_operation(
+            TransactionOperations.get_transaction_by_id,
+            transaction_id
+        )
+        if not transaction:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        
+        if not transaction.get('transaction_group_id'):
+            raise HTTPException(status_code=404, detail="This transaction is not in a group")
+        
+        group_members = await handle_database_operation(
+            TransactionOperations.get_transfer_group_transactions,
+            str(transaction.get('transaction_group_id'))
+        )
+        
+        # Tags are already included in get_transfer_group_transactions
+        response_transactions = [_convert_db_transaction_to_response(t) for t in group_members]
+        return ApiResponse(data=response_transactions)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get group transactions for {transaction_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/", response_model=ApiResponse, status_code=201)
 async def create_transaction(transaction_data: TransactionCreate):
     """Create a new transaction."""
@@ -957,6 +1301,14 @@ async def bulk_update_transactions(request: BulkTransactionUpdate):
                     else:
                         update_data[field] = value
                 
+                # Handle soft delete: set deleted_at when is_deleted is set to true
+                if "is_deleted" in update_data and update_data["is_deleted"] is True:
+                    from datetime import datetime
+                    update_data["deleted_at"] = datetime.now()
+                elif "is_deleted" in update_data and update_data["is_deleted"] is False:
+                    # If restoring, clear deleted_at
+                    update_data["deleted_at"] = None
+                
                 # Extract paid_by from split_breakdown if present
                 if "split_breakdown" in update_data:
                     split_breakdown = update_data["split_breakdown"]
@@ -969,32 +1321,77 @@ async def bulk_update_transactions(request: BulkTransactionUpdate):
                 if "tags" in update_data:
                     tag_names = update_data.pop("tags")
                 
-                # Update the transaction
-                success = await TransactionOperations.update_transaction(
-                    transaction_id,
-                    **update_data
-                )
+                # Update the transaction (only if there are other fields to update)
+                success = True  # Default to True if only tags are being updated
+                if update_data:  # Only call update_transaction if there are other fields to update
+                    success = await TransactionOperations.update_transaction(
+                        transaction_id,
+                        **update_data
+                    )
+                    if not success:
+                        logger.warning(f"Transaction update failed for {transaction_id}, update_data: {update_data}")
+                else:
+                    logger.info(f"Only tags update for transaction {transaction_id}, skipping update_transaction call")
                 
                 if success:
                     # Handle tags if provided
                     if tag_names is not None:
                         tag_ids = []
+                        # Ensure tag_names is a list
+                        if not isinstance(tag_names, list):
+                            logger.warning(f"tags field is not a list: {type(tag_names)}, value: {tag_names}")
+                            tag_names = []
+                        
                         for tag_name in tag_names:
+                            if not tag_name or not isinstance(tag_name, str):
+                                logger.warning(f"Invalid tag name: {tag_name}")
+                                continue
+                                
                             tag = await TagOperations.get_tag_by_name(tag_name)
                             if tag:
                                 tag_ids.append(tag["id"])
                             else:
-                                # Create tag if it doesn't exist
-                                new_tag_id = await TagOperations.create_tag(tag_name)
-                                if new_tag_id:
-                                    tag_ids.append(new_tag_id)
+                                # Create tag if it doesn't exist (with default color)
+                                # Generate a random color for new tags
+                                import random
+                                colors = [
+                                    "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16",
+                                    "#22c55e", "#10b981", "#14b8a6", "#06b6d4", "#0ea5e9",
+                                    "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef",
+                                    "#ec4899", "#f43f5e"
+                                ]
+                                default_color = random.choice(colors)
+                                try:
+                                    new_tag_id = await TagOperations.create_tag(
+                                        name=tag_name,
+                                        color=default_color
+                                    )
+                                    if new_tag_id:
+                                        tag_ids.append(new_tag_id)
+                                except ValueError as e:
+                                    # Tag might have been created by another concurrent request
+                                    logger.warning(f"Tag creation failed (may already exist): {e}")
+                                    # Try to fetch it again
+                                    tag = await TagOperations.get_tag_by_name(tag_name)
+                                    if tag:
+                                        tag_ids.append(tag["id"])
+                                except Exception as e:
+                                    logger.error(f"Failed to create tag '{tag_name}': {e}")
+                                    import traceback
+                                    logger.error(f"Traceback: {traceback.format_exc()}")
+                                    # Continue with other tags even if one fails
                         
-                        # Set tags for the transaction
+                        # Set tags for the transaction (even if empty list - this clears tags)
                         await TagOperations.set_transaction_tags(transaction_id, tag_ids)
                     
                     # Fetch the updated transaction
                     updated_transaction = await TransactionOperations.get_transaction_by_id(transaction_id)
                     if updated_transaction:
+                        # Get tags for the transaction
+                        transaction_tags = await TagOperations.get_tags_for_transaction(transaction_id)
+                        tag_names = [tag['name'] for tag in transaction_tags]
+                        updated_transaction['tags'] = tag_names
+                        
                         response_transaction = _convert_db_transaction_to_response(updated_transaction)
                         updated_transactions.append(response_transaction)
                 else:
@@ -1043,6 +1440,14 @@ async def update_transaction(transaction_id: str, updates: TransactionUpdate):
                 continue
             else:
                 update_data[field] = value
+        
+        # Handle soft delete: set deleted_at when is_deleted is set to true
+        if "is_deleted" in update_data and update_data["is_deleted"] is True:
+            from datetime import datetime
+            update_data["deleted_at"] = datetime.now()
+        elif "is_deleted" in update_data and update_data["is_deleted"] is False:
+            # If restoring, clear deleted_at
+            update_data["deleted_at"] = None
         
         # Auto-calculate split_share_amount if split_breakdown is provided but split_share_amount is not
         # Also extract paid_by from split_breakdown if present
@@ -1204,13 +1609,12 @@ async def ungroup_split_transactions(request: UngroupSplitRequest):
         session = session_factory()
         
         try:
-            # Get all transactions in the split group
+            # Get all transactions in the split group (both parent and children)
             result = await session.execute(
                 text("""
                     SELECT id, description, amount, created_at, is_split
                     FROM transactions
                     WHERE transaction_group_id = :group_id
-                    AND is_split = true
                     ORDER BY created_at ASC
                 """),
                 {"group_id": request.transaction_group_id}
@@ -1220,27 +1624,19 @@ async def ungroup_split_transactions(request: UngroupSplitRequest):
             if not transactions:
                 raise HTTPException(status_code=404, detail="Split group not found")
             
-            # The original transaction (if it exists) would be the first one created
-            # and would have a more complex description (original transaction description)
-            # Split parts would have simpler descriptions like "A", "B", "Internet", "Mobile"
-            
+            # Find the parent transaction (is_split=false) and split parts (is_split=true)
             original_transaction = None
             split_parts = []
             
-            # Find the original vs split parts
-            # Original will have been created first and likely has the original description
             for t in transactions:
-                if len(transactions) > 1:
-                    # If we have multiple transactions, the first one is likely the original
-                    if t == transactions[0]:
+                # Parent transaction has is_split=false
+                if not t.is_split:
                         original_transaction = t
-                    else:
-                        split_parts.append(t)
                 else:
-                    # If only one transaction, it's either a lone split part or the original
+                    # Child transactions have is_split=true
                     split_parts.append(t)
             
-            # Delete all split parts
+            # Delete all split parts (children)
             for split_part in split_parts:
                 await handle_database_operation(
                     TransactionOperations.delete_transaction,
@@ -1405,11 +1801,12 @@ async def split_transaction(request: SplitTransactionRequest):
                 request.transaction_id
             )
         else:
-            # Mark the original transaction as split and add it to the group
+            # Add the original transaction to the group but keep is_split=False
+            # This allows us to identify it as the parent transaction
             await handle_database_operation(
                 TransactionOperations.update_transaction,
                 request.transaction_id,
-                is_split=True,
+                is_split=False,  # Keep as False to identify as parent
                 transaction_group_id=split_group_id
             )
             # Fetch the updated original transaction
@@ -1512,13 +1909,28 @@ async def create_category(category_data: CategoryCreate):
 async def update_category(category_id: str, category_data: CategoryUpdate):
     """Update a category."""
     try:
+        # Check if transaction_type was explicitly provided in the request (even if None)
+        # Use model_dump(exclude_unset=True) to see which fields were actually set
+        provided_fields = category_data.model_dump(exclude_unset=True)
+        
+        # Determine transaction_type value:
+        # - If field was provided and value is None, convert to "" to signal "set to NULL"
+        # - If field was provided and value is a string, use it as-is
+        # - If field was not provided, pass None to skip update
+        transaction_type_for_update = None
+        if "transaction_type" in provided_fields:
+            if provided_fields["transaction_type"] is None:
+                transaction_type_for_update = ""  # Empty string signals "set to NULL" in the backend
+            else:
+                transaction_type_for_update = provided_fields["transaction_type"]
+        
         success = await CategoryOperations.update_category(
             category_id=category_id,
             name=category_data.name,
             color=category_data.color,
             parent_id=category_data.parent_id,
             sort_order=category_data.sort_order,
-            transaction_type=category_data.transaction_type
+            transaction_type=transaction_type_for_update
         )
         
         if not success:
@@ -1659,6 +2071,69 @@ async def get_suggestions_summary():
         
     except Exception as e:
         logger.error(f"Failed to get suggestions summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/analytics", response_model=ApiResponse)
+async def get_expense_analytics(
+    date_range_start: Optional[date] = Query(None, description="Start date for filtering"),
+    date_range_end: Optional[date] = Query(None, description="End date for filtering"),
+    accounts: Optional[str] = Query(None, description="Comma-separated account names"),
+    exclude_accounts: Optional[str] = Query(None, description="Comma-separated account names to exclude"),
+    categories: Optional[str] = Query(None, description="Comma-separated category names"),
+    exclude_categories: Optional[str] = Query(None, description="Comma-separated category names to exclude"),
+    tags: Optional[str] = Query(None, description="Comma-separated tag names"),
+    exclude_tags: Optional[str] = Query(None, description="Comma-separated tag names to exclude"),
+    direction: Optional[str] = Query("debit", pattern="^(debit|credit)$", description="Transaction direction"),
+    group_by: str = Query("category", description="Group by: category, tag, month, account, category_month, tag_month")
+):
+    """Get expense analytics aggregated by various dimensions."""
+    try:
+        # Parse filter values
+        account_filter_values = [account.strip() for account in accounts.split(',')] if accounts else []
+        account_filter_values = [account for account in account_filter_values if account]
+        exclude_account_values = [account.strip() for account in exclude_accounts.split(',')] if exclude_accounts else []
+        exclude_account_values = [account for account in exclude_account_values if account]
+        
+        category_filter_values = [category.strip() for category in categories.split(',')] if categories else []
+        category_filter_values = [category for category in category_filter_values if category]
+        exclude_category_values = [category.strip() for category in exclude_categories.split(',')] if exclude_categories else []
+        exclude_category_values = [category for category in exclude_category_values if category]
+        
+        tag_filter_values = [tag.strip() for tag in tags.split(',')] if tags else []
+        tag_filter_values = [tag for tag in tag_filter_values if tag]
+        exclude_tag_values = [tag.strip() for tag in exclude_tags.split(',')] if exclude_tags else []
+        exclude_tag_values = [tag for tag in exclude_tag_values if tag]
+        
+        # Validate group_by
+        valid_group_by = ["category", "tag", "month", "account", "category_month", "tag_month"]
+        if group_by not in valid_group_by:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid group_by. Must be one of: {', '.join(valid_group_by)}"
+            )
+        
+        # Get analytics data
+        analytics_data = await handle_database_operation(
+            TransactionOperations.get_expense_analytics,
+            start_date=date_range_start,
+            end_date=date_range_end,
+            accounts=account_filter_values if account_filter_values else None,
+            exclude_accounts=exclude_account_values if exclude_account_values else None,
+            categories=category_filter_values if category_filter_values else None,
+            exclude_categories=exclude_category_values if exclude_category_values else None,
+            tags=tag_filter_values if tag_filter_values else None,
+            exclude_tags=exclude_tag_values if exclude_tag_values else None,
+            direction=direction,
+            group_by=group_by
+        )
+        
+        return ApiResponse(data=analytics_data)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get expense analytics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1905,4 +2380,141 @@ async def unlink_email_from_transaction(transaction_id: str, message_id: str):
         raise
     except Exception as e:
         logger.error(f"Failed to unlink email from transaction {transaction_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{transaction_id}/source-pdf")
+async def get_transaction_source_pdf(transaction_id: str):
+    """Get the source PDF statement for a transaction."""
+    try:
+        # Get transaction details
+        transaction = await handle_database_operation(
+            TransactionOperations.get_transaction_by_id,
+            transaction_id
+        )
+        
+        if not transaction:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        
+        # Get account name from transaction
+        account_name = transaction.get('account', '').lower()
+        if not account_name:
+            raise HTTPException(status_code=400, detail="Transaction has no account name")
+        
+        # Extract keywords from account name
+        # Remove only very generic words, keep bank names and card types
+        # Example: "Axis Atlas Credit Card" -> ["axis", "atlas"]
+        # Example: "Amazon Pay ICICI Credit Card" -> ["amazon", "pay", "icici"]
+        generic_words = {'credit', 'card', 'savings', 'account'}
+        account_keywords = [
+            word.lower() for word in account_name.split() 
+            if word.lower() not in generic_words
+        ]
+        
+        # If no keywords extracted, use all words from account name
+        if not account_keywords:
+            account_keywords = [word.lower() for word in account_name.split()]
+        
+        logger.info(f"Searching for PDF with account keywords: {account_keywords}")
+        
+        # Get month/year from transaction date
+        transaction_date = transaction.get('transaction_date')
+        if not transaction_date:
+            raise HTTPException(status_code=400, detail="Transaction has no date")
+        
+        # Convert to datetime if it's a date object
+        if isinstance(transaction_date, date):
+            month_year = transaction_date.strftime("%Y-%m")
+        else:
+            # Parse string date
+            try:
+                if isinstance(transaction_date, str):
+                    transaction_date_obj = datetime.fromisoformat(transaction_date.replace('Z', '+00:00'))
+                else:
+                    transaction_date_obj = transaction_date
+                month_year = transaction_date_obj.strftime("%Y-%m")
+            except Exception as e:
+                logger.error(f"Failed to parse transaction date: {e}")
+                raise HTTPException(status_code=400, detail=f"Invalid transaction date format: {transaction_date}")
+        
+        # Initialize GCS service
+        gcs_service = GoogleCloudStorageService()
+        
+        # List all PDF files in the month/year unlocked_statements folder
+        prefix = f"{month_year}/unlocked_statements/"
+        pdf_files = gcs_service.list_files(prefix=prefix, max_results=100)
+        
+        # Filter to only PDF files
+        pdf_files = [f for f in pdf_files if f['name'].lower().endswith('.pdf')]
+        
+        if not pdf_files:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No PDF files found in {prefix}"
+            )
+        
+        # Find the PDF file that matches the account keywords
+        # Use a scoring system: prefer PDFs that match more keywords
+        matching_pdf = None
+        best_match_score = 0
+        best_matched_keywords = []
+        
+        logger.info(f"Searching for PDF with account: '{transaction.get('account')}', keywords: {account_keywords}")
+        logger.info(f"Found {len(pdf_files)} PDF files in {prefix}")
+        for pdf_file in pdf_files:
+            logger.debug(f"  - {pdf_file['name']}")
+        
+        # Score each PDF based on how many keywords match
+        for pdf_file in pdf_files:
+            filename_lower = pdf_file['name'].lower()
+            matching_keywords = [kw for kw in account_keywords if kw in filename_lower]
+            match_score = len(matching_keywords)
+            
+            # Prefer matches with more keywords
+            if match_score > best_match_score:
+                best_match_score = match_score
+                matching_pdf = pdf_file
+                best_matched_keywords = matching_keywords
+        
+        # Only use the match if at least one keyword matched
+        if matching_pdf and best_match_score > 0:
+            logger.info(f"Found matching PDF: {matching_pdf['name']} (matched {best_match_score}/{len(account_keywords)} keywords: {best_matched_keywords})")
+        else:
+            # If no match, use the first PDF file (fallback)
+            matching_pdf = pdf_files[0]
+            logger.warning(f"No matching PDF found for account '{transaction.get('account')}' with keywords {account_keywords}, using first available: {matching_pdf['name']}")
+        
+        gcs_path = matching_pdf['name']
+        pdf_filename = Path(gcs_path).name
+        logger.info(f"Selected PDF for transaction {transaction_id}: {gcs_path}")
+        
+        # Download PDF to temporary file
+        download_result = gcs_service.download_to_temp_file(gcs_path)
+        
+        if not download_result.get("success"):
+            error_msg = download_result.get("error", "Unknown error")
+            logger.error(f"Failed to download PDF from GCS: {error_msg}")
+            raise HTTPException(
+                status_code=404, 
+                detail=f"PDF not found in cloud storage: {gcs_path}. Error: {error_msg}"
+            )
+        
+        temp_path = Path(download_result["temp_path"])
+        
+        # Return PDF as FileResponse with additional metadata in headers
+        return FileResponse(
+            path=str(temp_path),
+            media_type="application/pdf",
+            filename=pdf_filename,
+            headers={
+                "Content-Disposition": f'inline; filename="{pdf_filename}"',
+                "X-PDF-Path": gcs_path,  # Include the GCS path in response headers for debugging
+                "X-PDF-Filename": pdf_filename
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get source PDF for transaction {transaction_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
