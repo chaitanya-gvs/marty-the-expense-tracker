@@ -1,42 +1,97 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCategories, useCreateCategory, useUpdateCategory } from "@/hooks/use-categories";
-import { Plus, Edit, Trash2, Eye, EyeOff } from "lucide-react";
-import { Category, Subcategory } from "@/lib/types";
+import { Plus, Edit } from "lucide-react";
+import { Category } from "@/lib/types";
+
+type TransactionTypeFilter = "all" | "debit" | "credit";
 
 export function CategoriesManager() {
-  const { data: categoriesData, isLoading } = useCategories();
+  const [transactionTypeFilter, setTransactionTypeFilter] = useState<TransactionTypeFilter>("all");
+  // Always load all categories, then filter client-side for better UX
+  const { data: allCategories, isLoading } = useCategories();
   const createCategory = useCreateCategory();
   const updateCategory = useUpdateCategory();
   
-  const categories = categoriesData?.data || [];
+  const categories = allCategories || [];
+  
+  // Filter categories based on selected filter
+  const categoriesToDisplay = categories.filter((category) => {
+    if (transactionTypeFilter === "all") return true;
+    // Show categories that match the filter OR have no transaction_type (applicable to both)
+    return category.transaction_type === transactionTypeFilter || !category.transaction_type;
+  });
+
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [newCategory, setNewCategory] = useState({
     name: "",
     color: "#3b82f6",
-    subcategories: [],
-    is_hidden: false,
+    transaction_type: null as "debit" | "credit" | null,
+  });
+  const [editCategory, setEditCategory] = useState({
+    name: "",
+    color: "#3b82f6",
+    transaction_type: null as "debit" | "credit" | null,
   });
 
+  useEffect(() => {
+    if (editingCategory) {
+      setEditCategory({
+        name: editingCategory.name,
+        color: editingCategory.color || "#3b82f6",
+        transaction_type: editingCategory.transaction_type || null,
+      });
+      setIsEditDialogOpen(true);
+    }
+  }, [editingCategory]);
+
   const handleCreateCategory = async () => {
-    await createCategory.mutateAsync(newCategory);
-    setNewCategory({ name: "", color: "#3b82f6", subcategories: [], is_hidden: false });
-    setIsCreateDialogOpen(false);
+    try {
+      await createCategory.mutateAsync(newCategory);
+      setNewCategory({ name: "", color: "#3b82f6", transaction_type: null });
+      setIsCreateDialogOpen(false);
+    } catch (error) {
+      console.error("Failed to create category:", error);
+    }
   };
 
-  const handleToggleVisibility = async (category: Category) => {
-    await updateCategory.mutateAsync({
-      id: category.id,
-      updates: { is_hidden: !category.is_hidden }
-    });
+  const handleUpdateCategory = async () => {
+    if (!editingCategory) return;
+    try {
+      await updateCategory.mutateAsync({
+        categoryId: editingCategory.id,
+        categoryData: editCategory,
+      });
+      setEditingCategory(null);
+      setEditCategory({ name: "", color: "#3b82f6", transaction_type: null });
+      setIsEditDialogOpen(false);
+    } catch (error) {
+      console.error("Failed to update category:", error);
+    }
+  };
+
+  const getTransactionTypeBadge = (transactionType: string | null | undefined) => {
+    if (!transactionType) {
+      return <Badge variant="secondary" className="text-xs">Both</Badge>;
+    }
+    if (transactionType === "debit") {
+      return <Badge variant="destructive" className="text-xs">Debit</Badge>;
+    }
+    if (transactionType === "credit") {
+      return <Badge variant="default" className="text-xs bg-green-600">Credit</Badge>;
+    }
+    return null;
   };
 
   if (isLoading) {
@@ -99,14 +154,38 @@ export function CategoriesManager() {
                     />
                   </div>
                 </div>
-                <div className="flex justify-end gap-2">
+                <div className="space-y-2">
+                  <Label htmlFor="category-transaction-type">Transaction Type</Label>
+                  <Select
+                    value={newCategory.transaction_type || "both"}
+                    onValueChange={(value) =>
+                      setNewCategory({
+                        ...newCategory,
+                        transaction_type: value === "both" ? null : (value as "debit" | "credit"),
+                      })
+                    }
+                  >
+                    <SelectTrigger id="category-transaction-type">
+                      <SelectValue placeholder="Select transaction type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="both">Both (Debit & Credit)</SelectItem>
+                      <SelectItem value="debit">Debit Only</SelectItem>
+                      <SelectItem value="credit">Credit Only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Select which transaction types this category applies to
+                  </p>
+                </div>
+                <DialogFooter>
                   <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                     Cancel
                   </Button>
                   <Button onClick={handleCreateCategory} disabled={!newCategory.name}>
                     Create Category
                   </Button>
-                </div>
+                </DialogFooter>
               </div>
             </DialogContent>
           </Dialog>
@@ -114,30 +193,38 @@ export function CategoriesManager() {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {categories.length === 0 ? (
+          {/* Filter Tabs */}
+          <Tabs value={transactionTypeFilter} onValueChange={(value) => setTransactionTypeFilter(value as TransactionTypeFilter)}>
+            <TabsList>
+              <TabsTrigger value="all">All Categories</TabsTrigger>
+              <TabsTrigger value="debit">Debit Only</TabsTrigger>
+              <TabsTrigger value="credit">Credit Only</TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          {/* Categories List */}
+          {categoriesToDisplay.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
-              No categories created yet. Create your first category to organize your transactions.
+              {transactionTypeFilter === "all" 
+                ? "No categories created yet. Create your first category to organize your transactions."
+                : `No ${transactionTypeFilter} categories found.`}
             </div>
           ) : (
-            categories.map((category) => (
-              <div
-                key={category.id}
-                className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-4 h-4 rounded-full"
-                      style={{ backgroundColor: category.color }}
-                    />
-                    <h3 className="font-medium">{category.name}</h3>
-                    {category.is_hidden && (
-                      <Badge variant="outline" className="text-xs">
-                        Hidden
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
+            <div className="space-y-3">
+              {categoriesToDisplay.map((category) => (
+                <div
+                  key={category.id}
+                  className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-4 h-4 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: category.color || "#3b82f6" }}
+                      />
+                      <h3 className="font-medium">{category.name}</h3>
+                      {getTransactionTypeBadge(category.transaction_type)}
+                    </div>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -145,47 +232,90 @@ export function CategoriesManager() {
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleToggleVisibility(category)}
-                    >
-                      {category.is_hidden ? (
-                        <Eye className="h-4 w-4" />
-                      ) : (
-                        <EyeOff className="h-4 w-4" />
-                      )}
-                    </Button>
                   </div>
                 </div>
-                
-                {category.subcategories && category.subcategories.length > 0 && (
-                  <div className="ml-7">
-                    <h4 className="text-sm font-medium text-gray-600 mb-2">Subcategories</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {category.subcategories.map((subcategory) => (
-                        <div
-                          key={subcategory.id}
-                          className="flex items-center gap-2 px-2 py-1 bg-gray-100 rounded text-sm"
-                        >
-                          <div
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: subcategory.color }}
-                          />
-                          <span>{subcategory.name}</span>
-                          {subcategory.is_hidden && (
-                            <EyeOff className="h-3 w-3 text-gray-400" />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </div>
       </CardContent>
+
+      {/* Edit Category Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
+        setIsEditDialogOpen(open);
+        if (!open) {
+          setEditingCategory(null);
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Category</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-category-name">Name</Label>
+              <Input
+                id="edit-category-name"
+                value={editCategory.name}
+                onChange={(e) => setEditCategory({ ...editCategory, name: e.target.value })}
+                placeholder="Enter category name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-category-color">Color</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="edit-category-color"
+                  type="color"
+                  value={editCategory.color}
+                  onChange={(e) => setEditCategory({ ...editCategory, color: e.target.value })}
+                  className="w-16 h-10"
+                />
+                <Input
+                  value={editCategory.color}
+                  onChange={(e) => setEditCategory({ ...editCategory, color: e.target.value })}
+                  placeholder="#3b82f6"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-category-transaction-type">Transaction Type</Label>
+              <Select
+                value={editCategory.transaction_type || "both"}
+                onValueChange={(value) =>
+                  setEditCategory({
+                    ...editCategory,
+                    transaction_type: value === "both" ? null : (value as "debit" | "credit"),
+                  })
+                }
+              >
+                <SelectTrigger id="edit-category-transaction-type">
+                  <SelectValue placeholder="Select transaction type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="both">Both (Debit & Credit)</SelectItem>
+                  <SelectItem value="debit">Debit Only</SelectItem>
+                  <SelectItem value="credit">Credit Only</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Select which transaction types this category applies to
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => {
+                setIsEditDialogOpen(false);
+                setEditingCategory(null);
+              }}>
+                Cancel
+              </Button>
+              <Button onClick={handleUpdateCategory} disabled={!editCategory.name}>
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
