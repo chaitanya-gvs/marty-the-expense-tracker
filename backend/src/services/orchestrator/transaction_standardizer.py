@@ -117,6 +117,8 @@ class TransactionStandardizer:
             "%d/%m/%Y",      # 03/08/2025
             "%d %b %y",      # 01 Aug 25
             "%d-%m-%Y",      # 03-08-2025
+            "%d-%m-%y",      # 06-10-25 (SBI savings format)
+            "%d-%b-%Y",      # 01-Oct-2025 (Yes Bank format)
             "%Y-%m-%d",      # 2025-08-03
         ]
         
@@ -213,19 +215,26 @@ class TransactionStandardizer:
         
         if header_row is not None:
             df_clean = df_clean.iloc[header_row+1:].reset_index(drop=True)
-            # Use the actual column names from the CSV
-            df_clean.columns = ["Date", "SerNo", "Transaction Details", "Reward Points", "Intl Amount", "Amount"]
+            # Rename columns to standard names - handle both 5 and 6 column formats
+            if len(df_clean.columns) == 6:
+                df_clean.columns = ["Date", "SerNo", "Transaction Details", "Reward Points", "Intl Amount", "Amount"]
+            elif len(df_clean.columns) == 5:
+                df_clean.columns = ["Date", "SerNo", "Transaction Details", "Reward Points", "Amount"]
         else:
-            # If no header row found, use the original column names
-            pass
+            # If no header row found, try to normalize column names
+            # Check if column names need normalization (e.g., "Amount (in ₹)" -> "Amount")
+            if "Amount (in ₹)" in df_clean.columns or "Amount (in₹)" in df_clean.columns:
+                # Rename the amount column to "Amount"
+                amount_col = [col for col in df_clean.columns if "Amount" in col and "in" in col][0]
+                df_clean = df_clean.rename(columns={amount_col: "Amount"})
         
         standardized_data = []
         for _, row in df_clean.iterrows():
             if pd.isna(row.get("Date")) or str(row.get("Date")).strip() == "":
                 continue
             
-            # Get the amount string and clean it - use the actual column name
-            amount_str = str(row.get("Amount (in₹)", "")).strip()
+            # Get the amount string and clean it - use the renamed column name
+            amount_str = str(row.get("Amount", "")).strip()
             if not amount_str or amount_str.lower() == 'nan':
                 continue
                 
@@ -415,6 +424,87 @@ class TransactionStandardizer:
                 'account': account_name or "Unknown Account",
                 'category': None,
                 'reference_number': str(row.get("Cheque No/Reference No.", "")).strip() if pd.notna(row.get("Cheque No/Reference No.")) else None,
+                'source_file': filename,
+                'raw_data': row.to_dict()
+            })
+        
+        return pd.DataFrame(standardized_data)
+    
+    def process_sbi_savings(self, df: pd.DataFrame, filename: str, account_name: str = None) -> pd.DataFrame:
+        """Process SBI Savings Account data"""
+        logger.info(f"Processing SBI Savings data: {filename}")
+        
+        standardized_data = []
+        for _, row in df.iterrows():
+            # Get date from "Date" column (format: DD-MM-YY)
+            date_value = row.get("Date")
+            if pd.isna(date_value) or str(date_value).strip() == "" or str(date_value).strip() == "-":
+                continue
+            
+            # Get transaction description from "Transaction Reference" column
+            description = str(row.get("Transaction Reference", "")).strip()
+            if not description or description == "-" or description.lower() in ['nan', 'none']:
+                continue
+            
+            # Skip summary/balance rows
+            if any(keyword in description.upper() for keyword in ['OPENING BALANCE', 'CLOSING BALANCE', 'TOTAL', 'SUMMARY']):
+                logger.info(f"Skipping summary row: {description}")
+                continue
+            
+            # For savings account, determine amount from Debit/Credit columns
+            debit_str = str(row.get("Debit", "")).strip() if pd.notna(row.get("Debit")) else ""
+            credit_str = str(row.get("Credit", "")).strip() if pd.notna(row.get("Credit")) else ""
+            
+            # Handle hyphen (-) as empty value
+            if debit_str == "-":
+                debit_str = ""
+            if credit_str == "-":
+                credit_str = ""
+            
+            # Clean and parse amounts (remove commas, CR suffix, etc.)
+            amount = 0.0
+            transaction_type = None
+            
+            if debit_str and debit_str.lower() not in ['', 'nan', 'none', '-']:
+                try:
+                    # Remove commas and any suffixes
+                    debit_clean = debit_str.replace(',', '').replace('CR', '').replace('DR', '').strip()
+                    if debit_clean:
+                        amount = float(debit_clean)
+                        transaction_type = "debit"
+                except (ValueError, AttributeError):
+                    pass
+            
+            if credit_str and credit_str.lower() not in ['', 'nan', 'none', '-'] and amount == 0:
+                try:
+                    # Remove commas and any suffixes
+                    credit_clean = credit_str.replace(',', '').replace('CR', '').replace('DR', '').strip()
+                    if credit_clean:
+                        amount = float(credit_clean)
+                        transaction_type = "credit"
+                except (ValueError, AttributeError):
+                    pass
+            
+            # Skip if no valid amount found
+            if amount <= 0 or transaction_type is None:
+                continue
+            
+            # Get reference number from "Ref.No./Chq.No." column
+            ref_no = row.get("Ref.No./Chq.No.") or row.get("Ref.No./Chq.No")
+            if pd.notna(ref_no) and str(ref_no).strip() not in ['', '-', 'nan', 'none']:
+                reference_number = str(ref_no).strip()
+            else:
+                reference_number = None
+            
+            standardized_data.append({
+                'transaction_date': self.parse_date(date_value),
+                'transaction_time': None,
+                'description': description,
+                'amount': amount,
+                'transaction_type': transaction_type,
+                'account': account_name or "SBI Savings Account",
+                'category': None,
+                'reference_number': reference_number,
                 'source_file': filename,
                 'raw_data': row.to_dict()
             })
@@ -781,7 +871,7 @@ class TransactionStandardizer:
             column_mapping = {
                 'date': 'transaction_date',
                 'description': 'description', 
-                'amount': 'amount',
+                'amount': 'amount',  # Total amount
                 'category': 'category',
                 'external_id': 'reference_number',
                 'raw_data': 'raw_data'
@@ -799,7 +889,16 @@ class TransactionStandardizer:
             # Add the is_shared column (True for all Splitwise transactions)
             df['is_shared'] = True
             
-            # Ensure all required columns exist (exact same as bank format + is_shared)
+            # Preserve Splitwise-specific fields (split_breakdown, paid_by, my_share)
+            # These will be used when inserting into the database
+            if 'split_breakdown' not in df.columns:
+                df['split_breakdown'] = None
+            if 'paid_by' not in df.columns:
+                df['paid_by'] = None
+            if 'my_share' not in df.columns:
+                df['my_share'] = None
+            
+            # Ensure all required columns exist (exact same as bank format + is_shared + Splitwise fields)
             required_columns = [
                 'transaction_date', 'transaction_time', 'description', 'amount',
                 'transaction_type', 'account', 'category', 'reference_number',
@@ -828,14 +927,16 @@ class TransactionStandardizer:
             # Clean and validate data
             df = self._clean_splitwise_data(df)
             
-            # Select only the required columns (exact same as bank format + is_shared)
+            # Select required columns including Splitwise-specific fields
             final_columns = [
                 'transaction_date', 'transaction_time', 'description', 'amount',
                 'transaction_type', 'account', 'category', 'reference_number',
-                'source_file', 'raw_data', 'is_shared'
+                'source_file', 'raw_data', 'is_shared', 'split_breakdown', 'paid_by', 'my_share'
             ]
             
-            df = df[final_columns]
+            # Only include columns that exist
+            available_columns = [col for col in final_columns if col in df.columns]
+            df = df[available_columns]
             
             logger.info(f"Successfully standardized {len(df)} Splitwise transactions")
             return df
