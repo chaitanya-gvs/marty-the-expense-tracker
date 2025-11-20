@@ -35,6 +35,7 @@ agentic-doc = "^0.3.3"
 google-cloud-storage = "^3.3.1"
 splitwise = "^3.0.0"
 psycopg2-binary = "^2.9.10"
+beautifulsoup4 = "^4.12.0"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.5.0"
