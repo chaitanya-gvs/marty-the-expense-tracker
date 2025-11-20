@@ -1772,6 +1772,12 @@ class TransactionOperations:
         """
         Get expense analytics aggregated by various dimensions.
         
+        Important: Only considers debit transactions. Excludes:
+        - Child transactions (transactions with link_parent_id)
+        - Split transactions (uses split_share_amount to avoid double counting)
+        - Categories like 'Credit Card Payment', 'Self Transfer', 'Transfer'
+        - For parent transactions with refunds, calculates net amount (parent - refunds)
+        
         Args:
             start_date: Start date for filtering
             end_date: End date for filtering
@@ -1781,7 +1787,7 @@ class TransactionOperations:
             exclude_categories: List of category names to exclude
             tags: List of tag names to include
             exclude_tags: List of tag names to exclude
-            direction: Transaction direction ('debit' or 'credit')
+            direction: Transaction direction (always forced to 'debit' for expenses)
             group_by: How to group the data ('category', 'tag', 'month', 'account', 'category_month', 'tag_month')
         
         Returns:
@@ -1790,9 +1796,29 @@ class TransactionOperations:
         session_factory = get_session_factory()
         session = session_factory()
         try:
-            # Build WHERE clause
-            where_conditions = ["t.is_deleted = false"]
+            # Build WHERE clause - always force debit for expense analytics
+            where_conditions = [
+                "t.is_deleted = false",
+                "t.direction = 'debit'",  # Only consider debit transactions
+                "t.link_parent_id IS NULL",  # Exclude child transactions (refunds)
+                # Exclude parent transactions in split groups - only count the split parts (is_split = True)
+                "(t.transaction_group_id IS NULL OR t.is_split = true)"
+            ]
             params = {}
+            
+            # Default exclude categories that shouldn't be counted as expenses
+            default_exclude_categories = [
+                "Credit Card Payment",
+                "Self Transfer",
+                "Transfer",
+                "Card Payment",
+                "Account Transfer"
+            ]
+            
+            # Combine user exclude_categories with default excludes
+            all_exclude_categories = set(default_exclude_categories)
+            if exclude_categories:
+                all_exclude_categories.update(exclude_categories)
             
             if start_date:
                 where_conditions.append("t.transaction_date >= :start_date")
@@ -1800,9 +1826,6 @@ class TransactionOperations:
             if end_date:
                 where_conditions.append("t.transaction_date <= :end_date")
                 params["end_date"] = end_date
-            if direction:
-                where_conditions.append("t.direction = :direction")
-                params["direction"] = direction
             if accounts:
                 where_conditions.append("t.account = ANY(:accounts)")
                 params["accounts"] = accounts
@@ -1812,29 +1835,43 @@ class TransactionOperations:
             if categories:
                 where_conditions.append("c.name = ANY(:categories)")
                 params["categories"] = categories
-            if exclude_categories:
+            if all_exclude_categories:
                 where_conditions.append("(c.name IS NULL OR c.name != ALL(:exclude_categories))")
-                params["exclude_categories"] = exclude_categories
+                params["exclude_categories"] = list(all_exclude_categories)
             
             where_clause = " AND ".join(where_conditions)
             
             # Build GROUP BY and SELECT based on group_by parameter
+            # Calculate net amount: transaction amount minus refunds (children)
+            # For split transactions, use split_share_amount; otherwise use amount
+            # Net amount = COALESCE(split_share_amount, amount) - COALESCE((sum of refund children), 0)
+            # This ensures we don't count split transactions twice and account for refunds
+            net_amount_expr = """
+                COALESCE(t.split_share_amount, t.amount) - COALESCE((
+                    SELECT SUM(child.amount)
+                    FROM transactions child
+                    WHERE child.link_parent_id = t.id
+                      AND child.direction = 'credit'
+                      AND child.is_deleted = false
+                ), 0)
+            """
+            
             join_tags = ""
             if group_by == "category":
-                select_clause = """
+                select_clause = f"""
                     COALESCE(c.name, 'Uncategorized') as group_key,
                     c.color as color,
-                    SUM(COALESCE(t.split_share_amount, t.amount)) as total_amount,
+                    SUM({net_amount_expr}) as total_amount,
                     COUNT(t.id) as transaction_count
                 """
                 group_by_clause = "COALESCE(c.name, 'Uncategorized'), c.color"
                 order_by_clause = "total_amount DESC"
                 
             elif group_by == "tag":
-                select_clause = """
+                select_clause = f"""
                     tag.name as group_key,
                     tag.color as color,
-                    SUM(COALESCE(t.split_share_amount, t.amount)) as total_amount,
+                    SUM({net_amount_expr}) as total_amount,
                     COUNT(DISTINCT t.id) as transaction_count
                 """
                 group_by_clause = "tag.name, tag.color"
@@ -1851,44 +1888,44 @@ class TransactionOperations:
                     params["exclude_filter_tags"] = exclude_tags
                     
             elif group_by == "month":
-                select_clause = """
+                select_clause = f"""
                     TO_CHAR(t.transaction_date, 'YYYY-MM') as group_key,
                     NULL as color,
-                    SUM(COALESCE(t.split_share_amount, t.amount)) as total_amount,
+                    SUM({net_amount_expr}) as total_amount,
                     COUNT(t.id) as transaction_count
                 """
                 group_by_clause = "TO_CHAR(t.transaction_date, 'YYYY-MM')"
                 order_by_clause = "group_key ASC"
                 
             elif group_by == "account":
-                select_clause = """
+                select_clause = f"""
                     t.account as group_key,
                     NULL as color,
-                    SUM(COALESCE(t.split_share_amount, t.amount)) as total_amount,
+                    SUM({net_amount_expr}) as total_amount,
                     COUNT(t.id) as transaction_count
                 """
                 group_by_clause = "t.account"
                 order_by_clause = "total_amount DESC"
                 
             elif group_by == "category_month":
-                select_clause = """
+                select_clause = f"""
                     COALESCE(c.name, 'Uncategorized') as category,
                     TO_CHAR(t.transaction_date, 'YYYY-MM') as month,
                     (COALESCE(c.name, 'Uncategorized') || ' - ' || TO_CHAR(t.transaction_date, 'YYYY-MM')) as group_key,
                     c.color as color,
-                    SUM(COALESCE(t.split_share_amount, t.amount)) as total_amount,
+                    SUM({net_amount_expr}) as total_amount,
                     COUNT(t.id) as transaction_count
                 """
                 group_by_clause = "COALESCE(c.name, 'Uncategorized'), TO_CHAR(t.transaction_date, 'YYYY-MM'), c.color"
                 order_by_clause = "month ASC, total_amount DESC"
                 
             elif group_by == "tag_month":
-                select_clause = """
+                select_clause = f"""
                     tag.name as tag,
                     TO_CHAR(t.transaction_date, 'YYYY-MM') as month,
                     (tag.name || ' - ' || TO_CHAR(t.transaction_date, 'YYYY-MM')) as group_key,
                     tag.color as color,
-                    SUM(COALESCE(t.split_share_amount, t.amount)) as total_amount,
+                    SUM({net_amount_expr}) as total_amount,
                     COUNT(DISTINCT t.id) as transaction_count
                 """
                 group_by_clause = "tag.name, TO_CHAR(t.transaction_date, 'YYYY-MM'), tag.color"
@@ -1903,10 +1940,34 @@ class TransactionOperations:
                 if exclude_tags:
                     where_clause += " AND tag.name != ALL(:exclude_filter_tags)"
                     params["exclude_filter_tags"] = exclude_tags
+            
+            elif group_by == "tag_category":
+                select_clause = f"""
+                    tag.name as tag,
+                    COALESCE(c.name, 'Uncategorized') as category,
+                    (tag.name || ' - ' || COALESCE(c.name, 'Uncategorized')) as group_key,
+                    tag.color as color,
+                    SUM({net_amount_expr}) as total_amount,
+                    COUNT(DISTINCT t.id) as transaction_count
+                """
+                group_by_clause = "tag.name, COALESCE(c.name, 'Uncategorized'), tag.color"
+                order_by_clause = "tag.name ASC, total_amount DESC"
+                join_tags = """
+                    INNER JOIN transaction_tags tt ON t.id = tt.transaction_id
+                    INNER JOIN tags tag ON tt.tag_id = tag.id AND tag.is_active = true
+                """
+                if tags:
+                    where_clause += " AND tag.name = ANY(:filter_tags)"
+                    params["filter_tags"] = tags
+                if exclude_tags:
+                    where_clause += " AND tag.name != ALL(:exclude_filter_tags)"
+                    params["exclude_filter_tags"] = exclude_tags
             else:
                 raise ValueError(f"Invalid group_by value: {group_by}")
             
             # Build the query
+            # Note: We filter for net_amount > 0 using HAVING clause to exclude cases where
+            # refunds exceeded the original expense (which would result in negative or zero net)
             query = f"""
                 SELECT {select_clause}
                 FROM transactions t
@@ -1914,6 +1975,7 @@ class TransactionOperations:
                 {join_tags}
                 WHERE {where_clause}
                 GROUP BY {group_by_clause}
+                HAVING SUM({net_amount_expr}) > 0
                 ORDER BY {order_by_clause}
             """
             
@@ -1948,6 +2010,9 @@ class TransactionOperations:
                 elif group_by == "tag_month":
                     item['tag'] = row_dict.get('tag')
                     item['month'] = row_dict.get('month')
+                elif group_by == "tag_category":
+                    item['tag'] = row_dict.get('tag')
+                    item['category'] = row_dict.get('category')
                 
                 analytics_data.append(item)
                 
