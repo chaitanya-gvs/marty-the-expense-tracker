@@ -26,6 +26,7 @@ interface ParticipantComboboxProps {
   placeholder?: string;
   excludeParticipants?: string[];
   disabled?: boolean;
+  container?: HTMLElement | null;
 }
 
 export function ParticipantCombobox({
@@ -35,6 +36,7 @@ export function ParticipantCombobox({
   placeholder = "Select participant...",
   excludeParticipants = [],
   disabled = false,
+  container,
 }: ParticipantComboboxProps) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -54,7 +56,7 @@ export function ParticipantCombobox({
   const displayValue = value || placeholder;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -69,14 +71,25 @@ export function ParticipantCombobox({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[300px] p-0" align="start">
-        <Command shouldFilter={false}>
+      <PopoverContent 
+        className="w-[300px] p-0" 
+        align="start"
+        container={container}
+        onInteractOutside={(e) => {
+          // Prevent closing when clicking on dialog
+          const target = e.target as HTMLElement;
+          if (target.closest('[role="dialog"]') || target.closest('[data-slot="dialog-overlay"]')) {
+            e.preventDefault();
+          }
+        }}
+      >
+        <Command shouldFilter={false} onPointerDownOutside={(e) => e.preventDefault()}>
           <CommandInput
             placeholder="Search participants..."
             value={searchQuery}
             onValueChange={setSearchQuery}
           />
-          <CommandList>
+          <CommandList className="max-h-[300px] overflow-y-auto">
             {isLoading ? (
               <div className="py-6 text-center text-sm text-muted-foreground">
                 Loading...
@@ -105,12 +118,14 @@ export function ParticipantCombobox({
                 </div>
               </CommandEmpty>
             ) : (
-              <CommandGroup>
+              <div className="p-1">
                 {availableParticipants.map((participant) => (
-                  <CommandItem
+                  <div
                     key={participant.id}
-                    value={participant.name}
-                    onSelect={() => handleSelect(participant.name)}
+                    role="option"
+                    aria-selected={value === participant.name}
+                    className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                    onClick={() => handleSelect(participant.name)}
                   >
                     <Check
                       className={cn(
@@ -126,13 +141,15 @@ export function ParticipantCombobox({
                         </span>
                       )}
                     </div>
-                  </CommandItem>
+                  </div>
                 ))}
                 {onAddNew && searchQuery && (
                   <>
                     <div className="h-px bg-border my-1" />
-                    <CommandItem
-                      onSelect={() => {
+                    <div
+                      role="option"
+                      className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
+                      onClick={() => {
                         onChange(searchQuery);
                         setOpen(false);
                         setSearchQuery("");
@@ -140,10 +157,10 @@ export function ParticipantCombobox({
                     >
                       <UserPlus className="mr-2 h-4 w-4" />
                       Add "{searchQuery}" as participant
-                    </CommandItem>
+                    </div>
                   </>
                 )}
-              </CommandGroup>
+              </div>
             )}
           </CommandList>
         </Command>

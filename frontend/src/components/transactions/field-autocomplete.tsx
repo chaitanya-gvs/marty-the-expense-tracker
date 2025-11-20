@@ -68,14 +68,37 @@ export function FieldAutocomplete({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!showSuggestions || filteredSuggestions.length === 0) {
-      if (e.key === "Enter") {
-        e.preventDefault();
+    if (e.key === "Enter") {
+      // Always prevent default and stop propagation to avoid form submission
+      e.preventDefault();
+      e.stopPropagation();
+      
+      if (!showSuggestions || filteredSuggestions.length === 0) {
         onSave?.(inputValue);
-      } else if (e.key === "Escape") {
-        e.preventDefault();
+        return;
+      }
+      
+      // Handle Enter with suggestions
+      if (hoveredIndex >= 0 && hoveredIndex < filteredSuggestions.length) {
+        selectSuggestion(filteredSuggestions[hoveredIndex]);
+      } else {
+        onSave?.(inputValue);
+      }
+      return;
+    }
+
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (showSuggestions) {
+        setShowSuggestions(false);
+      } else {
         onCancel?.();
       }
+      return;
+    }
+
+    if (!showSuggestions || filteredSuggestions.length === 0) {
       return;
     }
 
@@ -89,22 +112,6 @@ export function FieldAutocomplete({
         setHoveredIndex((prev) => 
           prev <= 0 ? filteredSuggestions.length - 1 : prev - 1
         );
-        break;
-      case 'Enter':
-        e.preventDefault();
-        if (hoveredIndex >= 0 && hoveredIndex < filteredSuggestions.length) {
-          selectSuggestion(filteredSuggestions[hoveredIndex]);
-        } else {
-          onSave?.(inputValue);
-        }
-        break;
-      case 'Escape':
-        e.preventDefault();
-        if (showSuggestions) {
-          setShowSuggestions(false);
-        } else {
-          onCancel?.();
-        }
         break;
     }
   };
@@ -135,6 +142,7 @@ export function FieldAutocomplete({
     <div className="relative w-full">
       <Input
         ref={inputRef}
+        type="text"
         value={inputValue}
         onChange={handleInputChange}
         onKeyDown={handleKeyDown}

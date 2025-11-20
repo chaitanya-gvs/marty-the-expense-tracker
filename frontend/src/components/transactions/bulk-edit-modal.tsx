@@ -124,11 +124,32 @@ export function BulkEditModal({
       
       console.log("Bulk update - Transaction IDs:", transactionIds);
       console.log("Bulk update - Updates:", updates);
+      console.log("Bulk update - Selected tags:", selectedTags);
       
-      await bulkUpdateTransactions.mutateAsync({
+      try {
+        const response = await bulkUpdateTransactions.mutateAsync({
         transactionIds,
         updates,
       });
+        
+        console.log("Bulk update response:", response);
+        console.log("Bulk update response.data:", response?.data);
+        console.log("Bulk update response.data type:", typeof response?.data);
+        console.log("Bulk update response.data is array:", Array.isArray(response?.data));
+        
+        if (response?.data && Array.isArray(response.data)) {
+          console.log("Number of updated transactions:", response.data.length);
+          response.data.forEach((tx, idx) => {
+            console.log(`Transaction ${idx + 1} (${tx.id}):`, {
+              tags: tx.tags,
+              description: tx.description
+            });
+          });
+        }
+      } catch (error) {
+        console.error("Bulk update mutation error:", error);
+        throw error;
+      }
 
       // Show success toast with undo button
       toast.success(`Updated ${selectedTransactions.length} transaction${selectedTransactions.length !== 1 ? 's' : ''}`, {
@@ -140,6 +161,9 @@ export function BulkEditModal({
           },
         },
       });
+      
+      // Small delay to ensure queries are refetched before closing
+      await new Promise(resolve => setTimeout(resolve, 200));
       
       onClose();
     } catch (error) {

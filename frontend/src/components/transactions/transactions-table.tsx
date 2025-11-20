@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { useInfiniteTransactions, useUpdateTransactionSplit, useClearTransactionSplit, useUpdateTransaction, useBulkDeleteTransactions, useDeleteTransaction } from "@/hooks/use-transactions";
+import { useInfiniteTransactions, useUpdateTransactionSplit, useClearTransactionSplit, useUpdateTransaction, useBulkDeleteTransactions, useDeleteTransaction, useTransaction } from "@/hooks/use-transactions";
 import { useTags } from "@/hooks/use-tags";
 import { useCategories } from "@/hooks/use-categories";
 import { Transaction, TransactionFilters, TransactionSort, SplitBreakdown, Tag, Category } from "@/lib/types";
@@ -46,7 +46,8 @@ import {
   Split,
   RefreshCcw,
   AlertCircle,
-  Trash2
+  Trash2,
+  FileText
 } from "lucide-react";
 import { format } from "date-fns";
 import { TransactionEditModal } from "./transaction-edit-modal";
@@ -62,6 +63,7 @@ import { LinkParentModal } from "./link-parent-modal";
 import { GroupTransferModal } from "./group-transfer-modal";
 import { EmailLinksDrawer } from "./email-links-drawer";
 import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
+import { PdfViewer } from "./pdf-viewer";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
 
 const columnHelper = createColumnHelper<Transaction>();
@@ -96,6 +98,121 @@ const convertStringTagsToObjects = (tagNames: string[], allTags: Tag[]): Tag[] =
     .filter(Boolean) as Tag[];
 };
 
+// Wrapper component to fetch missing related transactions
+function RelatedTransactionsDrawerWithFetch({
+  transaction,
+  allTransactions,
+  allTransactionsUnfiltered,
+  isOpen,
+  onClose,
+  onUnlink,
+  onUngroup,
+  onRemoveFromGroup,
+}: {
+  transaction: Transaction;
+  allTransactions: Transaction[];
+  allTransactionsUnfiltered: Transaction[];
+  isOpen: boolean;
+  onClose: () => void;
+  onUnlink: () => void;
+  onUngroup: () => void;
+  onRemoveFromGroup: (transactionId: string) => void;
+}) {
+  const [fetchedParent, setFetchedParent] = useState<Transaction | undefined>(undefined);
+  const [fetchedGroup, setFetchedGroup] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Find parent transaction in loaded data
+  const parentInLoaded = transaction.link_parent_id
+    ? (allTransactions.find(t => t.id === transaction.link_parent_id) ||
+       allTransactionsUnfiltered.find(t => t.id === transaction.link_parent_id))
+    : undefined;
+
+  // Find group in loaded data
+  const groupInLoaded = transaction.transaction_group_id
+    ? allTransactionsUnfiltered.filter(t => t.transaction_group_id === transaction.transaction_group_id)
+    : [];
+
+  // Fetch missing related transactions when drawer opens
+  useEffect(() => {
+    if (!isOpen) {
+      // Reset when drawer closes
+      setFetchedParent(undefined);
+      setFetchedGroup([]);
+      return;
+    }
+
+    const fetchRelatedTransactions = async () => {
+      setIsLoading(true);
+      try {
+        // Use the combined endpoint to get all related transactions at once
+        try {
+          const relatedResponse = await apiClient.getRelatedTransactions(transaction.id);
+          if (relatedResponse.data) {
+            // Set parent if it exists and wasn't in loaded data
+            if (relatedResponse.data.parent && !parentInLoaded) {
+              setFetchedParent(relatedResponse.data.parent);
+            }
+            
+            // Set group members if they exist and weren't in loaded data
+            if (relatedResponse.data.group && relatedResponse.data.group.length > groupInLoaded.length) {
+              setFetchedGroup(relatedResponse.data.group);
+            }
+          }
+        } catch (error) {
+          console.error("Failed to fetch related transactions:", error);
+          // Fallback: try individual endpoints if combined endpoint fails
+          
+          // Fetch parent if missing
+          if (transaction.link_parent_id && !parentInLoaded) {
+            try {
+              const parentResponse = await apiClient.getParentTransaction(transaction.id);
+              if (parentResponse.data) {
+                setFetchedParent(parentResponse.data);
+              }
+            } catch (parentError) {
+              console.error("Failed to fetch parent transaction:", parentError);
+            }
+          }
+
+          // Fetch group members if missing
+          if (transaction.transaction_group_id && groupInLoaded.length <= 1) {
+            try {
+              const groupResponse = await apiClient.getGroupTransactions(transaction.id);
+              if (groupResponse.data && groupResponse.data.length > groupInLoaded.length) {
+                setFetchedGroup(groupResponse.data);
+              }
+            } catch (groupError) {
+              console.error("Failed to fetch group transactions:", groupError);
+            }
+          }
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchRelatedTransactions();
+  }, [isOpen, transaction.id, transaction.link_parent_id, transaction.transaction_group_id, parentInLoaded, groupInLoaded]);
+
+  // Use fetched data if available, otherwise use loaded data
+  const parentTransaction = parentInLoaded || fetchedParent;
+  const transferGroup = groupInLoaded.length > 0 ? groupInLoaded : fetchedGroup;
+
+  return (
+    <RelatedTransactionsDrawer
+      transaction={transaction}
+      parentTransaction={parentTransaction}
+      transferGroup={transferGroup}
+      isOpen={isOpen}
+      onClose={onClose}
+      onUnlink={onUnlink}
+      onUngroup={onUngroup}
+      onRemoveFromGroup={onRemoveFromGroup}
+    />
+  );
+}
+
 interface TransactionsTableProps {
   filters?: TransactionFilters;
   sort?: TransactionSort;
@@ -125,6 +242,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const [isEmailLinksDrawerOpen, setIsEmailLinksDrawerOpen] = useState(false);
   const [isDeleteConfirmationOpen, setIsDeleteConfirmationOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null);
+  const [pdfViewerTransactionId, setPdfViewerTransactionId] = useState<string | null>(null);
+  const [isPdfViewerOpen, setIsPdfViewerOpen] = useState(false);
   
   // Keyboard navigation state
   const [focusedRowIndex, setFocusedRowIndex] = useState<number>(-1);
@@ -154,10 +273,22 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   } = useInfiniteTransactions(filters, sort);
   
 
-  // Flatten all transactions from all pages
-  const allTransactions = useMemo(() => {
+  // Flatten all transactions from all pages (unfiltered - includes parent transactions)
+  const allTransactionsUnfiltered = useMemo(() => {
     return data?.pages.flatMap(page => page.data) || [];
   }, [data]);
+
+  // Filter out parent transactions (is_split=false but has transaction_group_id)
+  // These are the original transactions that were split - we only want to show the split parts
+  const allTransactions = useMemo(() => {
+    return allTransactionsUnfiltered.filter(t => {
+      // Exclude parent transactions: has transaction_group_id but is_split is false
+      if (t.transaction_group_id && t.is_split === false) {
+        return false;
+      }
+      return true;
+    });
+  }, [allTransactionsUnfiltered]);
 
   // Selection helpers
   const selectedTransactions = useMemo(() => {
@@ -456,6 +587,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         setTransactionToDelete(transaction);
         setIsDeleteConfirmationOpen(true);
         break;
+      case 8: // PDF viewer button
+        setPdfViewerTransactionId(transaction.id);
+        setIsPdfViewerOpen(true);
+        break;
     }
   }, [allTransactions, updateTransaction]);
 
@@ -483,6 +618,44 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
   const handleKeyboardNavigation = useCallback((e: KeyboardEvent) => {
     const { key } = e;
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
+    
+    // Handle Cmd/Ctrl + Delete for bulk deletion
+    if ((key === 'Delete' || key === 'Backspace') && cmdOrCtrl && isMultiSelectMode && selectedTransactionIds.size > 0) {
+      e.preventDefault();
+      setIsDeleteConfirmationOpen(true);
+      setTransactionToDelete(null);
+      return;
+    }
+    
+    // Handle Cmd/Ctrl + Arrow keys for multi-select navigation
+    if (cmdOrCtrl && isMultiSelectMode && (key === 'ArrowUp' || key === 'ArrowDown')) {
+      e.preventDefault();
+      // Initialize focusedRowIndex if it's not set
+      let currentIndex = focusedRowIndex;
+      if (currentIndex < 0 && allTransactions.length > 0) {
+        currentIndex = 0;
+        setFocusedRowIndex(0);
+      }
+      
+      if (key === 'ArrowUp' && currentIndex > 0) {
+        const newIndex = currentIndex - 1;
+        setFocusedRowIndex(newIndex);
+        const transaction = allTransactions[newIndex];
+        if (transaction) {
+          handleSelectTransaction(transaction.id);
+        }
+      } else if (key === 'ArrowDown' && currentIndex < allTransactions.length - 1) {
+        const newIndex = currentIndex + 1;
+        setFocusedRowIndex(newIndex);
+        const transaction = allTransactions[newIndex];
+        if (transaction) {
+          handleSelectTransaction(transaction.id);
+        }
+      }
+      return;
+    }
     
     // Handle Tab key - should work like Enter (save and move) when in edit mode
     if (key === 'Tab' && (editingRow || editingField || editingTagsForTransaction || editingCategoryForTransaction)) {
@@ -575,7 +748,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         
       case 'ArrowRight':
         e.preventDefault();
-        if (focusedColumnId === 'actions' && focusedActionButton < 7) { // 8 action buttons (0-7)
+        if (focusedColumnId === 'actions' && focusedActionButton < 8) { // 9 action buttons (0-8)
           // Navigate between action buttons
           setFocusedActionButton(focusedActionButton + 1);
         } else if (focusedColumnId) {
@@ -608,7 +781,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     getNextEditableColumn, 
     editableColumns, 
     allTransactions,
-    handleActionButtonClick
+    handleActionButtonClick,
+    isMultiSelectMode,
+    selectedTransactionIds,
+    handleSelectTransaction
   ]);
 
   // Auto-scroll to keep focused cell in view
@@ -1317,24 +1493,37 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           const transaction = row.original;
           
           // Find parent transaction for refunds (if this transaction is a child/refund)
+          // Look in both filtered and unfiltered transactions to find parent even if filtered out
           const parentTransaction = transaction.link_parent_id
-            ? allTransactions.find(t => t.id === transaction.link_parent_id)
+            ? (allTransactions.find(t => t.id === transaction.link_parent_id) ||
+               allTransactionsUnfiltered.find(t => t.id === transaction.link_parent_id))
             : undefined;
 
           // Find children transactions (if this transaction is a parent)
-          const childTransactions = allTransactions.filter(t => t.link_parent_id === transaction.id);
+          // Look in both filtered and unfiltered transactions to find children even if filtered out
+          const childTransactions = allTransactionsUnfiltered.filter(t => t.link_parent_id === transaction.id);
 
-          // Find transaction group for transfers or splits
+          // Find transaction group for transfers or splits (use unfiltered to include parent)
           const transactionGroup = transaction.transaction_group_id
-            ? allTransactions.filter(t => t.transaction_group_id === transaction.transaction_group_id)
+            ? allTransactionsUnfiltered.filter(t => t.transaction_group_id === transaction.transaction_group_id)
             : [];
 
           // Determine if this is a transfer group or split group
-          const isTransferGroup = !!transaction.transaction_group_id && !transaction.is_split && transactionGroup.length > 0;
-          const isSplitGroup = !!transaction.transaction_group_id && transaction.is_split && transactionGroup.length > 0;
+          // Split group: has transaction_group_id and is_split=true (child) OR has transaction_group_id with children
+          // Check transaction.is_split first, then check if any in group have is_split=true
+          // NOTE: We check transaction.is_split directly because if it's true, this transaction is part of a split group
+          // even if other group members aren't loaded due to filtering
+          const isSplitGroup = !!transaction.transaction_group_id && 
+            (transaction.is_split === true || transactionGroup.some(t => t.is_split === true));
+          // Transfer group: has transaction_group_id, is not a split, and has at least one other member in loaded data
+          // OR if it has transaction_group_id and is not split, it's potentially a transfer (even if other members filtered out)
+          const isTransferGroup = !!transaction.transaction_group_id && !isSplitGroup && 
+            (transactionGroup.length > 1 || transactionGroup.length === 1);
 
-          // This transaction is part of a refund link if it has a parent OR has children
-          const isRefundLinked = (!!transaction.link_parent_id && !!parentTransaction) || childTransactions.length > 0;
+          // This transaction is part of a refund link if it has a parent ID OR has children
+          // Check for link_parent_id presence OR if children exist in loaded data
+          // The presence of link_parent_id itself indicates a relationship, even if parent not loaded
+          const isRefundLinked = !!transaction.link_parent_id || childTransactions.length > 0;
           const isCredit = transaction.direction === "credit";
 
           const handleRefundClick = () => {
@@ -1478,6 +1667,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 )}
                 onClick={(e) => {
                   e.stopPropagation();
+                  // If transaction is already split (has transaction_group_id and is_split=true), show drawer
+                  // Otherwise, open modal to split it
                   if (isSplitGroup) {
                     handleSplitClick(e);
                   } else {
@@ -1594,6 +1785,26 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
+
+              {/* 9. PDF viewer button - only show if transaction has source_file */}
+              {transaction.source_file && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500 dark:border-gray-600 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-400 bg-transparent",
+                    isFocusedActionsColumn && focusedActionButton === 8 && "ring-2 ring-blue-500 ring-inset"
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPdfViewerTransactionId(transaction.id);
+                    setIsPdfViewerOpen(true);
+                  }}
+                  title="View source PDF"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                </Button>
+              )}
             </div>
           );
         },
@@ -1666,7 +1877,13 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setIsMultiSelectMode(true)}
+                onClick={() => {
+                  setIsMultiSelectMode(true);
+                  // Initialize focused row index when entering multi-select mode
+                  if (allTransactions.length > 0) {
+                    setFocusedRowIndex(0);
+                  }
+                }}
                 className="flex items-center gap-2"
               >
                 <CheckSquare className="h-4 w-4" />
@@ -2071,18 +2288,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
       {/* Related Transactions Drawer - Rendered at table level to persist across re-renders */}
       {drawerTransaction && (
-        <RelatedTransactionsDrawer
+        <RelatedTransactionsDrawerWithFetch
           transaction={drawerTransaction}
-          parentTransaction={
-            drawerTransaction.link_parent_id
-              ? allTransactions.find(t => t.id === drawerTransaction.link_parent_id)
-              : undefined
-          }
-          transferGroup={
-            drawerTransaction.transaction_group_id
-              ? allTransactions.filter(t => t.transaction_group_id === drawerTransaction.transaction_group_id)
-              : []
-          }
+          allTransactions={allTransactions}
+          allTransactionsUnfiltered={allTransactionsUnfiltered}
           isOpen={isDrawerOpen}
           onClose={() => {
             setIsDrawerOpen(false);
@@ -2170,6 +2379,17 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       )}
 
       {/* Delete Confirmation Dialog */}
+      <PdfViewer
+        transactionId={pdfViewerTransactionId || ""}
+        open={isPdfViewerOpen}
+        onOpenChange={(open) => {
+          setIsPdfViewerOpen(open);
+          if (!open) {
+            setPdfViewerTransactionId(null);
+          }
+        }}
+      />
+
       <DeleteConfirmationDialog
         isOpen={isDeleteConfirmationOpen}
         onClose={() => {

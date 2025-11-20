@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import { Tag } from "@/lib/types";
 import { useTags, useCreateTag, useUpdateTag, useDeleteTag } from "@/hooks/use-tags";
 import { useUpdateTransaction } from "@/hooks/use-transactions";
+import { useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -43,6 +45,11 @@ export function InlineTagDropdown({
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  
+  // Debug: Log when showCreateDialog changes
+  useEffect(() => {
+    console.log("showCreateDialog changed to:", showCreateDialog);
+  }, [showCreateDialog]);
   const [newTag, setNewTag] = useState({
     name: "",
     color: "#3B82F6",
@@ -52,6 +59,7 @@ export function InlineTagDropdown({
   const [editForm, setEditForm] = useState({ name: "", color: "#3B82F6" });
   
   const { data: allTags = [] } = useTags();
+  const queryClient = useQueryClient();
   const updateTransaction = useUpdateTransaction();
   const createTagMutation = useCreateTag();
   const updateTagMutation = useUpdateTag();
@@ -113,10 +121,32 @@ export function InlineTagDropdown({
         color: colorToUse,
       });
 
-      // Find the created tag in the list using the returned ID
-      const createdTag = allTags.find((tag) => tag.id === response.data.id);
+      // The backend returns {id: tag_id}, so we need to fetch the full tag
+      const tagId = response.data?.id || (response.data as any)?.id;
+      
+      if (!tagId) {
+        throw new Error("Tag ID not returned from server");
+      }
+
+      // Fetch the full tag details
+      let createdTag: Tag | null = null;
+      try {
+        const tagResponse = await apiClient.getTag(tagId);
+        createdTag = tagResponse.data;
+      } catch (fetchError) {
+        console.error("Failed to fetch created tag:", fetchError);
+        // Fallback: create a temporary tag object
+        createdTag = {
+          id: tagId,
+          name: nameToCreate,
+          color: colorToUse,
+          usage_count: 0,
+        };
+      }
+      
       if (createdTag) {
         setSelectedTags([...selectedTags, createdTag]);
+        toast.success(`Tag "${nameToCreate}" created successfully`);
       }
       
       setShowCreateDialog(false);
@@ -127,8 +157,10 @@ export function InlineTagDropdown({
         name: "",
         color: "#3B82F6",
       });
-    } catch (error) {
-      // Error handling is done in the mutation
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.detail || error?.message || "Failed to create tag";
+      toast.error(errorMessage);
+      console.error("Create tag error:", error);
     }
   };
 
@@ -231,10 +263,13 @@ export function InlineTagDropdown({
   return (
     <div className="flex gap-1 w-full max-w-[200px]">
       <Popover open={open} onOpenChange={(newOpen) => {
+        // Don't close the popover if the create dialog is opening
+        if (!newOpen && !showCreateDialog) {
         setOpen(newOpen);
-        if (!newOpen) {
           // If popover is being closed, call onCancel to return to transaction view
           onCancel();
+        } else if (newOpen) {
+          setOpen(newOpen);
         }
       }}>
         <PopoverTrigger asChild>
@@ -251,7 +286,17 @@ export function InlineTagDropdown({
             <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-64 p-2" align="start">
+        <PopoverContent 
+          className="w-64 p-2" 
+          align="start"
+          onInteractOutside={(e) => {
+            // Prevent closing when clicking on dialog
+            const target = e.target as HTMLElement;
+            if (target.closest('[role="dialog"]') || target.closest('[data-slot="dialog-overlay"]')) {
+              e.preventDefault();
+            }
+          }}
+        >
           <div className="space-y-2">
             {/* Search Input */}
             <div className="space-y-1">
@@ -405,12 +450,27 @@ export function InlineTagDropdown({
             </div>
 
             {/* Create Tag Button */}
-            <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
+            <div 
+              className="pt-2 border-t border-gray-100 dark:border-gray-700"
+              onClick={(e) => {
+                console.log("Create Tag button container clicked!", e);
+                e.stopPropagation();
+              }}
+              onMouseDown={(e) => {
+                console.log("Create Tag button container mouseDown!", e);
+                e.stopPropagation();
+              }}
+            >
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setShowCreateDialog(true)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  setShowCreateDialog(true);
+                }}
                 className="w-full h-6 text-xs"
+                type="button"
               >
                 <Plus className="mr-1 h-3 w-3" />
                 Create New Tag
@@ -442,8 +502,8 @@ export function InlineTagDropdown({
       </Popover>
 
       {/* Create Tag Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-[425px]">
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog} modal={true}>
+        <DialogContent className="sm:max-w-[425px] z-[200]">
           <DialogHeader>
             <DialogTitle>Create New Tag</DialogTitle>
             <DialogDescription>

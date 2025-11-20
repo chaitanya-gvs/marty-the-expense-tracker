@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { TransactionFilters } from "@/components/transactions/transaction-filters";
 import { TransactionsTable } from "@/components/transactions/transactions-table";
+import { AddTransactionModal } from "@/components/transactions/add-transaction-modal";
 import { TransactionFilters as TransactionFiltersType, TransactionSort } from "@/lib/types";
 import { useInfiniteTransactions } from "@/hooks/use-transactions";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ function getInitialFilters(): TransactionFiltersType {
 export function TransactionsPage() {
   const [filters, setFilters] = useState<TransactionFiltersType>(getInitialFilters);
   const [sort, setSort] = useState<TransactionSort | undefined>();
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   
   // Persist filters to localStorage whenever they change
   useEffect(() => {
@@ -198,7 +200,11 @@ export function TransactionsPage() {
               <BarChart3 className="h-4 w-4" />
               Insights
             </Button>
-            <Button size="sm" className="gap-2">
+            <Button 
+              size="sm" 
+              className="gap-2"
+              onClick={() => setIsAddModalOpen(true)}
+            >
               <Plus className="h-4 w-4" />
               Add Transaction
             </Button>
@@ -213,6 +219,12 @@ export function TransactionsPage() {
         onClearFilters={handleClearFilters}
       />
       <TransactionsTable filters={filters} sort={sort} />
+
+      {/* Add Transaction Modal */}
+      <AddTransactionModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+      />
     </div>
   );
 }

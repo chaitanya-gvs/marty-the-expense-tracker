@@ -127,10 +127,14 @@ export function InlineCategoryDropdown({
     }
 
     try {
+      // When creating a category from a transaction context, set transaction_type to match the transaction direction
+      // This ensures credit transactions create credit-only categories, and debit transactions create debit-only categories
       const response = await createCategoryMutation.mutateAsync({
         name: nameToCreate,
         color: colorToUse,
-        transaction_type: transactionDirection || null, // Set transaction_type based on transaction direction
+        transaction_type: transactionDirection === "debit" || transactionDirection === "credit" 
+          ? transactionDirection 
+          : null, // If direction is not set, create a category that applies to both
       });
 
       // Create a temporary category object from the response to select immediately
@@ -142,7 +146,9 @@ export function InlineCategoryDropdown({
         color: colorToUse,
         sort_order: 0,
         is_active: true,
-        transaction_type: transactionDirection || null,
+        transaction_type: transactionDirection === "debit" || transactionDirection === "credit" 
+          ? transactionDirection 
+          : null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };

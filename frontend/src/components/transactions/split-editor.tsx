@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { X, Plus, Minus, Users, Calculator } from "lucide-react";
 import { Transaction, SplitBreakdown, SplitEntry } from "@/lib/types";
 import { formatCurrency } from "@/lib/format-utils";
-import { ParticipantCombobox } from "./participant-combobox";
+import { ParticipantMultiSelect } from "./participant-multi-select";
 
 interface SplitEditorProps {
   transaction: Transaction;
@@ -25,7 +25,7 @@ export function SplitEditor({ transaction, isOpen, isLoading = false, onClose, o
   const [mode, setMode] = useState<"equal" | "custom">("equal");
   const [includeMe, setIncludeMe] = useState(true);
   const [entries, setEntries] = useState<SplitEntry[]>([]);
-  const [newParticipant, setNewParticipant] = useState("");
+  const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
   const [paidBy, setPaidBy] = useState<string>("me");
 
   // Initialize entries when transaction changes
@@ -35,12 +35,18 @@ export function SplitEditor({ transaction, isOpen, isLoading = false, onClose, o
       setIncludeMe(transaction.split_breakdown.include_me);
       setEntries(transaction.split_breakdown.entries);
       setPaidBy(transaction.split_breakdown.paid_by || "me");
+      // Initialize selected participants (exclude "me")
+      const participantNames = transaction.split_breakdown.entries
+        .filter(e => e.participant !== "me")
+        .map(e => e.participant);
+      setSelectedParticipants(participantNames);
     } else {
       // Default initialization
       setMode("equal");
       setIncludeMe(true);
       setEntries([{ participant: "me", amount: null }]);
       setPaidBy(transaction.paid_by || "me");
+      setSelectedParticipants([]);
     }
   }, [transaction]);
 
@@ -62,16 +68,39 @@ export function SplitEditor({ transaction, isOpen, isLoading = false, onClose, o
     });
   }, [includeMe, mode]);
 
-  const addParticipant = () => {
-    if (newParticipant.trim() && !entries.some(e => e.participant === newParticipant.trim())) {
-      const amount = mode === "custom" ? 0 : null;
-      setEntries([...entries, { participant: newParticipant.trim(), amount }]);
-      setNewParticipant("");
-    }
+  const addParticipants = (participantNames: string[]) => {
+    setEntries(currentEntries => {
+      // Keep "me" entry if includeMe is true
+      const meEntry = currentEntries.find(e => e.participant === "me");
+      const keepMe = includeMe && meEntry ? [meEntry] : [];
+      
+      // Keep existing entries that are still selected
+      const existingEntries = currentEntries.filter(
+        e => e.participant !== "me" && participantNames.includes(e.participant)
+      );
+      
+      // Add new participants that aren't already in entries
+      const newParticipantNames = participantNames.filter(
+        name => !currentEntries.some(e => e.participant === name)
+      );
+      
+      const newEntries = newParticipantNames.map(name => ({
+        participant: name,
+        amount: mode === "custom" ? 0 : null,
+      }));
+      
+      // Combine all entries: me first (if included), then existing, then new
+      return [...keepMe, ...existingEntries, ...newEntries];
+    });
   };
 
   const removeParticipant = (index: number) => {
+    const removedEntry = entries[index];
     setEntries(entries.filter((_, i) => i !== index));
+    // Also remove from selectedParticipants if it's not "me"
+    if (removedEntry.participant !== "me") {
+      setSelectedParticipants(selectedParticipants.filter(p => p !== removedEntry.participant));
+    }
   };
 
   const updateParticipantAmount = (index: number, amount: number | null) => {
@@ -156,9 +185,12 @@ export function SplitEditor({ transaction, isOpen, isLoading = false, onClose, o
     })));
   };
 
+  const [dialogContainer, setDialogContainer] = React.useState<HTMLDivElement | null>(null);
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[600px]">
+        <div ref={setDialogContainer} className="contents">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
@@ -223,14 +255,12 @@ export function SplitEditor({ transaction, isOpen, isLoading = false, onClose, o
               onChange={(e) => setPaidBy(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
             >
-              <option value="me">Me</option>
-              {entries
-                .filter(entry => entry.participant !== "me")
-                .map((entry) => (
-                  <option key={entry.participant} value={entry.participant}>
-                    {entry.participant}
-                  </option>
-                ))}
+              {/* Show all participants from entries */}
+              {entries.map((entry) => (
+                <option key={entry.participant} value={entry.participant}>
+                  {entry.participant === "me" ? "Me" : entry.participant}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -238,21 +268,17 @@ export function SplitEditor({ transaction, isOpen, isLoading = false, onClose, o
           <div className="space-y-3">
             <Label className="text-sm font-medium">Participants</Label>
             
-            {/* Add Participant */}
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <ParticipantCombobox
-                  value={newParticipant}
-                  onChange={setNewParticipant}
-                  placeholder="Select or add participant"
-                  excludeParticipants={entries.map(e => e.participant)}
-                  onAddNew={() => {}}
-                />
-              </div>
-              <Button onClick={addParticipant} size="sm" variant="outline" disabled={!newParticipant.trim()}>
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
+            {/* Add Participants */}
+            <ParticipantMultiSelect
+              selectedParticipants={selectedParticipants}
+              onChange={(participants) => {
+                setSelectedParticipants(participants);
+                addParticipants(participants);
+              }}
+              placeholder="Select participants..."
+              excludeParticipants={includeMe ? ["me"] : []}
+              container={dialogContainer}
+            />
 
             {/* Participant List */}
             <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -371,6 +397,7 @@ export function SplitEditor({ transaction, isOpen, isLoading = false, onClose, o
             </Button>
           </div>
         </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

@@ -52,8 +52,9 @@ export function CategorySelector({
     color: "#3B82F6",
   });
 
-  // Filter categories by transaction direction if provided
+  // Filter categories by transaction direction if provided - only show categories that match the transaction type
   const { data: categories = [], isLoading: categoriesLoading, error } = useCategories(transactionDirection);
+  
   const createCategoryMutation = useCreateCategory();
 
   const handleCreateCategory = async () => {
@@ -63,13 +64,18 @@ export function CategorySelector({
     }
 
     try {
+      // When creating a category from a transaction context, set transaction_type to match the transaction direction
+      // This ensures credit transactions create credit-only categories, and debit transactions create debit-only categories
       const response = await createCategoryMutation.mutateAsync({
         name: newCategory.name,
         color: newCategory.color,
-        transaction_type: transactionDirection || null, // Set transaction_type based on transaction direction
+        transaction_type: transactionDirection === "debit" || transactionDirection === "credit" 
+          ? transactionDirection 
+          : null, // If direction is not set, create a category that applies to both
       });
 
-      onValueChange(response.data.id);
+      // Use category name instead of ID to match how transactions store categories
+      onValueChange(newCategory.name.trim());
       setShowCreateDialog(false);
       
       // Reset form
@@ -82,7 +88,8 @@ export function CategorySelector({
     }
   };
 
-  const selectedCategory = categories.find(cat => cat.id === value);
+  // Find selected category by name (transactions store category as name, not ID)
+  const selectedCategory = categories.find(cat => cat.name === value);
 
   if (error) {
     return (
@@ -105,7 +112,7 @@ export function CategorySelector({
   return (
     <>
       <div className="flex gap-0.5 w-full max-w-full overflow-hidden">
-        <Select value={value} onValueChange={onValueChange} disabled={categoriesLoading}>
+        <Select value={value || ""} onValueChange={onValueChange} disabled={categoriesLoading}>
           <SelectTrigger className={cn("flex-1 min-w-0 h-8 text-xs", className)}>
             <SelectValue placeholder={categoriesLoading ? "Loading..." : placeholder}>
               {selectedCategory && (
@@ -123,10 +130,14 @@ export function CategorySelector({
           </SelectTrigger>
           <SelectContent>
             {categories.length === 0 && !categoriesLoading ? (
-              <div className="p-2 text-sm text-gray-500">No categories found</div>
+              <div className="p-2 text-sm text-gray-500">
+                {transactionDirection 
+                  ? `No ${transactionDirection} categories found. Create one to get started.`
+                  : "No categories found"}
+              </div>
             ) : (
               categories.map((category) => (
-                <SelectItem key={category.id} value={category.id}>
+                <SelectItem key={category.id} value={category.name}>
                   <div className="flex items-center gap-2">
                     {category.color && (
                       <div

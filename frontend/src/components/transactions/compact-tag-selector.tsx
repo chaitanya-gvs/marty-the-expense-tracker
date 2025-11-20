@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { Tag } from "@/lib/types";
 import { useTags, useUpsertTag } from "@/hooks/use-tags";
+import { apiClient } from "@/lib/api/client";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -68,13 +70,37 @@ export function CompactTagSelector({
         color: randomColor,
       });
 
-      // Find the created tag in the list using the returned ID
-      const createdTag = allTags.find((tag) => tag.id === response.data.id);
+      // The backend returns {id: tag_id}, so we need to fetch the full tag
+      const tagId = response.data?.id || (response.data as any)?.id;
+      
+      if (!tagId) {
+        throw new Error("Tag ID not returned from server");
+      }
+
+      // Fetch the full tag details
+      let createdTag: Tag | null = null;
+      try {
+        const tagResponse = await apiClient.getTag(tagId);
+        createdTag = tagResponse.data;
+      } catch (fetchError) {
+        console.error("Failed to fetch created tag:", fetchError);
+        // Fallback: create a temporary tag object
+        createdTag = {
+          id: tagId,
+          name: inputValue.trim(),
+          color: randomColor,
+          usage_count: 0,
+        };
+      }
+      
       if (createdTag) {
         handleSelectTag(createdTag);
+        toast.success(`Tag "${inputValue.trim()}" created successfully`);
       }
       setInputValue("");
-    } catch (error) {
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.detail || error?.message || "Failed to create tag";
+      toast.error(errorMessage);
       console.error("Failed to create tag:", error);
     } finally {
       setIsCreating(false);

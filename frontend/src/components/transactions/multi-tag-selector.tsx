@@ -21,6 +21,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useTags, useCreateTag } from "@/hooks/use-tags";
+import { useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api/client";
 import { Tag } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -46,6 +48,7 @@ export function MultiTagSelector({
 
   // Use hooks for data fetching
   const { data: allTags = [], isLoading: tagsLoading, error } = useTags();
+  const queryClient = useQueryClient();
   const createTagMutation = useCreateTag();
 
   const handleCreateTag = async () => {
@@ -60,10 +63,32 @@ export function MultiTagSelector({
         color: newTag.color,
       });
 
-      // Find the created tag in the list
-      const createdTag = allTags.find((tag) => tag.id === response.data.id);
+      // The backend returns {id: tag_id}, so we need to fetch the full tag
+      const tagId = response.data?.id || (response.data as any)?.id;
+      
+      if (!tagId) {
+        throw new Error("Tag ID not returned from server");
+      }
+
+      // Fetch the full tag details
+      let createdTag: Tag | null = null;
+      try {
+        const tagResponse = await apiClient.getTag(tagId);
+        createdTag = tagResponse.data;
+      } catch (fetchError) {
+        console.error("Failed to fetch created tag:", fetchError);
+        // Fallback: create a temporary tag object
+        createdTag = {
+          id: tagId,
+          name: newTag.name,
+          color: newTag.color,
+          usage_count: 0,
+        };
+      }
+      
       if (createdTag) {
         onTagsChange([...selectedTags, createdTag]);
+        toast.success(`Tag "${newTag.name}" created successfully`);
       }
       
       setShowCreateDialog(false);
@@ -73,8 +98,10 @@ export function MultiTagSelector({
         name: "",
         color: "#3B82F6",
       });
-    } catch (error) {
-      // Error handling is done in the mutation
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.detail || error?.message || "Failed to create tag";
+      toast.error(errorMessage);
+      console.error("Create tag error:", error);
     }
   };
 

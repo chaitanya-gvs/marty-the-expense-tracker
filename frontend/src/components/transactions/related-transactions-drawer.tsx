@@ -289,11 +289,20 @@ export function RelatedTransactionsDrawer({
   const renderSplitMode = () => {
     if (transferGroup.length === 0) return null;
 
+    // Separate parent (is_split=false) from children (is_split=true)
+    const parentTransaction = transferGroup.find(t => t.is_split === false);
+    const childTransactions = transferGroup.filter(t => t.is_split === true);
+
+    // Validate: sum of children should equal parent amount
+    const childrenTotal = childTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const parentAmount = parentTransaction ? Math.abs(parentTransaction.amount) : 0;
+    const isValid = Math.abs(childrenTotal - parentAmount) < 0.01; // Allow small floating point differences
+
     return (
       <div className="space-y-6">
         <div className="text-center">
           <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
-            Split Transaction ({transferGroup.length} parts)
+            Split Transaction ({childTransactions.length} parts)
           </div>
           <div className="flex items-center justify-center gap-2 text-gray-500">
             <span className="text-base">⚡</span>
@@ -301,76 +310,131 @@ export function RelatedTransactionsDrawer({
           </div>
         </div>
 
-        {/* Split Parts */}
-        <div className="space-y-3">
-          {transferGroup.map((t, index) => (
-            <div key={t.id} className="relative">
-              {index > 0 && (
-                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                  <ArrowDown className="h-3 w-3 text-gray-400" />
+        {/* Parent Transaction (Root Node) */}
+        {parentTransaction && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="border-purple-500 text-purple-600 dark:text-purple-400">
+                Original Transaction
+              </Badge>
+            </div>
+            <div className="p-4 rounded-lg border-2 bg-purple-100 dark:bg-purple-900/40 border-purple-300 dark:border-purple-700">
+              <div className="space-y-2">
+                <div className="font-medium text-sm">{parentTransaction.description}</div>
+                <div className="text-xs text-purple-700 dark:text-purple-300">
+                  {formatDate(parentTransaction.date)} · {formatCurrency(Math.abs(parentTransaction.amount))} · {parentTransaction.account.split(' ').slice(0, -2).join(' ')}
                 </div>
-              )}
-              <div className="p-4 rounded-lg border bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate">{t.description}</div>
-                    <div className="text-xs text-purple-600 dark:text-purple-400">
-                      {formatDate(t.date)} · {formatCurrency(Math.abs(t.amount))} · {t.account.split(' ').slice(0, -2).join(' ')}
-                    </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      {t.category && (
-                        <Badge variant="secondary" className="text-xs">
-                          {t.category}
-                        </Badge>
-                      )}
-                      {t.subcategory && (
-                        <Badge variant="outline" className="text-xs">
-                          {t.subcategory}
-                        </Badge>
-                      )}
-                    </div>
-                    {t.notes && (
-                      <div className="text-xs text-gray-500 mt-2 italic">
-                        {t.notes}
-                      </div>
-                    )}
+                <div className="flex items-center gap-2 mt-2">
+                  {parentTransaction.category && (
+                    <Badge variant="secondary" className="text-xs">
+                      {parentTransaction.category}
+                    </Badge>
+                  )}
+                  {parentTransaction.subcategory && (
+                    <Badge variant="outline" className="text-xs">
+                      {parentTransaction.subcategory}
+                    </Badge>
+                  )}
+                </div>
+                {parentTransaction.notes && (
+                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-2 italic">
+                    {parentTransaction.notes}
                   </div>
-                </div>
+                )}
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+        )}
 
-        {/* Total */}
-        <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-          <div className="text-center space-y-2">
-            <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Total Split Amount
+        {/* Visual Connector */}
+        {parentTransaction && childTransactions.length > 0 && (
+          <div className="flex justify-center">
+            <ArrowDown className="h-4 w-4 text-gray-400" />
+          </div>
+        )}
+
+        {/* Split Parts (Children Nodes) */}
+        {childTransactions.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="border-gray-400 text-gray-600 dark:text-gray-400">
+                Split Parts ({childTransactions.length})
+              </Badge>
             </div>
-            <div className="text-lg font-bold text-purple-600 dark:text-purple-400">
-              {formatCurrency(totalSplitAmount)}
-            </div>
-            <div className="text-xs text-gray-500">
-              {transferGroup.length} parts from one transaction
+            <div className="space-y-3 pl-4 border-l-2 border-gray-300 dark:border-gray-600">
+              {childTransactions.map((t, index) => (
+                <div key={t.id} className="relative">
+                  {index > 0 && (
+                    <div className="absolute -top-3 left-0">
+                      <ArrowDown className="h-3 w-3 text-gray-400" />
+                    </div>
+                  )}
+                  <div className="p-4 rounded-lg border bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">{t.description}</div>
+                        <div className="text-xs text-purple-600 dark:text-purple-400">
+                          {formatDate(t.date)} · {formatCurrency(Math.abs(t.amount))} · {t.account.split(' ').slice(0, -2).join(' ')}
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          {t.category && (
+                            <Badge variant="secondary" className="text-xs">
+                              {t.category}
+                            </Badge>
+                          )}
+                          {t.subcategory && (
+                            <Badge variant="outline" className="text-xs">
+                              {t.subcategory}
+                            </Badge>
+                          )}
+                        </div>
+                        {t.notes && (
+                          <div className="text-xs text-gray-500 mt-2 italic">
+                            {t.notes}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Info */}
-        {transferGroup.length > 1 && (
-          <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-            <p className="text-xs text-blue-700 dark:text-blue-300">
-              {transferGroup.some((t, idx) => idx === 0 && t.id === transaction.id) ? (
+        {/* Validation */}
+        {parentTransaction && (
+          <div className={`p-3 rounded-lg border ${
+            isValid 
+              ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' 
+              : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+          }`}>
+            <div className="flex items-center gap-2">
+              {isValid ? (
                 <>
-                  ✓ Original transaction is preserved in this group. 
-                  Removing the split will restore it.
+                  <span className="text-green-600 dark:text-green-400">✓</span>
+                  <p className="text-xs text-green-700 dark:text-green-300">
+                    Amounts match: {formatCurrency(childrenTotal)} = {formatCurrency(parentAmount)}
+                  </p>
                 </>
               ) : (
                 <>
-                  ℹ️ This split group contains {transferGroup.length} parts. 
-                  Removing will delete all split parts and restore the original if it exists.
+                  <span className="text-red-600 dark:text-red-400">⚠</span>
+                  <p className="text-xs text-red-700 dark:text-red-300">
+                    Amount mismatch: Split parts ({formatCurrency(childrenTotal)}) ≠ Original ({formatCurrency(parentAmount)})
+                  </p>
                 </>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Info */}
+        {parentTransaction && (
+          <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+            <p className="text-xs text-blue-700 dark:text-blue-300">
+              ✓ Original transaction is preserved in this group. 
+              Removing the split will restore it.
             </p>
           </div>
         )}

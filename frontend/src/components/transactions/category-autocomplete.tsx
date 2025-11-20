@@ -206,10 +206,14 @@ export function CategoryAutocomplete({
 
     try {
       setIsCreating(true);
+      // When creating a category from a transaction context, set transaction_type to match the transaction direction
+      // This ensures credit transactions create credit-only categories, and debit transactions create debit-only categories
       await createCategoryMutation.mutateAsync({
         name: createForm.name.trim(),
         color: createForm.color,
-        transaction_type: transactionDirection || null, // Set transaction_type based on transaction direction
+        transaction_type: transactionDirection === "debit" || transactionDirection === "credit" 
+          ? transactionDirection 
+          : null, // If direction is not set, create a category that applies to both
       });
       
       toast.success(`Category "${createForm.name.trim()}" created successfully`);
