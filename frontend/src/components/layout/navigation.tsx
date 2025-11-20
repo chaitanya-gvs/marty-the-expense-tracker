@@ -13,7 +13,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
-  Users
+  Users,
+  BarChart3
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ import {
 
 const navigation = [
   { name: "Transactions", href: "/transactions", icon: Receipt },
+  { name: "Analytics", href: "/analytics", icon: BarChart3 },
   { name: "Budgets", href: "/budgets", icon: PieChart },
   { name: "Settlements", href: "/settlements", icon: Users },
   { name: "Review", href: "/review", icon: CheckCircle },
