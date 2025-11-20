@@ -17,31 +17,42 @@ logger = get_logger(__name__)
 
 
 class EmailAuthHandler:
-    def __init__(self):
+    def __init__(self, account_id: str = "primary"):
+        self.account_id = account_id
         self.settings = get_settings()
         self.client_config = self._load_client_config()
 
     def _load_client_config(self) -> dict:
         """Load client configuration from JSON file or environment variables"""
+        # Determine which account credentials to use
+        if self.account_id == "secondary":
+            client_secret_file = self.settings.GOOGLE_CLIENT_SECRET_FILE_2
+            client_id = self.settings.GOOGLE_CLIENT_ID_2
+            client_secret = self.settings.GOOGLE_CLIENT_SECRET_2
+        else:  # primary account
+            client_secret_file = self.settings.GOOGLE_CLIENT_SECRET_FILE
+            client_id = self.settings.GOOGLE_CLIENT_ID
+            client_secret = self.settings.GOOGLE_CLIENT_SECRET
+        
         # Try to load from JSON file first
-        if self.settings.GOOGLE_CLIENT_SECRET_FILE:
-            json_path = Path(self.settings.GOOGLE_CLIENT_SECRET_FILE)
+        if client_secret_file:
+            json_path = Path(client_secret_file)
             if json_path.exists():
                 try:
                     with open(json_path, 'r') as f:
                         client_config = json.load(f)
-                    logger.info(f"Loaded Gmail credentials from {json_path}")
+                    logger.info(f"Loaded Gmail credentials for {self.account_id} account from {json_path}")
                     return client_config
                 except Exception as e:
                     logger.warning(f"Failed to load JSON file {json_path}: {e}")
         
         # Fallback to environment variables
-        if self.settings.GOOGLE_CLIENT_ID and self.settings.GOOGLE_CLIENT_SECRET:
-            logger.info("Using Gmail credentials from environment variables")
+        if client_id and client_secret:
+            logger.info(f"Using Gmail credentials for {self.account_id} account from environment variables")
             return {
                 "web": {
-                    "client_id": self.settings.GOOGLE_CLIENT_ID,
-                    "client_secret": self.settings.GOOGLE_CLIENT_SECRET,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
                     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                     "token_uri": "https://oauth2.googleapis.com/token",
                     "redirect_uris": [self.settings.GOOGLE_REDIRECT_URI],
@@ -53,6 +64,7 @@ class EmailAuthHandler:
             }
         
         # No credentials found
+        logger.warning(f"No credentials found for {self.account_id} account")
         return {}
 
     def get_authorization_url(self) -> str:
@@ -119,11 +131,19 @@ class EmailAuthHandler:
     def refresh_access_token(self, refresh_token: str) -> dict:
         """Refresh access token using refresh token"""
         try:
+            # Get client credentials for the account
+            if self.account_id == "secondary":
+                client_id = self.settings.GOOGLE_CLIENT_ID_2
+                client_secret = self.settings.GOOGLE_CLIENT_SECRET_2
+            else:
+                client_id = self.settings.GOOGLE_CLIENT_ID
+                client_secret = self.settings.GOOGLE_CLIENT_SECRET
+            
             credentials = Credentials(
                 None,
                 refresh_token=refresh_token,
-                client_id=self.settings.GOOGLE_CLIENT_ID,
-                client_secret=self.settings.GOOGLE_CLIENT_SECRET,
+                client_id=client_id,
+                client_secret=client_secret,
                 token_uri="https://oauth2.googleapis.com/token"
             )
             
@@ -139,29 +159,37 @@ class EmailAuthHandler:
                 "scopes": credentials.scopes
             }
             
-            logger.info("Successfully refreshed access token")
+            logger.info(f"Successfully refreshed access token for {self.account_id} account")
             return token_info
         except Exception as e:
-            logger.error(f"Error refreshing access token: {e}")
+            logger.error(f"Error refreshing access token for {self.account_id} account: {e}")
             raise
 
     def validate_credentials(self, access_token: str, refresh_token: str) -> bool:
         """Validate if the credentials are still valid"""
         try:
+            # Get client credentials for the account
+            if self.account_id == "secondary":
+                client_id = self.settings.GOOGLE_CLIENT_ID_2
+                client_secret = self.settings.GOOGLE_CLIENT_SECRET_2
+            else:
+                client_id = self.settings.GOOGLE_CLIENT_ID
+                client_secret = self.settings.GOOGLE_CLIENT_SECRET
+            
             credentials = Credentials(
                 token=access_token,
                 refresh_token=refresh_token,
-                client_id=self.settings.GOOGLE_CLIENT_ID,
-                client_secret=self.settings.GOOGLE_CLIENT_SECRET,
+                client_id=client_id,
+                client_secret=client_secret,
                 token_uri="https://oauth2.googleapis.com/token"
             )
             
             # Try to refresh to check if credentials are valid
             credentials.refresh(Request())
-            logger.info("Credentials validation successful")
+            logger.info(f"Credentials validation successful for {self.account_id} account")
             return True
         except Exception as e:
-            logger.error(f"Credentials validation failed: {e}")
+            logger.error(f"Credentials validation failed for {self.account_id} account: {e}")
             return False
 
     def save_tokens_to_env(self, token_info: dict) -> None:
@@ -172,25 +200,45 @@ class EmailAuthHandler:
                 "../../../configs/secrets/.env"
             )
             
-            # Read existing env file
-            with open(env_file_path, 'r') as f:
-                lines = f.readlines()
+            # Determine which environment variables to update
+            if self.account_id == "secondary":
+                token_updates = {
+                    "GOOGLE_REFRESH_TOKEN_2": token_info.get("refresh_token", ""),
+                    "GOOGLE_CLIENT_ID_2": token_info.get("client_id", ""),
+                    "GOOGLE_CLIENT_SECRET_2": token_info.get("client_secret", "")
+                }
+            else:
+                token_updates = {
+                    "GOOGLE_REFRESH_TOKEN": token_info.get("refresh_token", ""),
+                    "GOOGLE_CLIENT_ID": token_info.get("client_id", ""),
+                    "GOOGLE_CLIENT_SECRET": token_info.get("client_secret", "")
+                }
             
-            # Update or add token lines
-            token_updates = {
-                "GOOGLE_REFRESH_TOKEN": token_info.get("refresh_token", ""),
-                "GOOGLE_CLIENT_ID": token_info.get("client_id", ""),
-                "GOOGLE_CLIENT_SECRET": token_info.get("client_secret", "")
-            }
+            # Read existing env file
+            if os.path.exists(env_file_path):
+                with open(env_file_path, 'r') as f:
+                    lines = f.readlines()
+            else:
+                lines = []
             
             updated_lines = []
             updated_keys = set()
             
             for line in lines:
-                key = line.split('=')[0] if '=' in line else None
-                if key in token_updates:
-                    updated_lines.append(f"{key}={token_updates[key]}\n")
-                    updated_keys.add(key)
+                # Handle comments and empty lines
+                stripped_line = line.strip()
+                if not stripped_line or stripped_line.startswith('#'):
+                    updated_lines.append(line)
+                    continue
+                
+                # Extract key from line
+                if '=' in line:
+                    key = line.split('=')[0].strip()
+                    if key in token_updates:
+                        updated_lines.append(f"{key}={token_updates[key]}\n")
+                        updated_keys.add(key)
+                    else:
+                        updated_lines.append(line)
                 else:
                     updated_lines.append(line)
             
@@ -203,7 +251,7 @@ class EmailAuthHandler:
             with open(env_file_path, 'w') as f:
                 f.writelines(updated_lines)
             
-            logger.info("Successfully saved tokens to secrets environment file")
+            logger.info(f"Successfully saved tokens for {self.account_id} account to secrets environment file")
         except Exception as e:
             logger.error(f"Error saving tokens to secrets environment file: {e}")
             raise
