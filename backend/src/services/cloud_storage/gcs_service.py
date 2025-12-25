@@ -56,7 +56,7 @@ class GoogleCloudStorageService:
             self.bucket = self.client.bucket(self.bucket_name)
             logger.info(f"Initialized GCS service for bucket: {self.bucket_name}")
         except Exception as e:
-            logger.error(f"Failed to initialize GCS client: {e}")
+            logger.error("Failed to initialize GCS client", exc_info=True)
             raise
     
     def upload_file(
@@ -106,7 +106,7 @@ class GoogleCloudStorageService:
             }
             
         except Exception as e:
-            logger.error(f"Failed to upload file {local_file_path}: {e}")
+            logger.error(f"Failed to upload file {local_file_path}", exc_info=True)
             return {"success": False, "error": str(e)}
     
     def download_file(
@@ -143,7 +143,7 @@ class GoogleCloudStorageService:
             }
             
         except Exception as e:
-            logger.error(f"Failed to download file {cloud_path}: {e}")
+            logger.error(f"Failed to download file {cloud_path}", exc_info=True)
             return {"success": False, "error": str(e)}
     
     def download_to_temp_file(self, cloud_path: str) -> Dict[str, any]:
@@ -178,7 +178,7 @@ class GoogleCloudStorageService:
             }
             
         except Exception as e:
-            logger.error(f"Failed to download file {cloud_path} to temp: {e}")
+            logger.error(f"Failed to download file {cloud_path} to temp", exc_info=True)
             return {"success": False, "error": str(e)}
     
     def list_files(self, prefix: str = "", max_results: int = 1000) -> List[Dict[str, any]]:
@@ -210,7 +210,7 @@ class GoogleCloudStorageService:
             return files
             
         except Exception as e:
-            logger.error(f"Failed to list files with prefix {prefix}: {e}")
+            logger.error(f"Failed to list files with prefix {prefix}", exc_info=True)
             return []
     
     def delete_file(self, cloud_path: str) -> Dict[str, any]:
@@ -234,7 +234,7 @@ class GoogleCloudStorageService:
             return {"success": True}
             
         except Exception as e:
-            logger.error(f"Failed to delete file {cloud_path}: {e}")
+            logger.error(f"Failed to delete file {cloud_path}", exc_info=True)
             return {"success": False, "error": str(e)}
     
     def file_exists(self, cloud_path: str) -> bool:
@@ -251,7 +251,7 @@ class GoogleCloudStorageService:
             blob = self.bucket.blob(cloud_path)
             return blob.exists()
         except Exception as e:
-            logger.error(f"Error checking file existence {cloud_path}: {e}")
+            logger.error(f"Error checking file existence {cloud_path}", exc_info=True)
             return False
     
     def get_file_info(self, cloud_path: str) -> Dict[str, any]:
@@ -284,7 +284,7 @@ class GoogleCloudStorageService:
             }
             
         except Exception as e:
-            logger.error(f"Failed to get file info for {cloud_path}: {e}")
+            logger.error(f"Failed to get file info for {cloud_path}", exc_info=True)
             return {"success": False, "error": str(e)}
     
     # Convenience methods for bank statement organization
