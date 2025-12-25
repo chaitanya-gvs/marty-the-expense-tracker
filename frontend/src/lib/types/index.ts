@@ -256,7 +256,7 @@ export interface ExpenseAnalyticsItem {
 }
 
 export interface ExpenseAnalytics {
-  group_by: "category" | "tag" | "month" | "account" | "category_month" | "tag_month";
+  group_by: "category" | "tag" | "month" | "account" | "category_month" | "tag_month" | "tag_category";
   data: ExpenseAnalyticsItem[];
   summary: {
     total_amount: number;
@@ -277,5 +277,5 @@ export interface ExpenseAnalyticsFilters {
   tags?: string[];
   exclude_tags?: string[];
   direction?: "debit" | "credit";
-  group_by?: "category" | "tag" | "month" | "account" | "category_month" | "tag_month";
+  group_by?: "category" | "tag" | "month" | "account" | "category_month" | "tag_month" | "tag_category";
 }
