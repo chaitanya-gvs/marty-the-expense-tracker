@@ -11,6 +11,7 @@ This orchestrator coordinates the complete statement processing workflow:
 """
 
 import asyncio
+import json
 import os
 import shutil
 import tempfile
@@ -20,6 +21,7 @@ from typing import Dict, List, Optional, Any
 
 import pandas as pd
 from dotenv import load_dotenv
+from googleapiclient.discovery import build
 
 from src.services.database_manager.operations import AccountOperations, TransactionOperations
 from src.services.email_ingestion.client import EmailClient
@@ -73,7 +75,7 @@ def extract_search_pattern_from_csv_filename(csv_filename: str) -> str:
         return search_pattern
                 
     except Exception as e:
-        logger.error(f"Error extracting search pattern from {csv_filename}: {e}")
+        logger.error(f"Error extracting search pattern from {csv_filename}", exc_info=True)
         return csv_filename.replace('.csv', '').replace('_extracted', '')
 
 
@@ -121,6 +123,40 @@ class StatementWorkflow:
         logger.info(f"Created temp directory: {self.temp_dir}")
         logger.info(f"Initialized email clients for accounts: {self.account_ids}")
         logger.info(f"Secondary account enabled: {self.enable_secondary_account}")
+    
+    async def _refresh_all_tokens(self) -> bool:
+        """Refresh Gmail tokens for all accounts before starting workflow"""
+        logger.info("🔄 Refreshing Gmail tokens for all accounts...")
+        from src.services.email_ingestion.token_manager import TokenManager
+        
+        all_success = True
+        for account_id in self.account_ids:
+            try:
+                token_manager = TokenManager(account_id)
+                credentials = token_manager.get_valid_credentials()
+                if credentials:
+                    logger.info(f"✅ Successfully refreshed token for {account_id} account")
+                    # Update the email client's credentials
+                    if account_id in self.email_clients:
+                        self.email_clients[account_id].creds = credentials
+                        self.email_clients[account_id].service = build(
+                            "gmail", "v1", 
+                            credentials=credentials, 
+                            cache_discovery=False
+                        )
+                else:
+                    logger.warning(f"⚠️ Failed to refresh token for {account_id} account")
+                    all_success = False
+            except Exception as e:
+                logger.error(f"❌ Error refreshing token for {account_id} account", exc_info=True)
+                all_success = False
+        
+        if all_success:
+            logger.info("✅ All tokens refreshed successfully")
+        else:
+            logger.warning("⚠️ Some tokens failed to refresh - workflow may encounter authentication errors")
+        
+        return all_success
     
     def _calculate_date_range(self) -> tuple[str, str]:
         """
@@ -212,7 +248,7 @@ class StatementWorkflow:
             return prev_month_name
             
         except Exception as e:
-            logger.error(f"Error parsing email date {email_date}: {e}")
+            logger.error(f"Error parsing email date {email_date}", exc_info=True)
             # Fallback to current month
             return datetime.now().strftime("%B_%Y")
     
@@ -251,7 +287,7 @@ class StatementWorkflow:
             return f"{prev_year}-{prev_month:02d}"
             
         except Exception as e:
-            logger.error(f"Error parsing email date {email_date}: {e}")
+            logger.error(f"Error parsing email date {email_date}", exc_info=True)
             # Fallback to current month
             return datetime.now().strftime("%Y-%m")
     
@@ -349,15 +385,15 @@ class StatementWorkflow:
                                 })
                                 
                             except Exception as e:
-                                logger.error(f"Error downloading attachment {attachment.get('filename')} from {account_id}: {e}")
+                                logger.error(f"Error downloading attachment {attachment.get('filename')} from {account_id}", exc_info=True)
                                 continue
                     
                     except Exception as e:
-                        logger.error(f"Error processing email {email_data.get('id')} from {account_id}: {e}")
+                        logger.error(f"Error processing email {email_data.get('id')} from {account_id}", exc_info=True)
                         continue
             
             except Exception as e:
-                logger.error(f"Error searching in {account_id} account for {sender_email}: {e}")
+                logger.error(f"Error searching in {account_id} account for {sender_email}", exc_info=True)
                 continue
         
         logger.info(f"📊 Total statements downloaded for {sender_email}: {len(all_downloaded_statements)}")
@@ -385,7 +421,7 @@ class StatementWorkflow:
             return unlock_result
             
         except Exception as e:
-            logger.error(f"Error unlocking PDF {pdf_path}: {e}")
+            logger.error(f"Error unlocking PDF {pdf_path}", exc_info=True)
             return {
                 "success": False,
                 "error": str(e)
@@ -430,7 +466,7 @@ class StatementWorkflow:
             return normalized_filename
             
         except Exception as e:
-            logger.error(f"Error generating normalized filename: {e}")
+            logger.error("Error generating normalized filename", exc_info=True)
             # Fallback filename
             return f"statement_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
     
@@ -444,7 +480,7 @@ class StatementWorkflow:
             # Get account nickname from database
             account_nickname = await AccountOperations.get_account_nickname_by_sender(sender_email)
             if not account_nickname:
-                logger.error(f"No account nickname found for sender: {sender_email}")
+                logger.error(f"No account nickname found for sender: {sender_email}", exc_info=True)
                 return None
             
             # Check if we already have extracted data for this statement
@@ -492,11 +528,11 @@ class StatementWorkflow:
                 logger.info(f"📊 Extracted data from: {normalized_filename}")
                 return extraction_result
             else:
-                logger.error(f"Failed to extract data from: {normalized_filename}")
+                logger.error(f"Failed to extract data from: {normalized_filename}", exc_info=True)
                 return None
                 
         except Exception as e:
-            logger.error(f"Error processing statement extraction: {e}")
+            logger.error("Error processing statement extraction", exc_info=True)
             return None
     
     async def _upload_unlocked_statement_to_cloud(self, statement_data: Dict[str, Any], extraction_result: Dict[str, Any]) -> Optional[str]:
@@ -537,20 +573,32 @@ class StatementWorkflow:
                 logger.info(f"☁️ Uploaded unlocked statement to cloud: {cloud_path}")
                 return cloud_path
             else:
-                logger.error(f"Failed to upload unlocked statement to cloud: {upload_result.get('error')}")
+                logger.error(f"Failed to upload unlocked statement to cloud: {upload_result.get('error')}", exc_info=True)
                 return None
                 
         except Exception as e:
-            logger.error(f"Error uploading unlocked statement to cloud storage: {e}")
+            logger.error("Error uploading unlocked statement to cloud storage", exc_info=True)
             return None
     
-    async def _process_splitwise_data(self, continue_on_error: bool = True) -> Optional[Dict[str, Any]]:
+    async def _process_splitwise_data(
+        self, 
+        continue_on_error: bool = True,
+        custom_start_date: Optional[datetime] = None,
+        custom_end_date: Optional[datetime] = None
+    ) -> Optional[Dict[str, Any]]:
         """Process Splitwise data and upload to cloud storage"""
         try:
             logger.info("🔄 Processing Splitwise data")
             
-            # Calculate date range for previous month
-            start_date, end_date = self._calculate_splitwise_date_range()
+            # Calculate date range for previous month, or use custom dates
+            if custom_start_date and custom_end_date:
+                logger.info(
+                    f"Using custom Splitwise date range: {custom_start_date.strftime('%Y-%m-%d')} to {custom_end_date.strftime('%Y-%m-%d')}"
+                )
+                start_date = custom_start_date
+                end_date = custom_end_date
+            else:
+                start_date, end_date = self._calculate_splitwise_date_range()
             
             # Get Splitwise transactions for the date range
             splitwise_transactions = self.splitwise_service.get_transactions_for_past_month(
@@ -574,6 +622,33 @@ class StatementWorkflow:
                 if transaction.raw_data and isinstance(transaction.raw_data, dict):
                     split_breakdown = transaction.raw_data.get('split_breakdown')
                 
+                # Serialize complex objects to JSON to avoid datetime serialization issues
+                def serialize_for_csv(obj):
+                    """Serialize object for CSV storage, handling datetime objects"""
+                    if obj is None:
+                        return None
+                    if isinstance(obj, dict):
+                        cleaned = {}
+                        for k, v in obj.items():
+                            if isinstance(v, datetime):
+                                cleaned[k] = v.isoformat()
+                            elif isinstance(v, dict):
+                                cleaned[k] = serialize_for_csv(v)
+                            elif isinstance(v, list):
+                                cleaned[k] = [serialize_for_csv(item) for item in v]
+                            else:
+                                cleaned[k] = v
+                        return cleaned
+                    elif isinstance(obj, list):
+                        return [serialize_for_csv(item) for item in obj]
+                    elif isinstance(obj, datetime):
+                        return obj.isoformat()
+                    return obj
+                
+                # Serialize raw_data and split_breakdown to JSON strings
+                raw_data_json = json.dumps(serialize_for_csv(transaction.raw_data)) if transaction.raw_data else None
+                split_breakdown_json = json.dumps(serialize_for_csv(split_breakdown)) if split_breakdown else None
+                
                 splitwise_data.append({
                     'date': transaction.date.strftime('%Y-%m-%d'),
                     'description': transaction.description,
@@ -586,26 +661,26 @@ class StatementWorkflow:
                     'total_participants': transaction.total_participants,
                     'participants': ', '.join(transaction.participants),
                     'paid_by': transaction.paid_by,  # Who paid for the transaction
-                    'split_breakdown': split_breakdown,  # Split breakdown data
+                    'split_breakdown': split_breakdown_json,  # JSON-serialized split breakdown
                     'is_payment': transaction.is_payment,
                     'external_id': transaction.splitwise_id,
-                    'raw_data': transaction.raw_data
+                    'raw_data': raw_data_json  # JSON-serialized raw data
                 })
             
             # Create DataFrame
             df = pd.DataFrame(splitwise_data)
             
-            # Generate filename using the last day of the previous month
-            last_day_of_month = end_date.strftime("%Y%m%d")
-            csv_filename = f"splitwise_{last_day_of_month}_extracted.csv"
+            # Generate filename using the end date
+            end_date_str = end_date.strftime("%Y%m%d")
+            csv_filename = f"splitwise_{end_date_str}_extracted.csv"
             
             # Save to temp directory first
             temp_csv_path = self.temp_dir / csv_filename
             df.to_csv(temp_csv_path, index=False)
             
-            # Generate cloud path for previous month
-            previous_month = start_date.strftime("%Y-%m")
-            cloud_path = f"{previous_month}/extracted_data/{csv_filename}"
+            # Generate cloud path using the start date's month
+            cloud_month = start_date.strftime("%Y-%m")
+            cloud_path = f"{cloud_month}/extracted_data/{csv_filename}"
             
             # Upload to cloud storage
             upload_result = self.cloud_storage.upload_file(
@@ -631,12 +706,12 @@ class StatementWorkflow:
                     "temp_csv_path": str(temp_csv_path)
                 }
             else:
-                logger.error(f"Failed to upload Splitwise data to cloud: {upload_result.get('error')}")
+                logger.error(f"Failed to upload Splitwise data to cloud: {upload_result.get('error')}", exc_info=True)
                 return None
                 
         except Exception as e:
             error_msg = f"Error processing Splitwise data: {e}"
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True)
             if continue_on_error:
                 logger.warning("Continuing workflow despite Splitwise error")
                 return None
@@ -695,7 +770,7 @@ class StatementWorkflow:
                 return []
                 
         except Exception as e:
-            logger.error(f"Error standardizing data from {extraction_result.get('saved_path', 'unknown')}: {e}")
+            logger.error(f"Error standardizing data from {extraction_result.get('saved_path', 'unknown')}", exc_info=True)
             return []
     
     async def process_and_combine_existing_csvs(self) -> Optional[str]:
@@ -756,7 +831,7 @@ class StatementWorkflow:
                     logger.info(f"Standardized {len(standardized_data)} transactions from {csv_file.name}")
                     
                 except Exception as e:
-                    logger.error(f"Error processing CSV {csv_file.name}: {e}")
+                    logger.error(f"Error processing CSV {csv_file.name}", exc_info=True)
                     continue
             
             if not all_standardized_transactions:
@@ -787,7 +862,7 @@ class StatementWorkflow:
             return str(csv_path)
             
         except Exception as e:
-            logger.error(f"Error processing and combining CSVs: {e}")
+            logger.error("Error processing and combining CSVs", exc_info=True)
             return None
     
     
@@ -796,6 +871,8 @@ class StatementWorkflow:
         resume_from_standardization: bool = False,
         custom_start_date: Optional[str] = None,
         custom_end_date: Optional[str] = None,
+        custom_splitwise_start_date: Optional[datetime] = None,
+        custom_splitwise_end_date: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """
         Run the complete statement processing workflow
@@ -828,6 +905,11 @@ class StatementWorkflow:
         }
         
         try:
+            # Step 0: Refresh Gmail tokens proactively
+            if not resume_from_standardization:
+                logger.info("🔄 Step 0: Refreshing Gmail tokens...")
+                await self._refresh_all_tokens()
+            
             # Step 1: Get all statement senders
             logger.info("📋 Step 1: Getting all statement senders")
             statement_senders_raw = await AccountOperations.get_all_statement_senders()
@@ -920,17 +1002,21 @@ class StatementWorkflow:
                             
                             except Exception as e:
                                 error_msg = f"Error processing statement {statement_data.get('normalized_filename', 'unknown')}: {e}"
-                                logger.error(error_msg)
+                                logger.error(error_msg, exc_info=True)
                                 workflow_results["errors"].append(error_msg)
                     
                     except Exception as e:
                         error_msg = f"Error processing sender {sender_email}: {e}"
-                        logger.error(error_msg)
+                        logger.error(error_msg, exc_info=True)
                         workflow_results["errors"].append(error_msg)
             
             # Step 4: Process Splitwise data
             logger.info("🔄 Step 4: Processing Splitwise data")
-            splitwise_result = await self._process_splitwise_data(continue_on_error=True)
+            splitwise_result = await self._process_splitwise_data(
+                continue_on_error=True,
+                custom_start_date=custom_splitwise_start_date,
+                custom_end_date=custom_splitwise_end_date
+            )
             if splitwise_result:
                 workflow_results["splitwise_processed"] = True
                 workflow_results["splitwise_cloud_path"] = splitwise_result.get("cloud_path")
@@ -967,7 +1053,7 @@ class StatementWorkflow:
                                f"{db_result.get('error_count', 0)} errors")
                 else:
                     workflow_results["database_errors"] = db_result.get("errors", [])
-                    logger.error(f"❌ Database storage failed: {db_result.get('errors', [])}")
+                    logger.error(f"❌ Database storage failed: {db_result.get('errors', [])}", exc_info=True)
             else:
                 logger.warning("⚠️ No combined transaction data generated")
             
@@ -988,7 +1074,7 @@ class StatementWorkflow:
             
         except Exception as e:
             error_msg = f"Critical error in workflow: {e}"
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True)
             workflow_results["errors"].append(error_msg)
             return workflow_results
         
@@ -1031,7 +1117,7 @@ class StatementWorkflow:
             return csv_path
             
         except Exception as e:
-            logger.error(f"Error storing standardized CSV: {e}")
+            logger.error("Error storing standardized CSV", exc_info=True)
             return None
     
     async def _standardize_and_combine_all_data(self) -> List[Dict[str, Any]]:
@@ -1069,7 +1155,7 @@ class StatementWorkflow:
                     download_result = self.cloud_storage.download_file(cloud_file, str(temp_csv_path))
                     
                     if not download_result.get("success"):
-                        logger.error(f"Failed to download {cloud_file}: {download_result.get('error')}")
+                        logger.error(f"Failed to download {cloud_file}: {download_result.get('error')}", exc_info=True)
                         continue
                     
                     # Read CSV file
@@ -1092,7 +1178,7 @@ class StatementWorkflow:
                         logger.info(f"Standardized {len(standardized_data)} transactions from {cloud_file}")
                     
                 except Exception as e:
-                    logger.error(f"Error processing cloud CSV {cloud_file}: {e}")
+                    logger.error(f"Error processing cloud CSV {cloud_file}", exc_info=True)
                     continue
             
             if all_standardized_data:
@@ -1110,7 +1196,7 @@ class StatementWorkflow:
                 return []
                 
         except Exception as e:
-            logger.error(f"Error standardizing and combining all data: {e}")
+            logger.error("Error standardizing and combining all data", exc_info=True)
             return []
     
     async def _remove_duplicate_transactions(self, transactions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -1138,7 +1224,7 @@ class StatementWorkflow:
             return unique_transactions
             
         except Exception as e:
-            logger.error(f"Error removing duplicate transactions: {e}")
+            logger.error("Error removing duplicate transactions", exc_info=True)
             return transactions
     
     async def _sort_transactions_by_date(self, transactions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -1171,7 +1257,7 @@ class StatementWorkflow:
             return sorted_transactions
             
         except Exception as e:
-            logger.error(f"Error sorting transactions by date: {e}")
+            logger.error("Error sorting transactions by date", exc_info=True)
             return transactions
     
     async def check_cloud_csvs_exist(self) -> bool:
@@ -1199,7 +1285,7 @@ class StatementWorkflow:
                 return False
                 
         except Exception as e:
-            logger.error(f"Error checking cloud CSV files: {e}")
+            logger.error("Error checking cloud CSV files", exc_info=True)
             return False
     
     async def check_statement_already_extracted(self, statement_data: Dict[str, Any]) -> bool:
@@ -1245,7 +1331,7 @@ class StatementWorkflow:
             return False
             
         except Exception as e:
-            logger.error(f"Error checking if statement already extracted: {e}")
+            logger.error("Error checking if statement already extracted", exc_info=True)
             return False
     
     def _extract_date_from_filename(self, filename: str) -> Optional[str]:
@@ -1301,7 +1387,7 @@ class StatementWorkflow:
             return datetime.now()
             
         except Exception as e:
-            logger.error(f"Error parsing email date {email_date}: {e}")
+            logger.error(f"Error parsing email date {email_date}", exc_info=True)
             return datetime.now()
     
     def _extract_date_from_email_date(self, email_date: str) -> str:
@@ -1325,6 +1411,8 @@ async def run_statement_workflow(
     enable_secondary_account: bool = None,
     custom_start_date: Optional[str] = None,
     custom_end_date: Optional[str] = None,
+    custom_splitwise_start_date: Optional[datetime] = None,
+    custom_splitwise_end_date: Optional[datetime] = None,
     clear_before_insert: bool = False,  # Currently unused, kept for CLI compatibility
 ) -> Dict[str, Any]:
     """Run the complete statement processing workflow."""
@@ -1336,6 +1424,8 @@ async def run_statement_workflow(
         resume_from_standardization=False,
         custom_start_date=custom_start_date,
         custom_end_date=custom_end_date,
+        custom_splitwise_start_date=custom_splitwise_start_date,
+        custom_splitwise_end_date=custom_splitwise_end_date,
     )
 
 
