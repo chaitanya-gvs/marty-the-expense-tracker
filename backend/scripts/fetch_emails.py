@@ -69,7 +69,7 @@ class EmailFetcher:
             return emails
             
         except Exception as e:
-            logger.error(f"Error fetching emails from {sender}: {e}")
+            logger.error(f"Error fetching emails from {sender}", exc_info=True)
             raise
 
     def fetch_emails_by_subject(self, subject: str, limit: int = 10) -> List[Dict[str, Any]]:
@@ -106,7 +106,7 @@ class EmailFetcher:
             return emails
             
         except Exception as e:
-            logger.error(f"Error fetching emails with subject '{subject}': {e}")
+            logger.error(f"Error fetching emails with subject '{subject}'", exc_info=True)
             raise
 
     def fetch_recent_transaction_emails(self, limit: int = 10, days_back: int = 7) -> List[Dict[str, Any]]:
@@ -132,7 +132,7 @@ class EmailFetcher:
             return emails
             
         except Exception as e:
-            logger.error(f"Error fetching recent transaction emails: {e}")
+            logger.error("Error fetching recent transaction emails", exc_info=True)
             raise
 
     def fetch_emails_by_date_range(self, days_back: int, limit: int = 10) -> List[Dict[str, Any]]:
@@ -165,25 +165,25 @@ class EmailFetcher:
             return emails
             
         except Exception as e:
-            logger.error(f"Error fetching emails by date range: {e}")
+            logger.error("Error fetching emails by date range", exc_info=True)
             raise
 
     def display_email(self, email: Dict[str, Any], index: int = 0) -> None:
         """Display a single email in a formatted way"""
-        print(f"\n{'='*80}")
-        print(f"EMAIL #{index + 1}")
-        print(f"{'='*80}")
-        print(f"Subject: {email.get('subject', 'No subject')}")
-        print(f"From: {email.get('sender', 'Unknown sender')}")
-        print(f"Date: {email.get('date', 'Unknown date')}")
-        print(f"ID: {email.get('id', 'Unknown ID')}")
+        logger.info(f"\n{'='*80}")
+        logger.info(f"EMAIL #{index + 1}")
+        logger.info(f"{'='*80}")
+        logger.info(f"Subject: {email.get('subject', 'No subject')}")
+        logger.info(f"From: {email.get('sender', 'Unknown sender')}")
+        logger.info(f"Date: {email.get('date', 'Unknown date')}")
+        logger.info(f"ID: {email.get('id', 'Unknown ID')}")
         
         # Show attachments if any
         attachments = email.get('attachments', [])
         if attachments:
-            print(f"Attachments: {len(attachments)}")
+            logger.info(f"Attachments: {len(attachments)}")
             for i, attachment in enumerate(attachments):
-                print(f"  {i+1}. {attachment.get('filename', 'Unknown')} ({attachment.get('mime_type', 'Unknown type')})")
+                logger.info(f"  {i+1}. {attachment.get('filename', 'Unknown')} ({attachment.get('mime_type', 'Unknown type')})")
         
         # Show email body (truncated)
         body = email.get('body', '')
@@ -192,20 +192,20 @@ class EmailFetcher:
             max_length = 500
             if len(body) > max_length:
                 body = body[:max_length] + "..."
-            print(f"\nBody:\n{body}")
+            logger.info(f"\nBody:\n{body}")
         else:
-            print("\nBody: No text content")
+            logger.info("\nBody: No text content")
         
-        print(f"{'='*80}")
+        logger.info(f"{'='*80}")
 
     def display_emails_summary(self, emails: List[Dict[str, Any]]) -> None:
         """Display a summary of fetched emails"""
         if not emails:
-            print("No emails found.")
+            logger.info("No emails found.")
             return
         
-        print(f"\n📧 Found {len(emails)} emails:")
-        print("-" * 80)
+        logger.info(f"\n📧 Found {len(emails)} emails:")
+        logger.info("-" * 80)
         
         for i, email in enumerate(emails):
             subject = email.get('subject', 'No subject')
@@ -216,10 +216,9 @@ class EmailFetcher:
             subject = subject[:50] + "..." if len(subject) > 50 else subject
             sender = sender[:40] + "..." if len(sender) > 40 else sender
             
-            print(f"{i+1:2d}. {subject}")
-            print(f"     From: {sender}")
-            print(f"     Date: {date}")
-            print()
+            logger.info(f"{i+1:2d}. {subject}")
+            logger.info(f"     From: {sender}")
+            logger.info(f"     Date: {date}")
 
 
 def main():
@@ -236,12 +235,12 @@ def main():
     
     # Check if we're in the right directory
     if not Path("pyproject.toml").exists():
-        print("❌ Please run this script from the backend directory")
+        logger.error("❌ Please run this script from the backend directory")
         sys.exit(1)
     
     # Validate arguments
     if not any([args.sender, args.subject, args.recent, args.days]):
-        print("❌ Please specify one of: --sender, --subject, --recent, or --days")
+        logger.error("❌ Please specify one of: --sender, --subject, --recent, or --days")
         parser.print_help()
         sys.exit(1)
     
@@ -269,10 +268,10 @@ def main():
             # Show summary
             fetcher.display_emails_summary(emails)
         
-        print(f"\n✅ Successfully fetched {len(emails)} emails")
+        logger.info(f"\n✅ Successfully fetched {len(emails)} emails")
         
     except Exception as e:
-        print(f"❌ Error: {e}")
+        logger.error("❌ Error in fetch_emails script", exc_info=True)
         sys.exit(1)
 
 
