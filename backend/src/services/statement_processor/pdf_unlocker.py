@@ -88,7 +88,7 @@ class PDFUnlocker:
                 }
             
         except Exception as e:
-            logger.error(f"Error unlocking PDF {pdf_path}: {e}")
+            logger.error(f"Error unlocking PDF {pdf_path}", exc_info=True)
             return {
                 "success": False,
                 "error": str(e)
@@ -137,7 +137,7 @@ class PDFUnlocker:
                 }
                 
         except Exception as e:
-            logger.error(f"Error unlocking PDF: {e}")
+            logger.error("Error unlocking PDF", exc_info=True)
             return {
                 "success": False,
                 "error": str(e)
@@ -165,7 +165,7 @@ class PDFUnlocker:
             return self.password_manager.get_password_for_sender(sender_email)
             
         except Exception as e:
-            logger.error(f"Error getting password: {e}")
+            logger.error("Error getting password", exc_info=True)
             return None
     
     def _get_sender_email_from_filename(self, filename: str) -> Optional[str]:
@@ -188,7 +188,7 @@ class PDFUnlocker:
                 return None
                 
         except Exception as e:
-            logger.error(f"Error getting sender email from filename: {e}")
+            logger.error("Error getting sender email from filename", exc_info=True)
             return None
     
     def _unlock_pdf_with_password(self, pdf_path: Path, password: str) -> bool:
@@ -228,7 +228,7 @@ class PDFUnlocker:
             return True
             
         except Exception as e:
-            logger.error(f"PyMuPDF unlock failed: {e}")
+            logger.error("PyMuPDF unlock failed", exc_info=True)
             return False
     
     def _save_unlocked_pdf(self, original_path: Path) -> Optional[str]:
@@ -252,7 +252,7 @@ class PDFUnlocker:
             return str(output_file)
             
         except Exception as e:
-            logger.error(f"Error saving unlocked PDF: {e}")
+            logger.error("Error saving unlocked PDF", exc_info=True)
             return None
     
     def _generate_normalized_unlocked_filename(self, original_filename: str) -> str:
@@ -293,7 +293,7 @@ class PDFUnlocker:
             return normalized_filename
             
         except Exception as e:
-            logger.error(f"Error generating normalized unlocked filename: {e}")
+            logger.error("Error generating normalized unlocked filename", exc_info=True)
             # Fallback to original filename with _unlocked suffix
             return f"{Path(original_filename).stem}_unlocked.pdf"
     
@@ -336,9 +336,9 @@ if __name__ == "__main__":
     # Test file path - Yes Bank statement downloaded
     test_pdf = "/Users/chaitanya/Documents/Dev/personal-projects/expense-tracker/backend/data/statements/locked_statements/yes_bank_savings_account_20250904.pdf"
     
-    print("🔓 Testing PDF Unlocker Service")
-    print(f"📄 Test file: {test_pdf}")
-    print("-" * 60)
+    logger.info("🔓 Testing PDF Unlocker Service")
+    logger.info(f"📄 Test file: {test_pdf}")
+    logger.info("-" * 60)
     
     try:
         # Create unlocker instance
@@ -346,33 +346,32 @@ if __name__ == "__main__":
         
         # Check if test file exists
         if not Path(test_pdf).exists():
-            print(f"❌ Test file not found: {test_pdf}")
-            print("💡 Please place a locked PDF in the locked_statements directory to test")
+            logger.error(f"❌ Test file not found: {test_pdf}")
+            logger.warning("💡 Please place a locked PDF in the locked_statements directory to test")
             exit(1)
         
-        print("✅ Test file found")
+        logger.info("✅ Test file found")
         
         # Test password retrieval
-        print(f"\n🔑 Testing password retrieval...")
+        logger.info(f"\n🔑 Testing password retrieval...")
         password = unlocker._get_password_for_bank(Path(test_pdf).name)
         if password:
-            print(f"✅ Password found: {password[:3]}...")
+            logger.info(f"✅ Password found: {password[:3]}...")
         else:
-            print("❌ No password found for this bank")
-            print("💡 Please add a password using the password manager")
+            logger.error("❌ No password found for this bank")
+            logger.warning("💡 Please add a password using the password manager")
             exit(1)
         
         # Test PDF unlocking
-        print(f"\n🔓 Testing PDF unlocking...")
+        logger.info(f"\n🔓 Testing PDF unlocking...")
         result = unlocker.unlock_pdf(test_pdf)
         
         if result.get("success"):
-            print("✅ PDF unlocked successfully!")
-            print(f"💾 Unlocked PDF saved to: {result.get('unlocked_path')}")
+            logger.info("✅ PDF unlocked successfully!")
+            logger.info(f"💾 Unlocked PDF saved to: {result.get('unlocked_path')}")
         else:
-            print("❌ PDF unlocking failed!")
-            print(f"Error: {result.get('error')}")
+            logger.error("❌ PDF unlocking failed!")
+            logger.error(f"Error: {result.get('error')}")
             
     except Exception as e:
-        print(f"❌ Test failed with error: {e}")
-        traceback.print_exc()
+        logger.error("❌ Test failed", exc_info=True)
