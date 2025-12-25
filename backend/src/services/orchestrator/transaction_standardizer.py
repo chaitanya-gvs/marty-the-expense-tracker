@@ -592,7 +592,7 @@ class TransactionStandardizer:
                 return pd.DataFrame()
                 
         except Exception as e:
-            logger.error(f"Error processing {filename}: {e}")
+            logger.error(f"Error processing {filename}", exc_info=True)
             return pd.DataFrame()
     
     def standardize_all_transactions(self, save_to_file: bool = True) -> pd.DataFrame:
@@ -769,7 +769,7 @@ class TransactionStandardizer:
                     logger.warning(f"Skipping transaction with invalid date or amount: {transaction}")
                     
             except Exception as e:
-                logger.error(f"Error standardizing transaction: {e}")
+                logger.error("Error standardizing transaction", exc_info=True)
                 continue
         
         logger.info(f"Successfully standardized {len(standardized_transactions)} transactions")
@@ -942,7 +942,7 @@ class TransactionStandardizer:
             return df
             
         except Exception as e:
-            logger.error(f"Error standardizing Splitwise data: {e}")
+            logger.error("Error standardizing Splitwise data", exc_info=True)
             return pd.DataFrame()
     
     def _clean_splitwise_data(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -988,7 +988,7 @@ class TransactionStandardizer:
             return df
             
         except Exception as e:
-            logger.error(f"Error cleaning Splitwise data: {e}")
+            logger.error("Error cleaning Splitwise data", exc_info=True)
             return df
 
     def combine_all_transactions(self, include_splitwise: bool = True) -> pd.DataFrame:
@@ -1037,7 +1037,7 @@ class TransactionStandardizer:
                     logger.info(f"Loaded {len(df)} transactions from {csv_file.name}")
                     
                 except Exception as e:
-                    logger.error(f"Error loading {csv_file.name}: {e}")
+                    logger.error(f"Error loading {csv_file.name}", exc_info=True)
                     continue
             
             # Load Splitwise transactions if requested
@@ -1057,7 +1057,7 @@ class TransactionStandardizer:
                         logger.info(f"Loaded {len(df)} Splitwise transactions from {splitwise_file.name}")
                         
                     except Exception as e:
-                        logger.error(f"Error loading {splitwise_file.name}: {e}")
+                        logger.error(f"Error loading {splitwise_file.name}", exc_info=True)
                         continue
             
             if not all_dataframes:
@@ -1094,7 +1094,7 @@ class TransactionStandardizer:
             return combined_df
             
         except Exception as e:
-            logger.error(f"Error combining transactions: {e}")
+            logger.error("Error combining transactions", exc_info=True)
             return pd.DataFrame()
     
     def _display_combination_summary(self, df: pd.DataFrame):
@@ -1134,7 +1134,7 @@ class TransactionStandardizer:
             logger.info(f"Total amounts - Debit: {total_debit:.2f}, Credit: {total_credit:.2f}")
             
         except Exception as e:
-            logger.error(f"Error displaying combination summary: {e}")
+            logger.error("Error displaying combination summary", exc_info=True)
     
     def save_combined_transactions(self, output_filename: str = None) -> str:
         """
@@ -1173,7 +1173,7 @@ class TransactionStandardizer:
             return str(output_path)
             
         except Exception as e:
-            logger.error(f"Error saving combined transactions: {e}")
+            logger.error("Error saving combined transactions", exc_info=True)
             return None
 
 
