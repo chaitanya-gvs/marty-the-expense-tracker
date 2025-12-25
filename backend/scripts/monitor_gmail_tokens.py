@@ -25,26 +25,26 @@ logger = get_logger(__name__)
 
 def check_token_health():
     """Check and display token health for all accounts"""
-    print("🔍 CHECKING GMAIL TOKEN HEALTH")
-    print("=" * 60)
+    logger.info("🔍 CHECKING GMAIL TOKEN HEALTH")
+    logger.info("=" * 60)
     
     monitor = TokenHealthMonitor()
     summary = monitor.get_health_summary()
-    print(summary)
+    logger.info(summary)
     
     # Check if any accounts need re-authentication
     accounts_needing_reauth = monitor.get_accounts_needing_reauth()
     if accounts_needing_reauth:
-        print(f"\n⚠️  Accounts needing re-authentication: {', '.join(accounts_needing_reauth)}")
-        print("Run: poetry run python scripts/regenerate_gmail_tokens.py")
+        logger.warning(f"\n⚠️  Accounts needing re-authentication: {', '.join(accounts_needing_reauth)}")
+        logger.warning("Run: poetry run python scripts/regenerate_gmail_tokens.py")
     else:
-        print("\n✅ All accounts are healthy and ready to use!")
+        logger.info("\n✅ All accounts are healthy and ready to use!")
 
 
 def refresh_tokens_proactively():
     """Proactively refresh tokens for all accounts"""
-    print("🔄 PROACTIVELY REFRESHING TOKENS")
-    print("=" * 60)
+    logger.info("🔄 PROACTIVELY REFRESHING TOKENS")
+    logger.info("=" * 60)
     
     monitor = TokenHealthMonitor()
     results = monitor.check_all_accounts()
@@ -55,35 +55,32 @@ def refresh_tokens_proactively():
             manager = TokenManager(account)
             credentials = manager.get_valid_credentials()
             if credentials:
-                print(f"✅ {account.title()} account: Token refreshed proactively")
+                logger.info(f"✅ {account.title()} account: Token refreshed proactively")
                 refreshed_count += 1
             else:
-                print(f"❌ {account.title()} account: Failed to refresh token")
+                logger.error(f"❌ {account.title()} account: Failed to refresh token")
         else:
-            print(f"⚠️ {account.title()} account: Needs re-authentication")
+            logger.warning(f"⚠️ {account.title()} account: Needs re-authentication")
     
-    print(f"\n📊 Summary: {refreshed_count} tokens refreshed successfully")
+    logger.info(f"\n📊 Summary: {refreshed_count} tokens refreshed successfully")
 
 
 def setup_token_monitoring():
     """Set up automated token monitoring"""
-    print("⚙️  SETTING UP TOKEN MONITORING")
-    print("=" * 60)
+    logger.info("⚙️  SETTING UP TOKEN MONITORING")
+    logger.info("=" * 60)
     
-    print("To set up automated token monitoring, you can:")
-    print()
-    print("1. Add a cron job to run this script periodically:")
-    print("   # Check token health every 6 hours")
-    print("   0 */6 * * * cd /path/to/expense-tracker/backend && poetry run python scripts/monitor_gmail_tokens.py --check")
-    print()
-    print("2. Add proactive refresh to your workflow:")
-    print("   # Refresh tokens before running workflow")
-    print("   poetry run python scripts/monitor_gmail_tokens.py --refresh")
-    print("   poetry run python scripts/run_workflow_with_resume.py --full")
-    print()
-    print("3. Set up alerts for token expiration:")
-    print("   # Check daily and alert if tokens need attention")
-    print("   0 9 * * * cd /path/to/expense-tracker/backend && poetry run python scripts/monitor_gmail_tokens.py --check --alert")
+    logger.info("To set up automated token monitoring, you can:")
+    logger.info("1. Add a cron job to run this script periodically:")
+    logger.info("   # Check token health every 6 hours")
+    logger.info("   0 */6 * * * cd /path/to/expense-tracker/backend && poetry run python scripts/monitor_gmail_tokens.py --check")
+    logger.info("2. Add proactive refresh to your workflow:")
+    logger.info("   # Refresh tokens before running workflow")
+    logger.info("   poetry run python scripts/monitor_gmail_tokens.py --refresh")
+    logger.info("   poetry run python scripts/run_workflow_with_resume.py --full")
+    logger.info("3. Set up alerts for token expiration:")
+    logger.info("   # Check daily and alert if tokens need attention")
+    logger.info("   0 9 * * * cd /path/to/expense-tracker/backend && poetry run python scripts/monitor_gmail_tokens.py --check --alert")
 
 
 def main():
@@ -109,12 +106,12 @@ def main():
         check_token_health()
         
         if args.alert:
-            print("\n" + "=" * 60)
-            print("📋 RECOMMENDATIONS:")
-            print("1. Run this script regularly to monitor token health")
-            print("2. Set up automated monitoring with cron jobs")
-            print("3. Use --refresh before running workflows")
-            print("4. Keep backup of your OAuth credentials")
+            logger.info("\n" + "=" * 60)
+            logger.info("📋 RECOMMENDATIONS:")
+            logger.info("1. Run this script regularly to monitor token health")
+            logger.info("2. Set up automated monitoring with cron jobs")
+            logger.info("3. Use --refresh before running workflows")
+            logger.info("4. Keep backup of your OAuth credentials")
 
 
 if __name__ == "__main__":
