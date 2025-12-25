@@ -24,16 +24,16 @@ def show_password_summary():
     pm = get_password_manager()
     accounts = pm.list_accounts()
     
-    print("🔐 Bank Password Summary")
-    print("=" * 50)
+    logger.info("🔐 Bank Password Summary")
+    logger.info("=" * 50)
     
     total_accounts = sum(len(accounts[acc_type]) for acc_type in accounts)
-    print(f"Total accounts: {total_accounts}")
+    logger.info(f"Total accounts: {total_accounts}")
     
     for account_type, account_list in accounts.items():
-        print(f"\n{account_type.replace('_', ' ').title()}: {len(account_list)}")
+        logger.info(f"\n{account_type.replace('_', ' ').title()}: {len(account_list)}")
         for account in account_list:
-            print(f"  - {account}")
+            logger.info(f"  - {account}")
 
 
 def show_detailed_passwords():
@@ -41,35 +41,35 @@ def show_detailed_passwords():
     pm = get_password_manager()
     accounts = pm.list_accounts()
     
-    print("🔐 Detailed Password Information")
-    print("=" * 50)
+    logger.info("🔐 Detailed Password Information")
+    logger.info("=" * 50)
     
     for account_type, account_list in accounts.items():
-        print(f"\n{account_type.replace('_', ' ').title()}:")
-        print("-" * 30)
+        logger.info(f"\n{account_type.replace('_', ' ').title()}:")
+        logger.info("-" * 30)
         
         for account_name in account_list:
             password = pm.get_password_for_account(account_name, account_type)
             if password:
                 # Mask password for security
                 masked_password = "*" * min(len(password), 8) + "..." if len(password) > 8 else "*" * len(password)
-                print(f"  {account_name}: {masked_password}")
+                logger.info(f"  {account_name}: {masked_password}")
             else:
-                print(f"  {account_name}: No password set")
+                logger.info(f"  {account_name}: No password set")
 
 
 def add_password():
     """Add a new password interactively"""
     pm = get_password_manager()
     
-    print("🔐 Add New Password")
-    print("=" * 30)
+    logger.info("🔐 Add New Password")
+    logger.info("=" * 30)
     
     # Account type selection
-    print("\nAccount types:")
-    print("1. bank_statements")
-    print("2. credit_cards") 
-    print("3. investment_accounts")
+    logger.info("\nAccount types:")
+    logger.info("1. bank_statements")
+    logger.info("2. credit_cards") 
+    logger.info("3. investment_accounts")
     
     type_choice = input("\nSelect account type (1-3): ").strip()
     
@@ -80,7 +80,7 @@ def add_password():
     }
     
     if type_choice not in type_mapping:
-        print("❌ Invalid choice")
+        logger.error("❌ Invalid choice")
         return
     
     account_type = type_mapping[type_choice]
@@ -88,12 +88,12 @@ def add_password():
     # Get account details
     account_name = input(f"Enter account name: ").strip()
     if not account_name:
-        print("❌ Account name is required")
+        logger.error("❌ Account name is required")
         return
     
     password = input("Enter password: ").strip()
     if not password:
-        print("❌ Password is required")
+        logger.error("❌ Password is required")
         return
     
     account_number = input("Enter account number (optional): ").strip()
@@ -109,33 +109,33 @@ def add_password():
     )
     
     if success:
-        print(f"✅ Password added successfully for {account_name}")
+        logger.info(f"✅ Password added successfully for {account_name}")
     else:
-        print("❌ Failed to add password")
+        logger.error("❌ Failed to add password")
 
 
 def remove_password():
     """Remove a password interactively"""
     pm = get_password_manager()
     
-    print("🗑️ Remove Password")
-    print("=" * 30)
+    logger.info("🗑️ Remove Password")
+    logger.info("=" * 30)
     
     # Show available accounts
     accounts = pm.list_accounts()
-    print("\nAvailable accounts:")
+    logger.info("\nAvailable accounts:")
     
     account_choices = []
     choice_num = 1
     
     for account_type, account_list in accounts.items():
         for account_name in account_list:
-            print(f"{choice_num}. {account_type.replace('_', ' ').title()} - {account_name}")
+            logger.info(f"{choice_num}. {account_type.replace('_', ' ').title()} - {account_name}")
             account_choices.append((account_type, account_name))
             choice_num += 1
     
     if not account_choices:
-        print("No accounts found")
+        logger.warning("No accounts found")
         return
     
     try:
@@ -148,15 +148,15 @@ def remove_password():
             if confirm in ['y', 'yes']:
                 success = pm.remove_password(account_type, account_name)
                 if success:
-                    print(f"✅ Password removed for {account_name}")
+                    logger.info(f"✅ Password removed for {account_name}")
                 else:
-                    print(f"❌ Failed to remove password for {account_name}")
+                    logger.error(f"❌ Failed to remove password for {account_name}")
             else:
-                print("Operation cancelled")
+                logger.info("Operation cancelled")
         else:
-            print("❌ Invalid choice")
+            logger.error("❌ Invalid choice")
     except ValueError:
-        print("❌ Please enter a valid number")
+        logger.error("❌ Please enter a valid number")
 
 
 def search_passwords(query: str):
@@ -164,36 +164,36 @@ def search_passwords(query: str):
     pm = get_password_manager()
     results = pm.search_accounts(query)
     
-    print(f"🔍 Search Results for '{query}'")
-    print("=" * 50)
+    logger.info(f"🔍 Search Results for '{query}'")
+    logger.info("=" * 50)
     
     if not results:
-        print("No accounts found matching your search")
+        logger.info("No accounts found matching your search")
         return
     
     for result in results:
-        print(f"\nType: {result['type'].replace('_', ' ').title()}")
-        print(f"Name: {result['name']}")
+        logger.info(f"\nType: {result['type'].replace('_', ' ').title()}")
+        logger.info(f"Name: {result['name']}")
         
         info = result['info']
         if 'account_number' in info:
-            print(f"Account: {info['account_number']}")
+            logger.info(f"Account: {info['account_number']}")
         if 'notes' in info:
-            print(f"Notes: {info['notes']}")
+            logger.info(f"Notes: {info['notes']}")
         
         # Show masked password
         password = info.get('password', '')
         if password:
             masked_password = "*" * min(len(password), 8) + "..." if len(password) > 8 else "*" * len(password)
-            print(f"Password: {masked_password}")
+            logger.info(f"Password: {masked_password}")
 
 
 def test_password_lookup():
     """Test password lookup for common email domains"""
     pm = get_password_manager()
     
-    print("🧪 Test Password Lookup")
-    print("=" * 50)
+    logger.info("🧪 Test Password Lookup")
+    logger.info("=" * 50)
     
     test_domains = [
         "alerts@axisbank.com",
@@ -207,9 +207,9 @@ def test_password_lookup():
         password = pm.get_password_for_sender(email)
         if password:
             masked_password = "*" * min(len(password), 8) + "..." if len(password) > 8 else "*" * len(password)
-            print(f"✅ {email}: {masked_password}")
+            logger.info(f"✅ {email}: {masked_password}")
         else:
-            print(f"❌ {email}: No password found")
+            logger.warning(f"❌ {email}: No password found")
 
 
 def main():
@@ -225,7 +225,7 @@ def main():
     
     # Check if we're in the right directory
     if not Path("pyproject.toml").exists():
-        print("❌ Please run this script from the backend directory")
+        logger.error("❌ Please run this script from the backend directory")
         sys.exit(1)
     
     if args.summary:
@@ -243,7 +243,7 @@ def main():
     else:
         # Default: show summary
         show_password_summary()
-        print("\n💡 Use --help to see all available options")
+        logger.info("\n💡 Use --help to see all available options")
 
 
 if __name__ == "__main__":
