@@ -13,13 +13,16 @@ sys.path.insert(0, str(backend_path))
 
 from src.services.email_ingestion.auth import EmailAuthHandler
 from src.utils.settings import get_settings
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def print_banner(text):
     """Print a formatted banner"""
-    print("\n" + "=" * 80)
-    print(f"  {text}")
-    print("=" * 80 + "\n")
+    logger.info("\n" + "=" * 80)
+    logger.info(f"  {text}")
+    logger.info("=" * 80 + "\n")
 
 
 def check_current_configuration():
@@ -28,19 +31,17 @@ def check_current_configuration():
     
     settings = get_settings()
     
-    print("📊 PRIMARY ACCOUNT:")
-    print(f"   Client ID: {'✅ Found' if settings.GOOGLE_CLIENT_ID else '❌ Missing'}")
-    print(f"   Client Secret: {'✅ Found' if settings.GOOGLE_CLIENT_SECRET else '❌ Missing'}")
-    print(f"   Refresh Token: {'✅ Found' if settings.GOOGLE_REFRESH_TOKEN else '❌ Missing'}")
-    print(f"   Client Secret File: {'✅ Found' if settings.GOOGLE_CLIENT_SECRET_FILE else '❌ Missing'}")
-    print()
+    logger.info("📊 PRIMARY ACCOUNT:")
+    logger.info(f"   Client ID: {'✅ Found' if settings.GOOGLE_CLIENT_ID else '❌ Missing'}")
+    logger.info(f"   Client Secret: {'✅ Found' if settings.GOOGLE_CLIENT_SECRET else '❌ Missing'}")
+    logger.info(f"   Refresh Token: {'✅ Found' if settings.GOOGLE_REFRESH_TOKEN else '❌ Missing'}")
+    logger.info(f"   Client Secret File: {'✅ Found' if settings.GOOGLE_CLIENT_SECRET_FILE else '❌ Missing'}")
     
-    print("📊 SECONDARY ACCOUNT:")
-    print(f"   Client ID: {'✅ Found' if settings.GOOGLE_CLIENT_ID_2 else '❌ Missing'}")
-    print(f"   Client Secret: {'✅ Found' if settings.GOOGLE_CLIENT_SECRET_2 else '❌ Missing'}")
-    print(f"   Refresh Token: {'✅ Found' if settings.GOOGLE_REFRESH_TOKEN_2 else '❌ Missing'}")
-    print(f"   Client Secret File: {'✅ Found' if settings.GOOGLE_CLIENT_SECRET_FILE_2 else '❌ Missing'}")
-    print()
+    logger.info("📊 SECONDARY ACCOUNT:")
+    logger.info(f"   Client ID: {'✅ Found' if settings.GOOGLE_CLIENT_ID_2 else '❌ Missing'}")
+    logger.info(f"   Client Secret: {'✅ Found' if settings.GOOGLE_CLIENT_SECRET_2 else '❌ Missing'}")
+    logger.info(f"   Refresh Token: {'✅ Found' if settings.GOOGLE_REFRESH_TOKEN_2 else '❌ Missing'}")
+    logger.info(f"   Client Secret File: {'✅ Found' if settings.GOOGLE_CLIENT_SECRET_FILE_2 else '❌ Missing'}")
     
     return settings
 
@@ -54,48 +55,43 @@ def regenerate_account(account_id: str, account_email: str):
         handler = EmailAuthHandler(account_id=account_id)
         
         # Generate authorization URL
-        print("🔗 Generating authorization URL...")
+        logger.info("🔗 Generating authorization URL...")
         auth_url = handler.get_authorization_url()
         
-        print("\n📋 INSTRUCTIONS:")
-        print("1. Copy the URL below and open it in your browser")
-        print(f"2. Sign in with: {account_email}")
-        print("3. Grant permissions to the application")
-        print("4. After redirect, copy the 'code=' parameter from the callback URL")
-        print("   (The URL will look like: http://localhost:8080/?code=YOUR_CODE_HERE&scope=...)")
-        print()
-        print("🔗 AUTHORIZATION URL:")
-        print("-" * 80)
-        print(auth_url)
-        print("-" * 80)
-        print()
+        logger.info("\n📋 INSTRUCTIONS:")
+        logger.info("1. Copy the URL below and open it in your browser")
+        logger.info(f"2. Sign in with: {account_email}")
+        logger.info("3. Grant permissions to the application")
+        logger.info("4. After redirect, copy the 'code=' parameter from the callback URL")
+        logger.info("   (The URL will look like: http://localhost:8080/?code=YOUR_CODE_HERE&scope=...)")
+        logger.info("🔗 AUTHORIZATION URL:")
+        logger.info("-" * 80)
+        logger.info(auth_url)
+        logger.info("-" * 80)
         
         # Get authorization code from user
         authorization_code = input("📝 Paste the authorization code here: ").strip()
         
         if not authorization_code:
-            print("❌ No authorization code provided. Skipping this account.")
+            logger.warning("❌ No authorization code provided. Skipping this account.")
             return False
         
         # Exchange code for tokens
-        print("\n🔄 Exchanging authorization code for tokens...")
+        logger.info("\n🔄 Exchanging authorization code for tokens...")
         token_info = handler.exchange_code_for_tokens(authorization_code)
         
-        print("✅ Successfully obtained tokens!")
-        print(f"   Refresh Token: {token_info.get('refresh_token', 'N/A')[:30]}...")
-        print()
+        logger.info("✅ Successfully obtained tokens!")
+        logger.info(f"   Refresh Token: {token_info.get('refresh_token', 'N/A')[:30]}...")
         
         # Save tokens to .env file
-        print("💾 Saving tokens to environment file...")
+        logger.info("💾 Saving tokens to environment file...")
         handler.save_tokens_to_env(token_info)
-        print("✅ Tokens saved successfully!")
-        print()
+        logger.info("✅ Tokens saved successfully!")
         
         return True
         
     except Exception as e:
-        print(f"❌ Error during OAuth flow: {e}")
-        print()
+        logger.error("❌ Error during OAuth flow", exc_info=True)
         return False
 
 
@@ -103,18 +99,17 @@ def main():
     """Main function"""
     print_banner("GMAIL TOKEN REGENERATION FOR BOTH ACCOUNTS")
     
-    print("This script will help you regenerate Gmail OAuth tokens for both accounts.")
-    print("You'll complete the OAuth flow for each account separately.\n")
+    logger.info("This script will help you regenerate Gmail OAuth tokens for both accounts.")
+    logger.info("You'll complete the OAuth flow for each account separately.")
     
     # Check current configuration
     settings = check_current_configuration()
     
     # Ask which accounts to regenerate
-    print("Which accounts would you like to regenerate?")
-    print("1. Primary account only")
-    print("2. Secondary account only")
-    print("3. Both accounts")
-    print()
+    logger.info("Which accounts would you like to regenerate?")
+    logger.info("1. Primary account only")
+    logger.info("2. Secondary account only")
+    logger.info("3. Both accounts")
     
     choice = input("Enter your choice (1/2/3): ").strip()
     
@@ -126,26 +121,24 @@ def main():
         regenerate_account("secondary", "chaitanyagvs98@gmail.com")
     elif choice == "3":
         # Regenerate both accounts
-        print("\n🔄 Starting with PRIMARY account...")
+        logger.info("\n🔄 Starting with PRIMARY account...")
         regenerate_account("primary", "chaitanyagvs23@gmail.com")
         
         input("\nPress Enter to continue with secondary account...")
         
-        print("\n🔄 Starting with SECONDARY account...")
+        logger.info("\n🔄 Starting with SECONDARY account...")
         regenerate_account("secondary", "chaitanyagvs98@gmail.com")
     else:
-        print("❌ Invalid choice. Exiting.")
+        logger.error("❌ Invalid choice. Exiting.")
         return
     
     print_banner("REGENERATION COMPLETE")
-    print("✅ Token regeneration process completed!")
-    print()
-    print("📋 NEXT STEPS:")
-    print("1. Verify that tokens were saved to configs/secrets/.env")
-    print("2. Restart your backend server")
-    print("3. Test email search functionality")
-    print()
-    print("🎉 You're all set!")
+    logger.info("✅ Token regeneration process completed!")
+    logger.info("📋 NEXT STEPS:")
+    logger.info("1. Verify that tokens were saved to configs/secrets/.env")
+    logger.info("2. Restart your backend server")
+    logger.info("3. Test email search functionality")
+    logger.info("🎉 You're all set!")
 
 
 if __name__ == "__main__":
