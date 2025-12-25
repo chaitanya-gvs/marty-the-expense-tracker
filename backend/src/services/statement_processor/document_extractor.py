@@ -80,7 +80,7 @@ class DocumentExtractor:
                 return None
                 
         except Exception as e:
-            logger.error(f"Error determining schema from nickname: {e}")
+            logger.error("Error determining schema from nickname", exc_info=True)
             return None
     
     def _extract_account_nickname_from_filename(self, filename: str) -> Optional[str]:
@@ -101,7 +101,7 @@ class DocumentExtractor:
             return None
             
         except Exception as e:
-            logger.error(f"Error extracting nickname from filename: {e}")
+            logger.error("Error extracting nickname from filename", exc_info=True)
             return None
     
     def _map_nickname_to_schema(self, nickname: str):
@@ -162,7 +162,7 @@ class DocumentExtractor:
             return combined_df
             
         except Exception as e:
-            logger.error(f"Error parsing HTML table: {e}")
+            logger.error("Error parsing HTML table", exc_info=True)
             return pd.DataFrame()
     
     def extract_from_pdf(self, pdf_path: str, account_nickname: str = None, save_results: bool = True, email_date: str = None) -> Dict[str, Any]:
@@ -208,7 +208,7 @@ class DocumentExtractor:
             return extraction_result
             
         except Exception as e:
-            logger.error(f"Error extracting data from PDF {pdf_path}: {e}")
+            logger.error(f"Error extracting data from PDF {pdf_path}", exc_info=True)
             return {
                 "success": False,
                 "error": str(e)
@@ -255,7 +255,7 @@ class DocumentExtractor:
                 }
             
         except Exception as e:
-            logger.error(f"Error in agentic-doc extraction: {e}")
+            logger.error("Error in agentic-doc extraction", exc_info=True)
             raise
     
     def _save_extraction_csv_only(self, extraction_result: Dict[str, Any], pdf_path: Path, account_nickname: str = None, email_date: str = None) -> Optional[str]:
@@ -303,7 +303,7 @@ class DocumentExtractor:
             return None
             
         except Exception as e:
-            logger.error(f"Error saving extraction CSV: {e}")
+            logger.error("Error saving extraction CSV", exc_info=True)
             return None
     
     def _save_extraction_results(self, extraction_result: Dict[str, Any], pdf_path: Path) -> Optional[str]:
@@ -359,7 +359,7 @@ class DocumentExtractor:
             return str(json_file)
             
         except Exception as e:
-            logger.error(f"Error saving extraction results: {e}")
+            logger.error("Error saving extraction results", exc_info=True)
             return None
     
     def _get_timestamp(self) -> str:
@@ -389,14 +389,14 @@ class DocumentExtractor:
             return datetime.now().strftime("%Y%m%d")
             
         except Exception as e:
-            logger.error(f"Error extracting date from filename: {e}")
+            logger.error("Error extracting date from filename", exc_info=True)
             return datetime.now().strftime("%Y%m%d")
     
     def _upload_csv_to_gcs(self, csv_file: Path, account_nickname: str = None, pdf_path: Path = None, email_date: str = None) -> Optional[str]:
         """Upload CSV file to GCS bucket with new directory structure"""
         try:
             if not csv_file.exists():
-                logger.error(f"CSV file does not exist: {csv_file}")
+                logger.error(f"CSV file does not exist: {csv_file}", exc_info=True)
                 return None
             
             # Generate cloud path for CSV file with new structure: previous_month/extracted_data/filename.csv
@@ -421,11 +421,11 @@ class DocumentExtractor:
                 logger.info(f"Successfully uploaded CSV to GCS: {cloud_path}")
                 return cloud_path
             else:
-                logger.error(f"Failed to upload CSV to GCS: {upload_result.get('error')}")
+                logger.error(f"Failed to upload CSV to GCS: {upload_result.get('error')}", exc_info=True)
                 return None
                 
         except Exception as e:
-            logger.error(f"Error uploading CSV to GCS: {e}")
+            logger.error("Error uploading CSV to GCS", exc_info=True)
             return None
     
     def _get_previous_month_folder(self, email_date: str = None) -> str:
@@ -473,7 +473,7 @@ class DocumentExtractor:
             return f"{previous_year}-{previous_month:02d}"
             
         except Exception as e:
-            logger.error(f"Error calculating previous month folder: {e}")
+            logger.error("Error calculating previous month folder", exc_info=True)
             # Fallback to current month if there's an error
             return datetime.now().strftime("%Y-%m")
 
