@@ -57,7 +57,35 @@ class SplitwiseAPIClient:
             return self._current_user
             
         except Exception as e:
-            logger.error(f"Failed to get current user: {e}")
+            logger.error("Failed to get current user", exc_info=True)
+            raise
+    
+    def get_friends(self) -> List[SplitwiseUser]:
+        """Fetch friends list from Splitwise API."""
+        try:
+            logger.info("Fetching friends from Splitwise...")
+            response = requests.get(f"{self.base_url}/get_friends", headers=self.headers)
+            response.raise_for_status()
+            
+            data = response.json()
+            friends_data = data.get("friends", [])
+            
+            friends = []
+            for friend_data in friends_data:
+                friend = SplitwiseUser(
+                    id=friend_data.get("id"),
+                    first_name=friend_data.get("first_name", ""),
+                    last_name=friend_data.get("last_name"),
+                    email=friend_data.get("email"),
+                    picture=friend_data.get("picture")
+                )
+                friends.append(friend)
+            
+            logger.info(f"Fetched {len(friends)} friends from Splitwise")
+            return friends
+            
+        except Exception as e:
+            logger.error("Failed to fetch friends", exc_info=True)
             raise
     
     def get_expenses(
@@ -112,7 +140,7 @@ class SplitwiseAPIClient:
             return all_expenses
             
         except Exception as e:
-            logger.error(f"Failed to fetch expenses: {e}")
+            logger.error("Failed to fetch expenses", exc_info=True)
             raise
     
     def _parse_expense(self, expense_data: Dict[str, Any]) -> SplitwiseExpense:
