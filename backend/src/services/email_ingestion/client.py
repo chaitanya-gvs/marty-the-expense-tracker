@@ -111,7 +111,7 @@ class EmailClient:
                 logger.error(f"Failed to get valid credentials for {self.account_id} account")
                 return False
         except Exception as e:
-            logger.error(f"Failed to refresh Gmail credentials for {self.account_id}: {e}")
+            logger.error(f"Failed to refresh Gmail credentials for {self.account_id}", exc_info=True)
             return False
 
     def list_recent_transaction_emails(self, max_results: int = 25, days_back: int = 7) -> List[dict[str, Any]]:
@@ -136,7 +136,7 @@ class EmailClient:
             logger.info(f"Found {len(messages)} transaction emails")
             return messages
         except Exception as e:
-            logger.error(f"Error listing Gmail messages: {e}")
+            logger.error("Error listing Gmail messages", exc_info=True)
             raise
 
     def get_email_content(self, message_id: str) -> dict[str, Any]:
@@ -186,7 +186,7 @@ class EmailClient:
             
             return result
         except Exception as e:
-            logger.error(f"Error getting email content for {message_id}: {e}")
+            logger.error(f"Error getting email content for {message_id}", exc_info=True)
             raise
 
     def _extract_email_body(self, payload: dict) -> str:
@@ -500,15 +500,25 @@ class EmailClient:
             data = attachment["data"]
             return base64.urlsafe_b64decode(data)
         except Exception as e:
-            logger.error(f"Error downloading attachment {attachment_id}: {e}")
+            logger.error(f"Error downloading attachment {attachment_id}", exc_info=True)
             raise
 
     def search_emails_by_date_range(self, start_date: str, end_date: str, query: str = "") -> List[dict[str, Any]]:
-        """Search emails within a date range with optional query"""
+        """
+        Search emails within a date range with optional query
+        
+        Note: Gmail's 'before:' operator is exclusive, so we add 1 day to end_date
+        to include emails on the end_date itself.
+        """
         if not self._refresh_credentials():
             raise Exception("Failed to authenticate with Gmail")
 
-        date_query = f"after:{start_date} before:{end_date}"
+        # Gmail's 'before:' is exclusive, so add 1 day to include the end_date
+        from datetime import datetime, timedelta
+        end_date_obj = datetime.strptime(end_date, "%Y/%m/%d")
+        end_date_inclusive = (end_date_obj + timedelta(days=1)).strftime("%Y/%m/%d")
+        
+        date_query = f"after:{start_date} before:{end_date_inclusive}"
         full_query = f"{date_query} {query}".strip()
         
         try:
@@ -520,7 +530,7 @@ class EmailClient:
             )
             return resp.get("messages", [])
         except Exception as e:
-            logger.error(f"Error searching emails: {e}")
+            logger.error("Error searching emails", exc_info=True)
             raise
 
     def search_emails_for_transaction(
@@ -655,7 +665,7 @@ class EmailClient:
             return email_results
             
         except Exception as e:
-            logger.error(f"Error searching emails for transaction: {e}")
+            logger.error("Error searching emails for transaction", exc_info=True)
             raise
 
     def get_email_thread(self, thread_id: str) -> dict[str, Any]:
@@ -672,7 +682,7 @@ class EmailClient:
             )
             return thread
         except Exception as e:
-            logger.error(f"Error getting email thread {thread_id}: {e}")
+            logger.error(f"Error getting email thread {thread_id}", exc_info=True)
             raise
 
     def download_latest_attachment_with_normalized_name(self, sender_email: str, file_type: str = "pdf", download_dir: str = "data/statements/locked_statements") -> Optional[dict[str, Any]]:
@@ -794,7 +804,7 @@ class EmailClient:
             }
             
         except Exception as e:
-            logger.error(f"Error downloading latest attachment: {e}")
+            logger.error("Error downloading latest attachment", exc_info=True)
             return {
                 "success": False,
                 "error": str(e)
@@ -841,7 +851,7 @@ class EmailClient:
             return normalized_filename
             
         except Exception as e:
-            logger.error(f"Error generating normalized filename: {e}")
+            logger.error("Error generating normalized filename", exc_info=True)
             # Fallback to timestamp-based filename
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             return f"statement_{timestamp}.{file_type}"
@@ -863,7 +873,7 @@ class EmailClient:
             return str(file_path)
             
         except Exception as e:
-            logger.error(f"Error saving attachment: {e}")
+            logger.error("Error saving attachment", exc_info=True)
             return None
 
 
