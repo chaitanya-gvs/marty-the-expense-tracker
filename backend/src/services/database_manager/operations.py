@@ -45,7 +45,7 @@ class AccountOperations:
             logger.info(f"Retrieved {len(accounts)} active accounts")
             return accounts
         except Exception as e:
-            logger.error(f"Error retrieving all accounts: {e}", exc_info=True)
+            logger.error("Error retrieving all accounts", exc_info=True)
             raise
         finally:
             await session.close()
@@ -71,7 +71,7 @@ class AccountOperations:
             logger.info(f"Retrieved {len(accounts)} accounts of type {account_type}")
             return accounts
         except Exception as e:
-            logger.error(f"Error retrieving accounts by type {account_type}: {e}", exc_info=True)
+            logger.error(f"Error retrieving accounts by type {account_type}", exc_info=True)
             raise
         finally:
             await session.close()
@@ -418,6 +418,26 @@ class TransactionOperations:
                     transaction_dict['tags'] = []
                 transactions.append(transaction_dict)
             return TransactionOperations._process_transactions(transactions)
+        finally:
+            await session.close()
+    
+    @staticmethod
+    async def get_last_transaction_date() -> Optional[date]:
+        """Get the date of the most recent transaction in the database"""
+        session_factory = get_session_factory()
+        session = session_factory()
+        try:
+            result = await session.execute(
+                text("""
+                    SELECT MAX(transaction_date) as last_date
+                    FROM transactions
+                    WHERE is_deleted = false
+                """)
+            )
+            row = result.fetchone()
+            if row and row.last_date:
+                return row.last_date
+            return None
         finally:
             await session.close()
     
@@ -912,7 +932,7 @@ class TransactionOperations:
             }
         except Exception as e:
             await session.rollback()
-            logger.error(f"Failed to clear transactions: {e}")
+            logger.error("Failed to clear transactions", exc_info=True)
             return {
                 "success": False,
                 "error": str(e),
@@ -1020,7 +1040,7 @@ class TransactionOperations:
                     result["error_count"] += 1
                     error_msg = f"Error preparing transaction {transaction.get('description', 'unknown')}: {e}"
                     result["errors"].append(error_msg)
-                    logger.error(error_msg)
+                    logger.error(error_msg, exc_info=True)
                     import traceback
                     logger.error(f"Traceback: {traceback.format_exc()}")
                     continue
@@ -1056,7 +1076,7 @@ class TransactionOperations:
             await session.rollback()
             result["success"] = False
             result["errors"].append(f"Bulk insert failed: {e}")
-            logger.error(f"Bulk insert failed: {e}")
+            logger.error("Bulk insert failed", exc_info=True)
             return result
         finally:
             await session.close()
@@ -1145,29 +1165,29 @@ class TransactionOperations:
             existing_keys = set()
             if non_splitwise_transactions:
                 existing_query = text("""
-                SELECT transaction_date, amount, account, description, source_file, raw_data
-                FROM transactions 
-                WHERE transaction_date BETWEEN :min_date AND :max_date
-                      AND account != 'Splitwise'
-                  AND is_deleted = false
-            """)
-            
-            result = await session.execute(existing_query, {
-                "min_date": min_date,
-                "max_date": max_date
-            })
-            existing_transactions = result.fetchall()
-            
-            for row in existing_transactions:
-                key = TransactionOperations._create_transaction_key(
-                    row.transaction_date,
-                    float(row.amount),
-                    row.account,
-                    row.description,
-                    row.source_file,
-                    row.raw_data
-                )
-                existing_keys.add(key)
+                    SELECT transaction_date, amount, account, description, source_file, raw_data
+                    FROM transactions 
+                    WHERE transaction_date BETWEEN :min_date AND :max_date
+                          AND account != 'Splitwise'
+                      AND is_deleted = false
+                """)
+                
+                result = await session.execute(existing_query, {
+                    "min_date": min_date,
+                    "max_date": max_date
+                })
+                existing_transactions = result.fetchall()
+                
+                for row in existing_transactions:
+                    key = TransactionOperations._create_transaction_key(
+                        row.transaction_date,
+                        float(row.amount),
+                        row.account,
+                        row.description,
+                        row.source_file,
+                        row.raw_data
+                    )
+                    existing_keys.add(key)
             
             # Filter out duplicates
             unique_transactions = []
@@ -1228,7 +1248,7 @@ class TransactionOperations:
             return unique_transactions
             
         except Exception as e:
-            logger.error(f"Error filtering duplicate transactions: {e}")
+            logger.error("Error filtering duplicate transactions", exc_info=True)
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
             return transactions  # Return all if filtering fails
@@ -1361,7 +1381,7 @@ class TransactionOperations:
                             updated_count += 1
                             logger.debug(f"Updated Splitwise transaction {transaction_id} (splitwise_id: {splitwise_id})")
                     except Exception as e:
-                        logger.error(f"Error updating Splitwise transaction {transaction_id}: {e}")
+                        logger.error(f"Error updating Splitwise transaction {transaction_id}", exc_info=True)
                         # On error, add to insert list as fallback
                         transactions_to_insert.append(transaction)
                 else:
@@ -1374,7 +1394,7 @@ class TransactionOperations:
             
         except Exception as e:
             await session.rollback()
-            logger.error(f"Error upserting Splitwise transactions: {e}")
+            logger.error("Error upserting Splitwise transactions", exc_info=True)
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
             # On error, return all for insert as fallback
@@ -1578,7 +1598,7 @@ class TransactionOperations:
             await session.rollback()
             result["success"] = False
             result["errors"].append(str(e))
-            logger.error(f"Error removing duplicate Splitwise transactions: {e}")
+            logger.error("Error removing duplicate Splitwise transactions", exc_info=True)
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
             return result
@@ -1626,6 +1646,34 @@ class TransactionOperations:
             return data
     
     @staticmethod
+    def _prepare_raw_data_for_json(raw_data: Any) -> Optional[str]:
+        """Prepare raw_data for JSON serialization, handling string representations from CSV"""
+        if not raw_data:
+            return None
+        
+        # If it's already a string, try to parse it
+        if isinstance(raw_data, str):
+            try:
+                # Try JSON first
+                parsed = json.loads(raw_data)
+            except json.JSONDecodeError:
+                try:
+                    # Try eval for Python dict string representation (with single quotes)
+                    import ast
+                    parsed = ast.literal_eval(raw_data)
+                except (ValueError, SyntaxError):
+                    logger.warning(f"Could not parse raw_data string: {raw_data[:100]}")
+                    return None
+        else:
+            parsed = raw_data
+        
+        # Convert to JSON string
+        if isinstance(parsed, dict):
+            return json.dumps(TransactionOperations._clean_data_for_json(parsed))
+        else:
+            return None
+    
+    @staticmethod
     def _sort_transactions_by_date(transactions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Sort transactions by date in chronological order (oldest first)"""
         try:
@@ -1662,7 +1710,7 @@ class TransactionOperations:
             return sorted_transactions
             
         except Exception as e:
-            logger.error(f"Error sorting transactions by date: {e}")
+            logger.error("Error sorting transactions by date", exc_info=True)
             return transactions
     
     @staticmethod
@@ -1698,8 +1746,25 @@ class TransactionOperations:
         
         # Get split_breakdown and convert to JSON if present
         split_breakdown = transaction.get('split_breakdown')
-        if split_breakdown and isinstance(split_breakdown, dict):
-            split_breakdown = json.dumps(TransactionOperations._clean_data_for_json(split_breakdown))
+        if split_breakdown:
+            if isinstance(split_breakdown, str):
+                # Try to parse string representation (from CSV)
+                try:
+                    # Try JSON first
+                    split_breakdown = json.loads(split_breakdown)
+                except json.JSONDecodeError:
+                    try:
+                        # Try eval for Python dict string representation (with single quotes)
+                        import ast
+                        split_breakdown = ast.literal_eval(split_breakdown)
+                    except (ValueError, SyntaxError):
+                        logger.warning(f"Could not parse split_breakdown string: {split_breakdown[:100]}")
+                        split_breakdown = None
+            
+            if isinstance(split_breakdown, dict):
+                split_breakdown = json.dumps(TransactionOperations._clean_data_for_json(split_breakdown))
+            else:
+                split_breakdown = None
         elif split_breakdown is None:
             # Try to extract from raw_data if not directly provided
             raw_data = transaction.get('raw_data', {})
@@ -1708,7 +1773,11 @@ class TransactionOperations:
                     try:
                         raw_data = json.loads(raw_data)
                     except json.JSONDecodeError:
-                        raw_data = {}
+                        try:
+                            import ast
+                            raw_data = ast.literal_eval(raw_data)
+                        except (ValueError, SyntaxError):
+                            raw_data = {}
                 if isinstance(raw_data, dict) and 'split_breakdown' in raw_data:
                     split_breakdown = json.dumps(TransactionOperations._clean_data_for_json(raw_data['split_breakdown']))
         
@@ -1750,7 +1819,7 @@ class TransactionOperations:
             "reference_number": str(transaction.get('reference_number', '')),
             "related_mails": [],
             "source_file": transaction.get('source_file', ''),
-            "raw_data": json.dumps(TransactionOperations._clean_data_for_json(transaction.get('raw_data', {}))) if transaction.get('raw_data') else None,
+            "raw_data": TransactionOperations._prepare_raw_data_for_json(transaction.get('raw_data')),
             "link_parent_id": None,
             "transaction_group_id": None
         }
@@ -2201,7 +2270,7 @@ class TagOperations:
             raise
         except Exception as e:
             await session.rollback()
-            logger.error(f"Failed to create tag '{name}': {e}")
+            logger.error(f"Failed to create tag '{name}'", exc_info=True)
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise
@@ -2354,7 +2423,7 @@ class TagOperations:
             return True
         except Exception as e:
             await session.rollback()
-            logger.error(f"Failed to add tags to transaction: {e}")
+            logger.error("Failed to add tags to transaction", exc_info=True)
             return False
         finally:
             await session.close()
@@ -2384,7 +2453,7 @@ class TagOperations:
             return True
         except Exception as e:
             await session.rollback()
-            logger.error(f"Failed to remove tags from transaction: {e}")
+            logger.error("Failed to remove tags from transaction", exc_info=True)
             return False
         finally:
             await session.close()
@@ -2421,7 +2490,7 @@ class TagOperations:
             return True
         except Exception as e:
             await session.rollback()
-            logger.error(f"Failed to set tags for transaction: {e}")
+            logger.error("Failed to set tags for transaction", exc_info=True)
             return False
         finally:
             await session.close()
