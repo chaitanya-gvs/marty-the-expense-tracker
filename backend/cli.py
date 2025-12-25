@@ -218,7 +218,7 @@ def process(
         sys.exit(130)
     except Exception as e:
         console.print(f"[red]❌ Error: {e}[/red]")
-        logger.error(f"CLI process command failed: {e}")
+        logger.error("CLI process command failed", exc_info=True)
         sys.exit(1)
 
 
@@ -327,6 +327,7 @@ def status(detailed: bool):
         asyncio.run(_show_status(detailed))
     except Exception as e:
         console.print(f"[red]❌ Error: {e}[/red]")
+        logger.error("Error in status command", exc_info=True)
         sys.exit(1)
 
 
@@ -406,6 +407,7 @@ def extract(account: str, start_date: str, end_date: str):
         console.print("[yellow]💡 Use: cli.py process --start-date {start_date} --end-date {end_date}[/yellow]")
     except Exception as e:
         console.print(f"[red]❌ Error: {e}[/red]")
+        logger.error("Error in extract command", exc_info=True)
         sys.exit(1)
 
 
@@ -441,6 +443,7 @@ def clear(confirm: bool):
         asyncio.run(_clear_transactions())
     except Exception as e:
         console.print(f"[red]❌ Error: {e}[/red]")
+        logger.error("Error in clear command", exc_info=True)
         sys.exit(1)
 
 
@@ -453,6 +456,7 @@ async def _clear_transactions():
         console.print(f"[green]✅ Cleared {result.get('deleted_count', 0)} transactions[/green]")
     else:
         console.print(f"[red]❌ Failed to clear transactions: {result.get('error')}[/red]")
+        logger.error(f"Failed to clear transactions: {result.get('error')}", exc_info=True)
         sys.exit(1)
 
 
@@ -472,6 +476,7 @@ def check():
         asyncio.run(_check_resume())
     except Exception as e:
         console.print(f"[red]❌ Error: {e}[/red]")
+        logger.error("Error in check-resume command", exc_info=True)
         sys.exit(1)
 
 
@@ -657,6 +662,7 @@ async def _update_splitwise(
             except Exception as e:
                 await session.rollback()
                 console.print(f"[red]❌ Failed to clear Splitwise transactions: {e}[/red]")
+                logger.error("Failed to clear Splitwise transactions", exc_info=True)
             finally:
                 await session.close()
         
@@ -695,6 +701,7 @@ async def _update_splitwise(
                     console.print(f"[yellow]  ... and {len(db_result.get('errors', [])) - 10} more errors[/yellow]")
         else:
             console.print(f"[red]❌ Database insertion failed: {db_result.get('error', 'Unknown error')}[/red]")
+            logger.error(f"Database insertion failed: {db_result.get('error', 'Unknown error')}", exc_info=True)
             
             # Show errors if any
             if db_result.get("errors"):
@@ -705,6 +712,7 @@ async def _update_splitwise(
             
     except Exception as e:
         console.print(f"[red]❌ Error updating Splitwise: {e}[/red]")
+        logger.error("Error updating Splitwise", exc_info=True)
         import traceback
         console.print(f"[red]{traceback.format_exc()}[/red]")
 
@@ -764,6 +772,7 @@ def remove_duplicate_splitwise(dry_run: bool, execute: bool, yes: bool):
         
         if not result.get("success"):
             console.print(f"[red]❌ Error: {result.get('errors', ['Unknown error'])}[/red]")
+            logger.error(f"Error in remove-duplicates command: {result.get('errors', ['Unknown error'])}", exc_info=True)
             return
         
         # Display results
@@ -784,7 +793,7 @@ def remove_duplicate_splitwise(dry_run: bool, execute: bool, yes: bool):
         
     except Exception as e:
         console.print(f"[red]❌ Error removing duplicates: {e}[/red]")
-        logger.error(f"Error removing duplicate Splitwise transactions: {e}", exc_info=True)
+        logger.error("Error removing duplicate Splitwise transactions", exc_info=True)
         raise click.Abort()
 
 
