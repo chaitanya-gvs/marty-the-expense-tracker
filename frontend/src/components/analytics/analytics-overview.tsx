@@ -12,13 +12,22 @@ import { AnalyticsFilters } from "./analytics-filters";
 import { formatCurrency } from "@/lib/format-utils";
 import { Loader2 } from "lucide-react";
 
-// Get default date range (This Month)
+// Get default date range (Last Month)
 function getDefaultDateRange() {
   const today = new Date();
-  const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+  
+  const formatDate = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   return {
-    start: thisMonthStart.toISOString().split("T")[0],
-    end: today.toISOString().split("T")[0]
+    start: formatDate(lastMonthStart),
+    end: formatDate(lastMonthEnd)
   };
 }
 
@@ -39,61 +48,57 @@ export function AnalyticsOverview() {
 
   return (
     <div className="space-y-6">
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-          <CardDescription>Customize your expense analysis</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <AnalyticsFilters
-            filters={filters}
-            onFiltersChange={handleFiltersChange}
-          />
-        </CardContent>
-      </Card>
-
       {/* Summary Cards */}
       {analytics && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
+          <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border-blue-100 dark:border-blue-900">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+              <CardTitle className="text-sm font-medium text-blue-600 dark:text-blue-400">
                 Total Amount
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900 dark:text-white">
+              <div className="text-3xl font-bold text-blue-700 dark:text-blue-300">
                 {formatCurrency(analytics.summary.total_amount)}
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 border-emerald-100 dark:border-emerald-900">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+              <CardTitle className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
                 Transaction Count
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900 dark:text-white">
+              <div className="text-3xl font-bold text-emerald-700 dark:text-emerald-300">
                 {analytics.summary.total_count}
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 border-amber-100 dark:border-amber-900">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+              <CardTitle className="text-sm font-medium text-amber-600 dark:text-amber-400">
                 Average Amount
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900 dark:text-white">
+              <div className="text-3xl font-bold text-amber-700 dark:text-amber-300">
                 {formatCurrency(analytics.summary.average_amount)}
               </div>
             </CardContent>
           </Card>
         </div>
       )}
+
+      {/* Filters */}
+      <Card>
+        <CardContent className="pt-6">
+          <AnalyticsFilters
+            filters={filters}
+            onFiltersChange={handleFiltersChange}
+          />
+        </CardContent>
+      </Card>
 
       {/* Charts */}
       {isLoading ? (
