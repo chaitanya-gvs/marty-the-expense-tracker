@@ -447,6 +447,20 @@ def _parse_raw_data(raw_data: Any) -> Optional[Dict[str, Any]]:
             return None
     return None
 
+def _convert_decimal_to_float(data: Any) -> Any:
+    """Recursively convert Decimal values to float for JSON serialization."""
+    from decimal import Decimal
+    
+    if data is None:
+        return None
+    if isinstance(data, Decimal):
+        return float(data)
+    if isinstance(data, dict):
+        return {k: _convert_decimal_to_float(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_convert_decimal_to_float(item) for item in data]
+    return data
+
 def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> TransactionResponse:
     """Convert database transaction to API response format."""
     # Handle None values for boolean fields - default to False
@@ -470,6 +484,11 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
     if is_deleted is None:
         is_deleted = False
     
+    # Convert Decimal values in split_breakdown to float for JSON serialization
+    split_breakdown = transaction.get('split_breakdown')
+    if split_breakdown:
+        split_breakdown = _convert_decimal_to_float(split_breakdown)
+    
     return TransactionResponse(
         id=str(transaction.get('id', '')),
         date=transaction.get('transaction_date', '').isoformat() if transaction.get('transaction_date') else '',
@@ -487,7 +506,7 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
         is_split=is_split,
         is_transfer=bool(transaction.get('transaction_group_id')),
         is_flagged=is_flagged,
-        split_breakdown=transaction.get('split_breakdown'),
+        split_breakdown=split_breakdown,
         paid_by=transaction.get('paid_by'),
         link_parent_id=str(transaction.get('link_parent_id')) if transaction.get('link_parent_id') else None,
         transaction_group_id=str(transaction.get('transaction_group_id')) if transaction.get('transaction_group_id') else None,
@@ -661,9 +680,32 @@ async def get_transactions(
                 participants_list.append(paid_by)
             return participants_list
 
+        # Identify split parent transactions to exclude
+        # A split parent is: has transaction_group_id, is_split=False, and has split children (is_split=True) in the same group
+        split_group_ids_with_children = set()
+        for txn in transactions:
+            if (txn.get('transaction_group_id') and 
+                (txn.get('is_split') is True)):
+                split_group_ids_with_children.add(txn.get('transaction_group_id'))
+        
+        # Helper function to check if a transaction is a split parent
+        def is_split_parent(txn: Dict[str, Any]) -> bool:
+            """Check if transaction is a split parent (has transaction_group_id, is_split=False, and group has split children)."""
+            if not txn.get('transaction_group_id'):
+                return False
+            if txn.get('is_split') is True:
+                return False  # This is a split child, not a parent
+            # Check if this group has split children
+            return txn.get('transaction_group_id') in split_group_ids_with_children
+
         # Apply filters (if any filters were present, we filter all transactions; otherwise we already have the page)
         filtered_transactions = []
         for transaction in transactions:
+            # Exclude split parent transactions (only show the split parts, not the original parent)
+            # This matches the frontend behavior and prevents showing duplicate/confusing entries
+            if is_split_parent(transaction):
+                continue
+            
             # Apply excluded accounts filter first
             if exclude_account_values and transaction.get('account') in exclude_account_values:
                 continue
@@ -1882,11 +1924,12 @@ async def split_transaction(request: SplitTransactionRequest):
                     
                     # Create a split_breakdown with just "me" as participant for this part
                     # This ensures settlement calculations work correctly
+                    # Convert amount to float to ensure JSON serialization works
                     part_split_breakdown = {
                         "mode": "custom",
                         "include_me": True,
                         "entries": [
-                            {"participant": "me", "amount": part.amount}
+                            {"participant": "me", "amount": float(part.amount)}
                         ],
                         "paid_by": original_paid_by,
                         "total_participants": 1
