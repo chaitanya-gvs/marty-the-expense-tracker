@@ -67,7 +67,17 @@ export function SplitTransactionModal({
   const splitTransaction = useSplitTransaction();
   const { data: categories = [] } = useCategories();
 
-  const originalAmount = Math.abs(transaction.amount);
+  // For shared transactions, use split_share_amount (user's share) instead of full amount
+  // This matches the backend validation logic
+  const isShared = transaction.is_shared;
+  const splitShareAmount = transaction.split_share_amount;
+  const originalAmount = isShared && splitShareAmount !== undefined 
+    ? Math.abs(splitShareAmount) 
+    : Math.abs(transaction.amount);
+  const totalAmount = isShared && splitShareAmount !== undefined && splitShareAmount !== transaction.amount
+    ? Math.abs(transaction.amount)
+    : null;
+  
   const totalParts = parts.reduce((sum, part) => sum + (part.amount || 0), 0);
   const remaining = originalAmount - totalParts;
   const isValid =
@@ -148,8 +158,9 @@ export function SplitTransactionModal({
 
   const handleSplit = async () => {
     if (!isValid) {
+      const amountLabel = isShared ? "your share" : "the original transaction amount";
       toast.error(
-        "Please ensure all parts have descriptions and amounts sum to the original transaction amount"
+        `Please ensure all parts have descriptions and amounts sum to ${amountLabel}`
       );
       return;
     }
@@ -193,7 +204,11 @@ export function SplitTransactionModal({
       <Modal.Header
         icon={<Rows3 className="h-4 w-4" />}
         title="Split Transaction"
-        subtitle={`Split into parts. Original amount: ${formatCurrency(originalAmount)}`}
+        subtitle={
+          isShared && totalAmount
+            ? `Split into parts. Your share: ${formatCurrency(originalAmount)} (Total: ${formatCurrency(totalAmount)})`
+            : `Split into parts. Original amount: ${formatCurrency(originalAmount)}`
+        }
         onClose={onClose}
         variant="split"
       />
@@ -387,9 +402,15 @@ export function SplitTransactionModal({
         {/* Summary Stats */}
         <div className="rounded-xl bg-slate-900/70 border border-slate-800 p-4 space-y-1 mb-4">
           <SummaryStat
-            label="Original Amount"
+            label={isShared ? "Your Share" : "Original Amount"}
             value={formatCurrency(originalAmount)}
           />
+          {isShared && totalAmount && (
+            <SummaryStat
+              label="Total Amount"
+              value={formatCurrency(totalAmount)}
+            />
+          )}
           <SummaryStat
             label="Total Parts"
             value={formatCurrency(totalParts)}
