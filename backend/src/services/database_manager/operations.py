@@ -1629,13 +1629,16 @@ class TransactionOperations:
     
     @staticmethod
     def _clean_data_for_json(data: Any) -> Any:
-        """Clean data for JSON serialization by converting NaN to None and datetime to ISO format"""
+        """Clean data for JSON serialization by converting NaN to None, Decimal to float, and datetime to ISO format"""
         from datetime import datetime, date, time
+        from decimal import Decimal
         
         if isinstance(data, dict):
             return {k: TransactionOperations._clean_data_for_json(v) for k, v in data.items()}
         elif isinstance(data, list):
             return [TransactionOperations._clean_data_for_json(item) for item in data]
+        elif isinstance(data, Decimal):
+            return float(data)
         elif isinstance(data, (datetime, date)):
             return data.isoformat()
         elif isinstance(data, time):
