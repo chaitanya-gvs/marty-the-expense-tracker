@@ -233,9 +233,16 @@ class TransactionStandardizer:
             if pd.isna(row.get("Date")) or str(row.get("Date")).strip() == "":
                 continue
             
-            # Get the amount string and clean it - use the renamed column name
+            # Get the amount string - prioritize "Amount" column, but fallback to "Intl Amount" if Amount is empty
             amount_str = str(row.get("Amount", "")).strip()
-            if not amount_str or amount_str.lower() == 'nan':
+            if not amount_str or amount_str.lower() == 'nan' or amount_str == '':
+                # If Amount column is empty, try Intl Amount column
+                if "Intl Amount" in df_clean.columns:
+                    amount_str = str(row.get("Intl Amount", "")).strip()
+                elif "Intl.* amount" in df_clean.columns:
+                    amount_str = str(row.get("Intl.* amount", "")).strip()
+            
+            if not amount_str or amount_str.lower() == 'nan' or amount_str == '':
                 continue
                 
             # Parse amount and determine transaction type
