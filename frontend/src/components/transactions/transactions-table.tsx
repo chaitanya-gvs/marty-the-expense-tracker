@@ -278,13 +278,23 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     return data?.pages.flatMap(page => page.data) || [];
   }, [data]);
 
-  // Filter out parent transactions (is_split=false but has transaction_group_id)
+  // Filter out parent transactions in split groups (is_split=false but has transaction_group_id with split children)
   // These are the original transactions that were split - we only want to show the split parts
+  // Transfer groups should NOT be excluded (they all have is_split=false but no split children)
   const allTransactions = useMemo(() => {
     return allTransactionsUnfiltered.filter(t => {
-      // Exclude parent transactions: has transaction_group_id but is_split is false
+      // Only exclude if this is a split parent (has transaction_group_id, is_split=false, AND has split children)
       if (t.transaction_group_id && t.is_split === false) {
-        return false;
+        // Check if there are any split children in the same group
+        const hasSplitChildren = allTransactionsUnfiltered.some(
+          other => other.transaction_group_id === t.transaction_group_id && 
+                   other.id !== t.id && 
+                   other.is_split === true
+        );
+        // Only exclude if it's a split parent (has split children)
+        if (hasSplitChildren) {
+          return false;
+        }
       }
       return true;
     });
