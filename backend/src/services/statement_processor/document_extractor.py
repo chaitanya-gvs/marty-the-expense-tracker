@@ -138,8 +138,10 @@ class DocumentExtractor:
             Pandas DataFrame with parsed transaction data
         """
         try:
-            # Use pandas to read HTML tables
-            tables = pd.read_html(html_table)
+            from io import StringIO
+            
+            # Use pandas to read HTML tables - wrap in StringIO to avoid deprecation warning
+            tables = pd.read_html(StringIO(html_table))
             
             if not tables:
                 logger.warning("No tables found in HTML")
@@ -155,10 +157,32 @@ class DocumentExtractor:
             # Clean up the DataFrame
             combined_df = combined_df.dropna(how='all')  # Remove completely empty rows
             
+            # Check if first row looks like a header (contains common header words)
+            # If columns are numbered (0, 1, 2, etc.), the header might be in the first data row
+            first_row_values = combined_df.iloc[0].astype(str).str.lower().tolist() if len(combined_df) > 0 else []
+            header_keywords = ['date', 'serno', 'transaction', 'details', 'reward', 'points', 'amount', '₹', 'inr']
+            first_row_is_header = any(keyword in ' '.join(first_row_values) for keyword in header_keywords)
+            
+            # If first row appears to be a header and columns are numbered, use first row as header
+            if first_row_is_header and all(str(col).isdigit() for col in combined_df.columns):
+                logger.info("Detected header row in first data row, promoting to column names")
+                # Use first row as column names
+                combined_df.columns = combined_df.iloc[0]
+                # Drop the first row (now that it's the header)
+                combined_df = combined_df.iloc[1:].reset_index(drop=True)
+            
             # Remove rows that are just card info or headers
-            combined_df = combined_df[~combined_df.iloc[:, 0].str.contains('Card No:|Name:', na=False)]
+            if len(combined_df) > 0:
+                # Check if first column contains header-like text
+                first_col = combined_df.iloc[:, 0].astype(str)
+                mask = ~first_col.str.contains('Card No:|Name:|Date|SerNo', case=False, na=False, regex=True)
+                # Only apply mask if it doesn't remove all rows
+                if mask.sum() > 0:
+                    combined_df = combined_df[mask].reset_index(drop=True)
             
             logger.info(f"Successfully parsed HTML table: {len(combined_df)} rows, {len(combined_df.columns)} columns")
+            if len(combined_df.columns) > 0:
+                logger.info(f"Column names: {list(combined_df.columns)}")
             return combined_df
             
         except Exception as e:

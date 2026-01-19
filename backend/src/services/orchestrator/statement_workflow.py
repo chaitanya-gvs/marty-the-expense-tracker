@@ -1435,6 +1435,8 @@ async def run_resume_workflow(
     enable_secondary_account: bool = None,
     custom_start_date: Optional[str] = None,
     custom_end_date: Optional[str] = None,
+    custom_splitwise_start_date: Optional[datetime] = None,
+    custom_splitwise_end_date: Optional[datetime] = None,
     clear_before_insert: bool = False,  # Currently unused, kept for CLI compatibility
 ) -> Dict[str, Any]:
     """Run workflow resuming from standardization step (skip document extraction)."""
@@ -1446,6 +1448,8 @@ async def run_resume_workflow(
         resume_from_standardization=True,
         custom_start_date=custom_start_date,
         custom_end_date=custom_end_date,
+        custom_splitwise_start_date=custom_splitwise_start_date,
+        custom_splitwise_end_date=custom_splitwise_end_date,
     )
 
 
