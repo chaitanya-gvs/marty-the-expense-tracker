@@ -361,7 +361,15 @@ class TransactionOperations:
         try:
             result = await session.execute(
                 text("""
-                    SELECT t.*, c.name as category
+                    SELECT t.*, 
+                           c.name as category,
+                           (t.amount - COALESCE((
+                               SELECT SUM(child.amount)
+                               FROM transactions child
+                               WHERE child.link_parent_id = t.id
+                                 AND child.direction = 'credit'
+                                 AND child.is_deleted = false
+                           ), 0)) as net_amount
                     FROM transactions t
                     LEFT JOIN categories c ON t.category_id = c.id
                     WHERE t.id = :transaction_id
@@ -390,6 +398,13 @@ class TransactionOperations:
                 text(f"""
                     SELECT t.*, 
                            c.name as category,
+                           (t.amount - COALESCE((
+                               SELECT SUM(child.amount)
+                               FROM transactions child
+                               WHERE child.link_parent_id = t.id
+                                 AND child.direction = 'credit'
+                                 AND child.is_deleted = false
+                           ), 0)) as net_amount,
                            COALESCE(
                                STRING_AGG(tag.name, ',' ORDER BY tag.name), 
                                ''
@@ -399,6 +414,7 @@ class TransactionOperations:
                     LEFT JOIN transaction_tags tt ON t.id = tt.transaction_id
                     LEFT JOIN tags tag ON tt.tag_id = tag.id AND tag.is_active = true
                     WHERE t.is_deleted = false
+                      AND (t.link_parent_id IS NULL OR t.direction != 'credit')
                     GROUP BY t.id, c.name
                     ORDER BY t.transaction_date {order_by}, t.created_at {order_by}
                     LIMIT :limit OFFSET :offset
@@ -457,6 +473,13 @@ class TransactionOperations:
                 text(f"""
                     SELECT t.*, 
                            c.name as category,
+                           (t.amount - COALESCE((
+                               SELECT SUM(child.amount)
+                               FROM transactions child
+                               WHERE child.link_parent_id = t.id
+                                 AND child.direction = 'credit'
+                                 AND child.is_deleted = false
+                           ), 0)) as net_amount,
                            COALESCE(
                                STRING_AGG(tag.name, ',' ORDER BY tag.name), 
                                ''
@@ -467,6 +490,7 @@ class TransactionOperations:
                     LEFT JOIN tags tag ON tt.tag_id = tag.id AND tag.is_active = true
                     WHERE t.transaction_date BETWEEN :start_date AND :end_date
                       AND t.is_deleted = false
+                      AND (t.link_parent_id IS NULL OR t.direction != 'credit')
                     GROUP BY t.id, c.name
                     ORDER BY t.transaction_date {order_by}, t.created_at {order_by}
                     LIMIT :limit OFFSET :offset
