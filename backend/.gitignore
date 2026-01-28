@@ -52,6 +52,11 @@ alembic/versions/*.pyc
 .docker/
 *.pid
 
+# Google Cloud SQL Proxy (binary - platform-specific, should be downloaded)
+cloud-sql-proxy
+cloud-sql-proxy.exe
+cloud-sql-proxy-*
+
 # Misc
 *.swp
 *.swo
