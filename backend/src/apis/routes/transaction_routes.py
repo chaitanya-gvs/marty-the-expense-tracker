@@ -126,6 +126,7 @@ class TransactionResponse(BaseModel):
     subcategory: Optional[str] = None
     direction: str
     amount: float
+    net_amount: Optional[float] = None
     split_share_amount: Optional[float] = None
     tags: List[str]
     notes: Optional[str] = None
@@ -489,6 +490,29 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
     if split_breakdown:
         split_breakdown = _convert_decimal_to_float(split_breakdown)
     
+    # Calculate net amount (original amount minus refunds)
+    original_amount = float(transaction.get('amount', 0))
+    net_amount_raw = transaction.get('net_amount')
+    if net_amount_raw is not None:
+        net_amount = float(net_amount_raw)
+    else:
+        net_amount = original_amount
+    
+    # Only include net_amount in response if refunds actually exist (net < original)
+    # This ensures we don't send net_amount when it equals original_amount
+    net_amount_for_response = None
+    if net_amount < original_amount:
+        net_amount_for_response = net_amount
+    
+    # Recalculate split_share_amount based on net_amount for shared transactions
+    split_share_amount = None
+    if is_shared and split_breakdown:
+        # Recalculate split_share_amount based on net_amount instead of original amount
+        split_share_amount = _calculate_split_share_amount(split_breakdown, net_amount)
+    else:
+        # Use stored split_share_amount if not shared or no split_breakdown
+        split_share_amount = float(transaction.get('split_share_amount')) if transaction.get('split_share_amount') else None
+    
     return TransactionResponse(
         id=str(transaction.get('id', '')),
         date=transaction.get('transaction_date', '').isoformat() if transaction.get('transaction_date') else '',
@@ -497,8 +521,9 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
         category=transaction.get('category', ''),  # This now comes from the JOIN with categories table
         subcategory=transaction.get('sub_category'),
         direction=transaction.get('direction', 'debit'),
-        amount=float(transaction.get('amount', 0)),
-        split_share_amount=float(transaction.get('split_share_amount')) if transaction.get('split_share_amount') else None,
+        amount=original_amount,
+        net_amount=net_amount_for_response,  # Only include if refunds exist (net < original)
+        split_share_amount=split_share_amount,
         tags=transaction.get('tags', []) or [],
         notes=transaction.get('notes'),
         is_shared=is_shared,
