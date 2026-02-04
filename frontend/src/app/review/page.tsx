@@ -1,5 +1,7 @@
 import { MainLayout } from "@/components/layout/main-layout";
 import { ReviewQueue } from "@/components/review/review-queue";
+import { MissingEmailTransactions } from "@/components/review/missing-email-transactions";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function ReviewPage() {
   return (
@@ -12,7 +14,18 @@ export default function ReviewPage() {
           </p>
         </div>
         
-        <ReviewQueue />
+        <Tabs defaultValue="review">
+          <TabsList>
+            <TabsTrigger value="review">Review Queue</TabsTrigger>
+            <TabsTrigger value="missing">Missing From Email</TabsTrigger>
+          </TabsList>
+          <TabsContent value="review">
+            <ReviewQueue />
+          </TabsContent>
+          <TabsContent value="missing">
+            <MissingEmailTransactions />
+          </TabsContent>
+        </Tabs>
       </div>
     </MainLayout>
   );
