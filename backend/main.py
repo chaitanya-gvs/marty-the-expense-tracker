@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.apis.routes.transaction_routes import router as transaction_router
 from src.apis.routes.settlement_routes import router as settlement_router
 from src.apis.routes.participant_routes import router as participant_router
+from src.apis.routes.email_alert_routes import router as email_alert_router
 from src.utils.logger import get_logger
 from src.utils.settings import get_settings
 
@@ -30,6 +31,7 @@ async def healthz():
 app.include_router(transaction_router, prefix="/api")
 app.include_router(settlement_router, prefix="/api")
 app.include_router(participant_router, prefix="/api")
+app.include_router(email_alert_router, prefix="/api")
 
 
 if __name__ == "__main__":
