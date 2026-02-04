@@ -40,6 +40,10 @@ class Transaction(Base):
     reference_number: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     related_mails: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text), nullable=True)
     source_file: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_type: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # email, statement, manual, splitwise
+    dedupe_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    email_message_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    email_matched: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
     raw_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, server_default=func.current_timestamp())
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, server_default=func.current_timestamp())
@@ -56,4 +60,7 @@ class Transaction(Base):
         Index('idx_transactions_date', 'transaction_date'),
         Index('idx_transactions_direction', 'direction'),
         Index('idx_transactions_type', 'transaction_type'),
+        Index('idx_transactions_source_type', 'source_type'),
+        Index('idx_transactions_dedupe_key', 'dedupe_key'),
+        Index('idx_transactions_email_matched', 'email_matched'),
     )

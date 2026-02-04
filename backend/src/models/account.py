@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import Boolean, Date, DateTime, Index, Numeric, String, Text, func
+from sqlalchemy import ARRAY, Boolean, Date, DateTime, Index, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.services.database_manager.connection import Base
@@ -25,6 +25,8 @@ class Account(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     statement_sender: Mapped[str] = mapped_column(String, nullable=False)
     statement_password: Mapped[str] = mapped_column(String, nullable=False)
+    alert_senders: Mapped[Optional[list[str]]] = mapped_column(ARRAY(String), nullable=True)
+    alert_keywords: Mapped[Optional[list[str]]] = mapped_column(ARRAY(String), nullable=True)
     last_statement_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     last_processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     credit_limit: Mapped[Optional[Decimal]] = mapped_column(Numeric, nullable=True)
