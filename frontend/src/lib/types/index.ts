@@ -235,11 +235,36 @@ export interface UberTripInfo {
   vehicle_type?: string;
 }
 
+export interface SwiggyOrderInfo {
+  amount?: string;
+  restaurant_name?: string;
+  order_id?: string;
+  delivery_address?: string;
+  order_time?: string;
+  order_date?: string;  // Full date (e.g., "Jan 26, 2026")
+  order_type?: string;  // "Dineout" or "Food Delivery"
+  items?: Array<{       // Order items (for food delivery)
+    name: string;
+    quantity?: number;
+  }>;
+  num_diners?: number;  // Number of diners (for Dineout)
+  savings?: string;     // Discount/savings amount
+}
+
+export interface MerchantInfo {
+  merchant_name: string;
+  merchant_type: 'food_delivery' | 'ride_sharing' | 'ecommerce' | 'other';
+  amount?: string;
+  order_id?: string;
+}
+
 export interface EmailDetails extends EmailMetadata {
   body: string;
   attachments?: EmailAttachment[];
   raw_message?: any;
   uber_trip_info?: UberTripInfo;
+  swiggy_order_info?: SwiggyOrderInfo;
+  merchant_info?: MerchantInfo;
 }
 
 export interface EmailSearchFilters {

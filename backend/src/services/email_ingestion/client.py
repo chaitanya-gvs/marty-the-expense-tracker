@@ -171,6 +171,16 @@ class EmailClient:
                 if html_content:
                     uber_trip_info = self._parse_uber_trip_info(html_content)
             
+            # Extract Swiggy order info if this is a Swiggy email
+            swiggy_order_info = None
+            if "swiggy" in subject.lower() or "swiggy" in sender.lower():
+                html_content = self._extract_html_content(message.get("payload", {}))
+                if html_content:
+                    swiggy_order_info = self._parse_swiggy_order_info(html_content)
+            
+            # Detect merchant type for generic merchant info
+            merchant_info = self._detect_merchant_info(subject, sender, body)
+            
             result = {
                 "id": message_id,
                 "subject": subject,
@@ -183,6 +193,12 @@ class EmailClient:
             
             if uber_trip_info:
                 result["uber_trip_info"] = uber_trip_info
+            
+            if swiggy_order_info:
+                result["swiggy_order_info"] = swiggy_order_info
+            
+            if merchant_info:
+                result["merchant_info"] = merchant_info
             
             return result
         except Exception as e:
@@ -462,6 +478,356 @@ class EmailClient:
             return None
         
         return trip_info if trip_info else None
+
+    def _parse_swiggy_order_info(self, html_content: str) -> Optional[dict[str, Any]]:
+        """Parse Swiggy order information from email HTML"""
+        if not html_content:
+            return None
+        
+        order_info = {}
+        
+        try:
+            if HAS_BS4:
+                soup = BeautifulSoup(html_content, 'html.parser')
+                
+                # Get plain text for easier pattern matching
+                plain_text = soup.get_text(separator=' ', strip=True)
+                
+                # Detect order type
+                is_instamart = False
+                if 'instamart' in plain_text.lower() or 'instamart' in str(html_content).lower():
+                    order_info["order_type"] = "Instamart"
+                    is_instamart = True
+                    order_info["restaurant_name"] = "Swiggy Instamart"
+                elif 'dineout' in plain_text.lower():
+                    order_info["order_type"] = "Dineout"
+                elif 'delivery' in plain_text.lower() or 'delivered' in plain_text.lower():
+                    order_info["order_type"] = "Food Delivery"
+                
+                # Extract restaurant name (skip for Instamart as it's already set)
+                if not is_instamart:
+                    # Pattern: <p>Restaurant</p> followed by <h5>Restaurant Name</h5>
+                    restaurant_label = soup.find('p', string=re.compile(r'^\s*Restaurant\s*$', re.I))
+                    if restaurant_label:
+                        # Look for h5 in the same parent or next sibling
+                        parent = restaurant_label.find_parent()
+                        if parent:
+                            restaurant_h5 = parent.find('h5')
+                            if restaurant_h5:
+                                restaurant_name = restaurant_h5.get_text(strip=True)
+                                if restaurant_name and len(restaurant_name) < 100:
+                                    order_info["restaurant_name"] = restaurant_name
+                    
+                    # Fallback: Look for "at [Restaurant Name] was completed" pattern (Swiggy Dineout)
+                    if "restaurant_name" not in order_info:
+                        restaurant_match = re.search(r'at\s+([A-Z][A-Za-z\s&\'-]+?)\s+was\s+completed', plain_text)
+                        if restaurant_match:
+                            restaurant_name = restaurant_match.group(1).strip()
+                            if len(restaurant_name) < 50 and restaurant_name not in ['Here', 'Your']:
+                                order_info["restaurant_name"] = restaurant_name
+
+                # Extract amount
+                # For Instamart, prioritize extracting "Grand Total" from Order Summary table
+                if is_instamart:
+                    # Look for "Grand Total" in a table cell
+                    grand_total_elem = soup.find(string=re.compile(r'Grand\s*Total', re.I))
+                    if grand_total_elem:
+                        # The amount is usually in the next cell or in the same row
+                        row = grand_total_elem.find_parent('tr')
+                        if row:
+                            # Look for currency pattern in the row
+                            amount_text = row.get_text(strip=True)
+                            amount_match = re.search(r'₹?\s*(\d+(?:,\d+)*(?:\.\d{2})?)', amount_text)
+                            if amount_match:
+                                order_info["amount"] = amount_match.group(1).replace(',', '')
+                
+                # If amount not found (or not Instamart), try standard methods
+                if "amount" not in order_info:
+                    # Extract order amount from grand-total row
+                    # Pattern: <tr class="grand-total">...<td>₹ 587</td></tr>
+                    grand_total_row = soup.find('tr', class_='grand-total')
+                    if grand_total_row:
+                        amount_td = grand_total_row.find('td')
+                        if amount_td:
+                            amount_text = amount_td.get_text(strip=True)
+                            # Extract number from text like "₹ 587" or "₹587"
+                            amount_match = re.search(r'₹?\s*(\d+(?:,\d+)*(?:\.\d{2})?)', amount_text)
+                            if amount_match:
+                                order_info["amount"] = amount_match.group(1).replace(',', '')
+                
+                # Fallback amount extraction
+                if "amount" not in order_info:
+                    amount_patterns = [
+                        r'Grand\s*Total[:\s]+₹?\s*(\d+(?:,\d+)*(?:\.\d{2})?)',
+                        r'Order Total[:\s]+₹?\s*(\d+(?:,\d+)*(?:\.\d{2})?)',
+                        r'payment of Rs\.\s*(\d+(?:,\d+)*)',  # Swiggy Dineout pattern
+                        r'₹\s*(\d+(?:,\d+)*(?:\.\d{2})?)',
+                        r'Rs\.?\s*(\d+(?:,\d+)*(?:\.\d{2})?)'
+                    ]
+                    
+                    for pattern in amount_patterns:
+                        amount_match = re.search(pattern, plain_text, re.I)
+                        if amount_match:
+                            amount_str = amount_match.group(1).replace(',', '')
+                            order_info["amount"] = amount_str
+                            break
+                
+                # Extract delivery address
+                # Pattern: <p>Delivery To:</p> followed by <h5> tags with address parts
+                # Instamart also uses "Deliver To:" or similar
+                delivery_label = soup.find(string=re.compile(r'Deliver\w*\s+To:', re.I))
+                if delivery_label:
+                    parent = delivery_label.find_parent()
+                    # Go up one more level if parent is just a formatting tag
+                    if parent and parent.name in ['strong', 'b', 'span']:
+                        parent = parent.find_parent()
+                        
+                    if parent:
+                        # Collect all h5 tags after the label in the container
+                        # For Instamart, address might be in p tags or just text following the label
+                        container = parent.find_parent()
+                        if container:
+                            address_parts = []
+                            # Try food delivery structure first
+                            for h5 in container.find_all('h5'):
+                                text = h5.get_text(strip=True)
+                                if text:
+                                    address_parts.append(text)
+                            
+                            if not address_parts:
+                                # Try Instamart structure (often just text in div/p)
+                                # Look for text content after the label
+                                full_text = container.get_text(separator=' ', strip=True)
+                                addr_match = re.search(r'Deliver\w*\s+To:\s*(.*?)(?:\s*Order|$)', full_text, re.I)
+                                if addr_match:
+                                    addr_text = addr_match.group(1).strip()
+                                    if len(addr_text) > 10:
+                                        address_parts.append(addr_text)
+
+                        if address_parts:
+                            # Join address parts, skipping the first one if it's just a name
+                            if len(address_parts) > 1 and len(address_parts[0]) < 20 and not re.search(r'\d', address_parts[0]):
+                                address_parts = address_parts[1:]
+                            order_info["delivery_address"] = ', '.join(address_parts)
+                
+                # Fallback: Extract date/time from "Order delivered at" pattern
+                datetime_match = re.search(r'(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+([A-Z][a-z]+\s+\d{1,2},\s+\d{4})\s+(\d{1,2}:\d{2}\s*(?:AM|PM)?)', plain_text, re.I)
+                if datetime_match:
+                    order_info["order_date"] = datetime_match.group(2)
+                    order_info["order_time"] = datetime_match.group(3)
+                
+                # Extract order ID
+                order_id_match = re.search(r'Order\s*(?:#|No\.?|ID)?[:\s]*(\d+)', plain_text, re.I)
+                if order_id_match:
+                    order_info["order_id"] = order_id_match.group(1)
+                
+                # Extract order items
+                items = []
+                
+                if is_instamart:
+                    # Instamart items are often in individual tables or different structure
+                    # Strategy: Look for rows with "Item Name" headers or just parse all tables looking for quantity pattern
+                    # Instamart items often look like: <td>1 x Item Name</td> <td>₹Price</td>
+                    
+                    # Find all tables
+                    tables = soup.find_all('table')
+                    for table in tables:
+                        # Convert table to text to see if it looks like an item
+                        table_text = table.get_text(separator=' ', strip=True)
+                        
+                        # Skip summary tables
+                        if any(k in table_text.lower() for k in ['grand total', 'item bill', 'handling fee', 'delivery partner fee']):
+                            continue
+                            
+                        # Look for item pattern: quantity explicitly like "1 x " or just number start
+                        # Instamart items usually have quantity "N x " at start of a cell
+                        # Check rows
+                        for row in table.find_all('tr'):
+                            cells = row.find_all('td')
+                            if not cells: 
+                                continue
+                                
+                            cell_text = cells[0].get_text(strip=True)
+                            # Match "1 x Item Name"
+                            item_match = re.match(r'^(\d+)\s*x\s+(.+)$', cell_text, re.I)
+                            if item_match:
+                                quantity = int(item_match.group(1))
+                                item_name = item_match.group(2).strip()
+                                items.append({
+                                    "name": item_name,
+                                    "quantity": quantity
+                                })
+                elif order_info.get("order_type") == "Dineout":
+                     # Dineout Bill Details -> Items
+                     # Parse the "Bill Details" table
+                     bill_header = soup.find(string=re.compile(r'Bill\s*Details', re.I))
+                     if bill_header:
+                         # Find the table containing this header
+                         table = bill_header.find_parent('table')
+                         if table:
+                             for row in table.find_all('tr'):
+                                 cells = row.find_all('td')
+                                 if len(cells) >= 2:
+                                     name = cells[0].get_text(strip=True)
+                                     value_text = cells[1].get_text(strip=True)
+                                     
+                                     # Skip header row if parsed
+                                     if "Bill Details" in name:
+                                         continue
+                                         
+                                     # Check specific rows to extract main amount
+                                     if "Total Paid" in name:
+                                         amount_match = re.search(r'₹?\s*(\d+(?:,\d+)*(?:\.\d{2})?)', value_text)
+                                         if amount_match:
+                                             order_info["amount"] = amount_match.group(1).replace(',', '')
+                                         continue
+
+                                     # User requested to remove items for Dineout entirely
+                                     # So we skip adding them to the items list
+                             
+                             # Also try to extract Restaurant Name from "Paid to:" pattern if not found
+                             if "restaurant_name" not in order_info:
+                                 paid_to_match = re.search(r'Paid\s+to:\s*([^,]+)', plain_text, re.I)
+                                 if paid_to_match:
+                                     order_info["restaurant_name"] = paid_to_match.group(1).strip()
+                                     
+                             # Try to extract address from "Paid to:" line
+                             # Stop at "Here are the details" or newline
+                             paid_to_full = re.search(r'Paid\s+to:\s*(.*?)(?:\s+Here\s+are\s+the\s+details|\n|$)', plain_text, re.I)
+                             if paid_to_full:
+                                 full_addr = paid_to_full.group(1).strip()
+                                 # If it contains commas, assume parts after first comma are address
+                                 parts = full_addr.split(',', 1)
+                                 if len(parts) > 1:
+                                     addr_clean = parts[1].strip()
+                                     # Truncate if it's still too long (likely captured garbage)
+                                     if len(addr_clean) > 100:
+                                         addr_clean = addr_clean[:100] + "..."
+                                     order_info["delivery_address"] = addr_clean
+
+                else:
+                    # Food Delivery items extraction
+                    # Pattern: Table with header containing "Item Name", "Quantity", "Price"
+                    item_header = soup.find('th', string=re.compile(r'Item\s+Name', re.I))
+                    if item_header:
+                        table = item_header.find_parent('table')
+                        if table:
+                            # Find all rows in the table body
+                            for row in table.find_all('tr'):
+                                cells = row.find_all('td')
+                                if len(cells) >= 2:
+                                    item_name = cells[0].get_text(strip=True)
+                                    # Filter out cost breakdown rows (Item Total, Platform Fee, etc.)
+                                    # Only include actual food items
+                                    cost_keywords = [
+                                        'total', 'fee', 'discount', 'tax', 'taxes', 'paid', 
+                                        'packaging', 'delivery', 'applied', 'charge', 'gst',
+                                        'cgst', 'sgst', 'igst', 'subtotal', 'grand total'
+                                    ]
+                                    is_cost_row = any(keyword in item_name.lower() for keyword in cost_keywords)
+                                    
+                                    # Check if there's a quantity or price
+                                    if item_name and len(item_name) < 100 and not is_cost_row:
+                                        # Try to find quantity (usually in format "1" or "2")
+                                        quantity = 1
+                                        if len(cells) >= 3:
+                                            qty_text = cells[1].get_text(strip=True)
+                                            qty_match = re.search(r'(\d+)', qty_text)
+                                            if qty_match:
+                                                quantity = int(qty_match.group(1))
+                                        
+                                        items.append({
+                                            "name": item_name,
+                                            "quantity": quantity
+                                        })
+                
+                if items:
+                    order_info["items"] = items
+
+                # Extract savings/discount (Swiggy Dineout specific)
+                savings_match = re.search(r'You saved Rs\.\s*(\d+(?:,\d+)*)', plain_text, re.I)
+                if savings_match:
+                    order_info["savings"] = savings_match.group(1).replace(',', '')
+                
+                # Extract number of diners (Swiggy Dineout specific)
+                diners_match = re.search(r'for\s+(\d+)\s+(?:people|diners)', plain_text, re.I)
+                if diners_match:
+                    order_info["num_diners"] = int(diners_match.group(1))
+                
+            else:
+                # Fallback to regex parsing if BeautifulSoup is not available
+                plain_text = re.sub(r'<[^>]+>', ' ', html_content)
+                
+                # Detect Instamart
+                if 'instamart' in plain_text.lower():
+                    order_info["order_type"] = "Instamart"
+                    order_info["restaurant_name"] = "Swiggy Instamart"
+                
+                # Extract restaurant name (if not Instamart)
+                if "restaurant_name" not in order_info:
+                    restaurant_match = re.search(r'Restaurant\s*</p>\s*<h5[^>]*>([^<]+)</h5>', html_content, re.I)
+                    if restaurant_match:
+                        order_info["restaurant_name"] = restaurant_match.group(1).strip()
+                
+                # Extract amount from grand-total
+                amount_match = re.search(r'class="grand-total"[^>]*>.*?<td[^>]*>\s*₹?\s*(\d+(?:,\d+)*(?:\.\d{2})?)', html_content, re.I | re.DOTALL)
+                if amount_match:
+                    order_info["amount"] = amount_match.group(1).replace(',', '')
+                else:
+                    # Fallback for Instamart
+                     amount_match = re.search(r'Grand\s*Total.*?₹?\s*(\d+(?:,\d+)*(?:\.\d{2})?)', plain_text, re.I | re.DOTALL)
+                     if amount_match:
+                        order_info["amount"] = amount_match.group(1).replace(',', '')
+                
+                # Extract order ID
+                order_id_match = re.search(r'Order\s*(?:#|No\.?|ID)?[:\s]*(\d+)', plain_text, re.I)
+                if order_id_match:
+                    order_info["order_id"] = order_id_match.group(1)
+        
+        except Exception as e:
+            logger.warning(f"Error parsing Swiggy order info: {e}")
+            return None
+        
+        return order_info if order_info else None
+
+    def _detect_merchant_info(self, subject: str, sender: str, body: str) -> Optional[dict[str, Any]]:
+        """Detect merchant type and extract basic info from email"""
+        merchant_info = None
+        
+        # Define merchant patterns
+        merchants = {
+            'uber': {'type': 'ride_sharing', 'patterns': ['uber']},
+            'ola': {'type': 'ride_sharing', 'patterns': ['ola', 'olacabs']},
+            'swiggy': {'type': 'food_delivery', 'patterns': ['swiggy']},
+            'zomato': {'type': 'food_delivery', 'patterns': ['zomato']},
+            'amazon': {'type': 'ecommerce', 'patterns': ['amazon']},
+            'flipkart': {'type': 'ecommerce', 'patterns': ['flipkart']},
+            'bigbasket': {'type': 'ecommerce', 'patterns': ['bigbasket']},
+            'myntra': {'type': 'ecommerce', 'patterns': ['myntra']},
+            'paytm': {'type': 'other', 'patterns': ['paytm']},
+            'phonepe': {'type': 'other', 'patterns': ['phonepe']},
+        }
+        
+        # Check subject and sender for merchant patterns
+        combined_text = f"{subject} {sender}".lower()
+        
+        for merchant_name, merchant_data in merchants.items():
+            for pattern in merchant_data['patterns']:
+                if pattern in combined_text:
+                    merchant_info = {
+                        'merchant_name': merchant_name.capitalize(),
+                        'merchant_type': merchant_data['type']
+                    }
+                    
+                    # Try to extract order/transaction ID
+                    order_id_match = re.search(r'(?:Order|Transaction|Trip|Booking)\s*(?:#|ID|No\.?)?[:\s]*([A-Z0-9-]+)', subject, re.I)
+                    if order_id_match:
+                        merchant_info['order_id'] = order_id_match.group(1)
+                    
+                    return merchant_info
+        
+        return None
+
 
     def _extract_attachments(self, payload: dict) -> List[dict]:
         """Extract attachment information from Gmail message payload"""

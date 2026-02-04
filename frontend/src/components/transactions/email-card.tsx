@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { EmailMetadata, EmailDetails } from "@/lib/types";
+import { EmailMetadata, EmailDetails, SwiggyOrderInfo, MerchantInfo } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronUp, Link2, Unlink, Mail, Calendar, User, Loader2 } from "lucide-react";
 import { format } from "date-fns";
@@ -28,28 +28,49 @@ export function EmailCard({
   const [emailDetails, setEmailDetails] = useState<EmailDetails | null>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
-  
-  // Auto-fetch details for Uber emails to show trip info in card
-  const isUberEmail = email.subject?.toLowerCase().includes("uber") || 
-                       email.sender?.toLowerCase().includes("uber");
-  
-  // Fetch details on mount if it's an Uber email
+
+  // Helper function to get merchant badge
+  const getMerchantBadge = () => {
+    const subject = email.subject?.toLowerCase() || "";
+    const sender = email.sender?.toLowerCase() || "";
+    const combined = `${subject} ${sender}`;
+
+    if (combined.includes("uber")) return { emoji: "🚗", name: "Uber" };
+    if (combined.includes("ola")) return { emoji: "🚕", name: "Ola" };
+    if (combined.includes("swiggy")) return { emoji: "🍔", name: "Swiggy" };
+    if (combined.includes("zomato")) return { emoji: "🍕", name: "Zomato" };
+    if (combined.includes("amazon")) return { emoji: "📦", name: "Amazon" };
+    if (combined.includes("flipkart")) return { emoji: "🛒", name: "Flipkart" };
+    if (combined.includes("myntra")) return { emoji: "👕", name: "Myntra" };
+    if (combined.includes("bigbasket")) return { emoji: "🛍️", name: "BigBasket" };
+    return null;
+  };
+
+  const merchantBadge = getMerchantBadge();
+
+  // Auto-fetch details for Uber and Swiggy emails to show info in card
+  const isUberEmail = email.subject?.toLowerCase().includes("uber") ||
+    email.sender?.toLowerCase().includes("uber");
+  const isSwiggyEmail = email.subject?.toLowerCase().includes("swiggy") ||
+    email.sender?.toLowerCase().includes("swiggy");
+
+  // Fetch details on mount if it's an Uber or Swiggy email
   useEffect(() => {
-    if (isUberEmail && !emailDetails && !isLoadingDetails) {
+    if ((isUberEmail || isSwiggyEmail) && !emailDetails && !isLoadingDetails) {
       setIsLoadingDetails(true);
       onFetchDetails(email.id)
         .then((details) => {
           setEmailDetails(details);
         })
         .catch((error) => {
-          console.error("Failed to fetch Uber email details:", error);
+          console.error("Failed to fetch email details:", error);
         })
         .finally(() => {
           setIsLoadingDetails(false);
         });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isUberEmail, email.id]); // Only depend on these, emailDetails and isLoadingDetails are checked in condition
+  }, [isUberEmail, isSwiggyEmail, email.id]); // Only depend on these, emailDetails and isLoadingDetails are checked in condition
 
   const handleToggleExpand = async () => {
     if (!isExpanded && !emailDetails) {
@@ -121,9 +142,18 @@ export function EmailCard({
                 {email.subject || "(No Subject)"}
               </CardTitle>
               <div className="ml-auto flex items-center gap-1 flex-shrink-0">
+                {merchantBadge && (
+                  <Badge
+                    variant="outline"
+                    className="text-xs px-1.5 py-0"
+                    title={merchantBadge.name}
+                  >
+                    {merchantBadge.emoji}
+                  </Badge>
+                )}
                 {email.account && (
-                  <Badge 
-                    variant="outline" 
+                  <Badge
+                    variant="outline"
                     className="text-xs"
                     title={`From ${email.account} account`}
                   >
@@ -146,7 +176,7 @@ export function EmailCard({
                 <Calendar className="h-3 w-3 flex-shrink-0" />
                 <span>{formatEmailDate(email.date)}</span>
               </div>
-              
+
               {/* Uber Trip Info Preview (shown in collapsed view) */}
               {emailDetails?.uber_trip_info && (
                 <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 min-w-0 overflow-hidden">
@@ -192,13 +222,49 @@ export function EmailCard({
                   </div>
                 </div>
               )}
-              
-              {/* Loading indicator for Uber email */}
-              {isUberEmail && isLoadingDetails && !emailDetails && (
+
+              {/* Swiggy Order Info Preview (shown in collapsed view) */}
+              {emailDetails?.swiggy_order_info && (
+                <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 min-w-0 overflow-hidden">
+                  <div className="flex flex-col gap-1.5 w-full min-w-0">
+                    {emailDetails.swiggy_order_info.amount && (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-medium text-gray-900 dark:text-gray-100">
+                          ₹{emailDetails.swiggy_order_info.amount}
+                        </span>
+                        {emailDetails.swiggy_order_info.restaurant_name && (
+                          <Badge variant="outline" className="text-xs px-1.5 py-0">
+                            {emailDetails.swiggy_order_info.restaurant_name}
+                          </Badge>
+                        )}
+                        {emailDetails.swiggy_order_info.order_type && (
+                          <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                            {emailDetails.swiggy_order_info.order_type}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+                    {(emailDetails.swiggy_order_info.order_date || emailDetails.swiggy_order_info.order_time) && (
+                      <div className="text-gray-500 dark:text-gray-400 text-xs">
+                        {emailDetails.swiggy_order_info.order_date && `${emailDetails.swiggy_order_info.order_date} `}
+                        {emailDetails.swiggy_order_info.order_time}
+                      </div>
+                    )}
+                    {emailDetails.swiggy_order_info.order_id && (
+                      <div className="text-gray-400 dark:text-gray-500 text-[10px]">
+                        Order #{emailDetails.swiggy_order_info.order_id}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Loading indicator for merchant emails */}
+              {(isUberEmail || isSwiggyEmail) && isLoadingDetails && !emailDetails && (
                 <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-1.5 text-xs text-gray-500">
                     <Loader2 className="h-3 w-3 animate-spin" />
-                    <span>Loading trip details...</span>
+                    <span>Loading details...</span>
                   </div>
                 </div>
               )}
@@ -251,12 +317,7 @@ export function EmailCard({
             </div>
           ) : emailDetails ? (
             <div className="space-y-3">
-              <div className="text-sm text-gray-600 dark:text-gray-400 border-t pt-3">
-                <div className="font-medium mb-1">Preview:</div>
-                <div className="text-xs bg-gray-50 dark:bg-gray-800 p-2 rounded">
-                  {email.snippet}
-                </div>
-              </div>
+
 
               {/* Uber Trip Info */}
               {emailDetails.uber_trip_info && (
@@ -313,42 +374,114 @@ export function EmailCard({
                 </div>
               )}
 
-              <div className="text-sm text-gray-700 dark:text-gray-300 border-t pt-3 overflow-hidden">
-                <div className="font-medium mb-2">Full Email Body:</div>
-                {emailDetails.body && emailDetails.body.trim() ? (
-                  <div
-                    className="text-xs bg-white dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-96 overflow-y-auto overflow-x-hidden"
-                    style={{ 
-                      lineHeight: "1.6",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      overflowWrap: "break-word"
-                    }}
-                  >
-                    {emailDetails.body.split('\n').map((line, idx) => {
-                      // Filter out CSS-like lines
-                      const isCssLine = /^@(media|font-face|import|keyframes|page|charset|namespace)/i.test(line.trim()) ||
-                                       /^@[a-z-]+\s*\{/i.test(line.trim()) ||
-                                       (line.includes('@media') && line.includes('{'));
-                      if (isCssLine) return null;
-                      return (
-                        <div key={idx} className={line.startsWith('•') ? 'ml-2' : ''}>
-                          {line || '\u00A0'}
+              {/* Swiggy Order Info */}
+              {emailDetails.swiggy_order_info && (
+                <div className="text-sm border-t pt-3">
+                  <div className="font-medium mb-3 flex items-center gap-2">
+                    🍔 Order Details
+                    {emailDetails.swiggy_order_info.order_type && (
+                      <Badge variant="secondary" className="text-xs">
+                        {emailDetails.swiggy_order_info.order_type}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4 space-y-3">
+                    {emailDetails.swiggy_order_info.restaurant_name && (
+                      <div className="flex items-start gap-2">
+                        <span className="font-semibold text-orange-700 dark:text-orange-300 min-w-[100px]">Restaurant:</span>
+                        <span className="text-orange-900 dark:text-orange-100">{emailDetails.swiggy_order_info.restaurant_name}</span>
+                      </div>
+                    )}
+                    {emailDetails.swiggy_order_info.amount && (
+                      <div className="flex items-start gap-2">
+                        <span className="font-semibold text-orange-700 dark:text-orange-300 min-w-[100px]">Amount:</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-orange-900 dark:text-orange-100">₹{emailDetails.swiggy_order_info.amount}</span>
+                          {emailDetails.swiggy_order_info.savings && (
+                            <Badge variant="outline" className="text-xs bg-green-50 dark:bg-green-950/20 border-green-500 text-green-700 dark:text-green-300">
+                              Saved ₹{emailDetails.swiggy_order_info.savings}
+                            </Badge>
+                          )}
                         </div>
-                      );
-                    })}
+                      </div>
+                    )}
+                    {(emailDetails.swiggy_order_info.order_date || emailDetails.swiggy_order_info.order_time) && (
+                      <div className="flex items-start gap-2">
+                        <span className="font-semibold text-orange-700 dark:text-orange-300 min-w-[100px]">Date/Time:</span>
+                        <span className="text-orange-900 dark:text-orange-100">
+                          {emailDetails.swiggy_order_info.order_date && `${emailDetails.swiggy_order_info.order_date} `}
+                          {emailDetails.swiggy_order_info.order_time}
+                        </span>
+                      </div>
+                    )}
+                    {emailDetails.swiggy_order_info.num_diners && (
+                      <div className="flex items-start gap-2">
+                        <span className="font-semibold text-orange-700 dark:text-orange-300 min-w-[100px]">Diners:</span>
+                        <span className="text-orange-900 dark:text-orange-100">{emailDetails.swiggy_order_info.num_diners} {emailDetails.swiggy_order_info.num_diners === 1 ? 'person' : 'people'}</span>
+                      </div>
+                    )}
+                    {emailDetails.swiggy_order_info.items && emailDetails.swiggy_order_info.items.length > 0 && (
+                      <div className="flex items-start gap-2">
+                        <span className="font-semibold text-orange-700 dark:text-orange-300 min-w-[100px] flex-shrink-0">Items:</span>
+                        <div className="flex-1 space-y-1">
+                          {emailDetails.swiggy_order_info.items.map((item, idx) => (
+                            <div key={idx} className="text-orange-900 dark:text-orange-100 text-sm">
+                              {item.quantity && `${item.quantity}x `}{item.name}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {emailDetails.swiggy_order_info.delivery_address && (
+                      <div className="flex items-start gap-2">
+                        <span className="font-semibold text-orange-700 dark:text-orange-300 min-w-[100px] flex-shrink-0">Address:</span>
+                        <span className="text-orange-900 dark:text-orange-100 break-words overflow-wrap-anywhere flex-1 min-w-0">{emailDetails.swiggy_order_info.delivery_address}</span>
+                      </div>
+                    )}
+                    {emailDetails.swiggy_order_info.order_id && (
+                      <div className="flex items-start gap-2">
+                        <span className="font-semibold text-orange-700 dark:text-orange-300 min-w-[100px]">Order ID:</span>
+                        <span className="text-orange-900 dark:text-orange-100">{emailDetails.swiggy_order_info.order_id}</span>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="text-xs bg-gray-50 dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 text-center text-gray-500">
-                    <p>No readable text content available</p>
-                    <p className="mt-1 text-xs">
-                      {emailDetails.attachments && emailDetails.attachments.length > 0 
-                        ? "This email may contain only images or formatted content. Check attachments below."
-                        : "This email may contain only images or formatted content."}
-                    </p>
+                </div>
+              )}
+
+              {emailDetails.raw_message?.payload && (
+                <div className="text-sm text-gray-700 dark:text-gray-300 border-t pt-3 overflow-hidden">
+                  <div className="font-medium mb-2">Full Email Body:</div>
+                  <div className="bg-white dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-700 overflow-hidden">
+                    <iframe
+                      srcDoc={(() => {
+                        // Extract HTML content from email payload
+                        const extractHtml = (payload: any): string | null => {
+                          if (payload.mimeType === 'text/html' && payload.body?.data) {
+                            try {
+                              return atob(payload.body.data.replace(/-/g, '+').replace(/_/g, '/'));
+                            } catch (e) {
+                              return null;
+                            }
+                          }
+                          if (payload.parts) {
+                            for (const part of payload.parts) {
+                              const html = extractHtml(part);
+                              if (html) return html;
+                            }
+                          }
+                          return null;
+                        };
+                        const htmlContent = extractHtml(emailDetails.raw_message.payload);
+                        return htmlContent || '<div style="padding: 20px; text-align: center; color: #666;">No HTML content available</div>';
+                      })()}
+                      className="w-full border-0"
+                      style={{ height: '400px', maxHeight: '60vh' }}
+                      sandbox="allow-same-origin"
+                      title="Email content"
+                    />
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
               {emailDetails.attachments && emailDetails.attachments.length > 0 && (
                 <div className="text-sm border-t pt-3">
