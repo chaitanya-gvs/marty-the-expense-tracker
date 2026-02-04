@@ -14,7 +14,7 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseUrl}${endpoint}`;
-    
+
     const config: RequestInit = {
       headers: {
         "Content-Type": "application/json",
@@ -24,7 +24,7 @@ class ApiClient {
     };
 
     const response = await fetch(url, config);
-    
+
     if (!response.ok) {
       throw new Error(`API Error: ${response.status} ${response.statusText}`);
     }
@@ -45,7 +45,7 @@ class ApiClient {
     pagination?: PaginationParams
   ): Promise<ApiResponse<Transaction[]>> {
     const params = new URLSearchParams();
-    
+
     if (filters) {
       // Map frontend filter structure to backend query parameters
       if (filters.date_range) {
@@ -259,9 +259,9 @@ class ApiClient {
   ): Promise<ApiResponse<Transaction[]>> {
     return this.request<Transaction[]>("/transactions/bulk-update", {
       method: "PATCH",
-      body: JSON.stringify({ 
-        transaction_ids: transactionIds, 
-        updates 
+      body: JSON.stringify({
+        transaction_ids: transactionIds,
+        updates
       }),
     });
   }
@@ -447,6 +447,11 @@ class ApiClient {
     });
   }
 
+  async predictCategory(description: string): Promise<ApiResponse<Category | null>> {
+    const params = new URLSearchParams({ description });
+    return this.request<Category | null>(`/transactions/predict-category?${params.toString()}`);
+  }
+
   // Suggestions (now under transactions)
   async getTransferSuggestions(): Promise<ApiResponse<TransferSuggestion[]>> {
     return this.request<TransferSuggestion[]>("/transactions/suggestions/transfers");
@@ -491,7 +496,7 @@ class ApiClient {
     if (filters?.date_range_start) params.append('date_range_start', filters.date_range_start);
     if (filters?.date_range_end) params.append('date_range_end', filters.date_range_end);
     if (filters?.min_amount !== undefined) params.append('min_amount', filters.min_amount.toString());
-    
+
     return this.request<any>(`/settlements/summary?${params.toString()}`);
   }
 
@@ -507,7 +512,7 @@ class ApiClient {
     if (filters?.date_range_start) params.append('date_range_start', filters.date_range_start);
     if (filters?.date_range_end) params.append('date_range_end', filters.date_range_end);
     if (filters?.min_amount !== undefined) params.append('min_amount', filters.min_amount.toString());
-    
+
     return this.request<any>(`/settlements/participant/${encodeURIComponent(participant)}?${params.toString()}`);
   }
 
@@ -521,7 +526,7 @@ class ApiClient {
     filters: EmailSearchFilters
   ): Promise<ApiResponse<EmailMetadata[]>> {
     const params = new URLSearchParams();
-    
+
     if (filters.date_offset_days !== undefined) {
       params.append('date_offset_days', filters.date_offset_days.toString());
     }
@@ -543,7 +548,7 @@ class ApiClient {
     if (filters.also_search_amount_minus_one !== undefined) {
       params.append('also_search_amount_minus_one', filters.also_search_amount_minus_one.toString());
     }
-    
+
     return this.request<EmailMetadata[]>(
       `/transactions/${transactionId}/emails/search?${params.toString()}`
     );
@@ -586,12 +591,12 @@ class ApiClient {
   async getTransactionSourcePdf(transactionId: string): Promise<Blob> {
     const url = `${this.baseUrl}/transactions/${transactionId}/source-pdf`;
     const response = await fetch(url);
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}. ${errorText}`);
     }
-    
+
     return response.blob();
   }
 
@@ -600,7 +605,7 @@ class ApiClient {
     filters?: ExpenseAnalyticsFilters
   ): Promise<ApiResponse<ExpenseAnalytics>> {
     const params = new URLSearchParams();
-    
+
     if (filters) {
       if (filters.date_range) {
         if (filters.date_range.start) {
@@ -635,7 +640,7 @@ class ApiClient {
         params.append("group_by", filters.group_by);
       }
     }
-    
+
     return this.request<ExpenseAnalytics>(`/transactions/analytics?${params.toString()}`);
   }
 }

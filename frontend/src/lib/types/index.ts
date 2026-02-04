@@ -18,8 +18,8 @@ export interface Transaction {
   is_flagged?: boolean;
   split_breakdown?: SplitBreakdown;
   paid_by?: string;
-  link_parent_id?: string;
-  transaction_group_id?: string;
+  link_parent_id?: string | null;
+  transaction_group_id?: string | null;
   related_mails?: string[]; // Array of Gmail message IDs
   source_file?: string;
   raw_data?: any;
