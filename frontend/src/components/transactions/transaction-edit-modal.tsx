@@ -33,6 +33,7 @@ import { CategorySelector } from "./category-selector";
 import { MultiTagSelector } from "./multi-tag-selector";
 import { RefundAdjustmentSection } from "./refund-adjustment-section";
 import { TransferGroupSection } from "./transfer-group-section";
+import { FieldAutocomplete } from "./field-autocomplete";
 
 interface TransactionEditModalProps {
   transactionId: string;
@@ -73,7 +74,7 @@ export function TransactionEditModal({
         is_refund: transaction.is_refund,
         is_transfer: transaction.is_transfer,
       });
-      
+
       // Convert string tags to Tag objects
       if (transaction.tags && transaction.tags.length > 0 && allTags.length > 0) {
         const tagObjects = transaction.tags
@@ -102,7 +103,7 @@ export function TransactionEditModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     try {
       await updateTransaction.mutateAsync({
         id: transactionId,
@@ -111,7 +112,7 @@ export function TransactionEditModal({
           tags: selectedTags.map(tag => tag.name),
         },
       });
-      
+
       toast.success("Transaction updated successfully");
       onClose();
     } catch (error) {
@@ -174,23 +175,35 @@ export function TransactionEditModal({
 
                 <div>
                   <Label htmlFor="description">Description</Label>
-                  <Input
-                    id="description"
+                  <FieldAutocomplete
+                    fieldName="description"
                     value={formData.description || ""}
-                    onChange={(e) => handleInputChange("description", e.target.value)}
+                    onValueChange={(val) => handleInputChange("description", val)}
                     placeholder="Transaction description"
-                    required
+                    onSave={async (val) => {
+                      // Predict category on simple save (Enter or Selection)
+                      if (val && !formData.category) {
+                        try {
+                          const prediction = await apiClient.predictCategory(val);
+                          if (prediction.data) {
+                            handleInputChange("category", prediction.data.name);
+                            toast.info(`Auto-categorized as ${prediction.data.name}`);
+                          }
+                        } catch (err) {
+                          console.error("Prediction failed", err);
+                        }
+                      }
+                    }}
                   />
                 </div>
 
                 <div>
                   <Label htmlFor="account">Account</Label>
-                  <Input
-                    id="account"
+                  <FieldAutocomplete
+                    fieldName="account"
                     value={formData.account || ""}
-                    onChange={(e) => handleInputChange("account", e.target.value)}
+                    onValueChange={(val) => handleInputChange("account", val)}
                     placeholder="Account name"
-                    required
                   />
                 </div>
 
@@ -331,7 +344,7 @@ export function TransactionEditModal({
               <CardTitle className="text-base font-semibold">Refunds & Adjustments</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 pt-0">
-              <RefundAdjustmentSection 
+              <RefundAdjustmentSection
                 transaction={transaction}
                 allTransactions={[]} // This would need to be passed from parent
                 onLinkRefund={async (childId: string, parentId: string) => {
@@ -397,7 +410,7 @@ export function TransactionEditModal({
                 onAddToTransferGroup={async (transactionIds: string[]) => {
                   try {
                     const targetGroupId = transaction.transaction_group_id;
-                    const updatePromises = transactionIds.map((id: string) => 
+                    const updatePromises = transactionIds.map((id: string) =>
                       updateTransaction.mutateAsync({
                         id,
                         updates: { transaction_group_id: targetGroupId },

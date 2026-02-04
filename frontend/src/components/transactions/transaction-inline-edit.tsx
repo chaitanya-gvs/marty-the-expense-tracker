@@ -18,6 +18,7 @@ import { Check, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { CategoryAutocomplete } from "./category-autocomplete";
 import { FieldAutocomplete } from "./field-autocomplete";
+import { apiClient } from "@/lib/api/client";
 
 interface TransactionInlineEditProps {
   transaction: Transaction;
@@ -41,35 +42,52 @@ export function TransactionInlineEdit({
   const { data: categories = [] } = useCategories();
 
   const handleSave = async (saveValue?: string) => {
-    console.log("=== handleSave called ===");
-    console.log("saveValue:", saveValue);
-    console.log("value:", value);
-    console.log("field:", field);
     const valueToSave = saveValue !== undefined ? saveValue : value;
-    console.log("handleSave called with saveValue:", saveValue, "value:", value, "valueToSave:", valueToSave, "field:", field);
-    console.log("Type of valueToSave:", typeof valueToSave, "Is string:", typeof valueToSave === 'string');
+
     try {
       // Ensure we have a valid string value
       if (typeof valueToSave !== 'string') {
-        console.error("Invalid value type:", typeof valueToSave, valueToSave);
         toast.error("Invalid value type");
         return;
       }
 
       let updateValue: any = valueToSave;
-      
+      const updates: Record<string, any> = { [field]: updateValue };
+
       // Convert value based on field type
       if (field === "amount" || field === "split_share_amount") {
         updateValue = parseFloat(valueToSave);
+        updates[field] = updateValue;
       } else if (field === "is_shared" || field === "is_refund" || field === "is_transfer") {
         updateValue = valueToSave === "true";
+        updates[field] = updateValue;
       }
-      // For category field, value is already the category name
 
-      console.log("Updating transaction with:", { id: transaction.id, updates: { [field]: updateValue } });
+      // Category Intelligence: If updating description, try to predict category
+      if (field === "description" && !transaction.category) {
+        try {
+          // Import apiClient dynamically or assume it's imported (need to add import)
+          // Since we can't easily add import at top with replace_file_content in one go if top is far away,
+          // checking if imports are nearby. They are not.
+          // We will use the already imported apiClient if I add the import.
+          // For now, let's assume I will add import in a separate step or used full file replacement if needed.
+          // Actually, I can rely on the fact that I will add the import next.
+
+          // Predicted category
+          // Logic: If description changes and category is empty -> predict
+          const prediction = await apiClient.predictCategory(valueToSave);
+          if (prediction.data) {
+            updates.category = prediction.data.name;
+            toast.info(`Auto-categorized as ${prediction.data.name}`);
+          }
+        } catch (err) {
+          console.error("Failed to predict category", err);
+        }
+      }
+
       await updateTransaction.mutateAsync({
         id: transaction.id,
-        updates: { [field]: updateValue },
+        updates: updates,
       });
 
       toast.success("Transaction updated successfully");

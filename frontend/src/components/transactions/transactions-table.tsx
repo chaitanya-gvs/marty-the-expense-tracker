@@ -10,6 +10,7 @@ import {
   createColumnHelper,
   SortingState,
   ColumnDef,
+  Row,
 } from "@tanstack/react-table";
 // Using native HTML table elements for better sticky header support
 import { Button } from "@/components/ui/button";
@@ -1127,7 +1128,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           ),
           sortingFn: (rowA, rowB) => {
             // Use effective amount (my share) for sorting shared transactions
-            const getEffectiveAmount = (row: any) => {
+            const getEffectiveAmount = (row: Row<Transaction>) => {
               const isShared = row.original.is_shared;
               const splitAmount = row.original.split_share_amount;
               return isShared && splitAmount ? splitAmount : row.original.amount;
@@ -2154,7 +2155,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                       highlightedTransactionIds.has(row.original.id) && "bg-blue-50 dark:bg-blue-900/10 border-l-2 border-l-blue-500",
                       isFocusedRow && "bg-blue-100 dark:bg-blue-900/30 border-l-2 border-l-blue-500"
                     )}
-                    onClick={() => handleRowClick(row.original)}
+                  // onClick={() => handleRowClick(row.original)}
                   >
                     {row.getVisibleCells().map((cell) => {
                       const isFocusedCell = isFocusedRow && focusedColumnId === cell.column.id;
@@ -2417,7 +2418,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   groupTransactions.map(t =>
                     updateTransaction.mutateAsync({
                       id: t.id,
-                      updates: { transaction_group_id: null as any },
+                      updates: { transaction_group_id: null },
                     })
                   )
                 );
@@ -2439,7 +2440,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               // Note: Must use null instead of undefined, as JSON.stringify removes undefined values
               await updateTransaction.mutateAsync({
                 id: transactionId,
-                updates: { transaction_group_id: null as any },
+                updates: { transaction_group_id: null },
               });
               toast.success("Transaction removed from group");
               // Keep drawer open to show updated group
@@ -2485,11 +2486,11 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         }}
       />
 
-      <TransactionDetailsDrawer
+      {/* <TransactionDetailsDrawer
         transaction={detailsTransaction}
         isOpen={isDetailsDrawerOpen}
         onClose={() => setIsDetailsDrawerOpen(false)}
-      />
+      /> */}
 
       <DeleteConfirmationDialog
         isOpen={isDeleteConfirmationOpen}

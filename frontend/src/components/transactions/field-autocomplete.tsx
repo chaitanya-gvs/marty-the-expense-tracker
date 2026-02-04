@@ -14,6 +14,8 @@ interface FieldAutocompleteProps {
   onValueChange: (value: string) => void;
   onSave?: (value?: string) => void;
   onCancel?: () => void;
+  onTabNext?: () => void;
+  onTabPrevious?: () => void;
   placeholder?: string;
   className?: string;
   disabled?: boolean;
@@ -25,6 +27,8 @@ export function FieldAutocomplete({
   onValueChange,
   onSave,
   onCancel,
+  onTabNext,
+  onTabPrevious,
   placeholder = "Type to search...",
   className,
   disabled = false,
@@ -34,7 +38,7 @@ export function FieldAutocomplete({
   const [hoveredIndex, setHoveredIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
-  
+
   // Fetch suggestions based on current input
   const { data: suggestions = [], isLoading } = useQuery({
     queryKey: ["field-values", fieldName, inputValue],
@@ -72,17 +76,40 @@ export function FieldAutocomplete({
       // Always prevent default and stop propagation to avoid form submission
       e.preventDefault();
       e.stopPropagation();
-      
+
       if (!showSuggestions || filteredSuggestions.length === 0) {
         onSave?.(inputValue);
         return;
       }
-      
+
       // Handle Enter with suggestions
       if (hoveredIndex >= 0 && hoveredIndex < filteredSuggestions.length) {
         selectSuggestion(filteredSuggestions[hoveredIndex]);
       } else {
         onSave?.(inputValue);
+      }
+      return;
+    }
+
+    if (e.key === "Tab") {
+      e.preventDefault();
+      // If suggestions are active and an item is hovered, select it
+      if (showSuggestions && hoveredIndex >= 0 && hoveredIndex < filteredSuggestions.length) {
+        const suggestion = filteredSuggestions[hoveredIndex];
+        setInputValue(suggestion);
+        onValueChange(suggestion);
+        // Save using the suggestion logic but we handle navigation manually here
+        onSave?.(suggestion);
+      } else {
+        // Just save current input
+        onSave?.(inputValue);
+      }
+
+      // Navigate
+      if (e.shiftKey) {
+        onTabPrevious?.();
+      } else {
+        onTabNext?.();
       }
       return;
     }
@@ -109,7 +136,7 @@ export function FieldAutocomplete({
         break;
       case 'ArrowUp':
         e.preventDefault();
-        setHoveredIndex((prev) => 
+        setHoveredIndex((prev) =>
           prev <= 0 ? filteredSuggestions.length - 1 : prev - 1
         );
         break;

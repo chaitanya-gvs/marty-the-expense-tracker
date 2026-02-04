@@ -33,6 +33,8 @@ interface InlineTagDropdownProps {
   currentTags: string[];
   onCancel: () => void;
   onSuccess: () => void;
+  onTabNext?: () => void;
+  onTabPrevious?: () => void;
 }
 
 export function InlineTagDropdown({
@@ -40,12 +42,14 @@ export function InlineTagDropdown({
   currentTags,
   onCancel,
   onSuccess,
+  onTabNext,
+  onTabPrevious,
 }: InlineTagDropdownProps) {
   const [open, setOpen] = useState(false);
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  
+
   // Debug: Log when showCreateDialog changes
   useEffect(() => {
     console.log("showCreateDialog changed to:", showCreateDialog);
@@ -57,7 +61,7 @@ export function InlineTagDropdown({
   const [hoveredTagId, setHoveredTagId] = useState<string | null>(null);
   const [editingTag, setEditingTag] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", color: "#3B82F6" });
-  
+
   const { data: allTags = [] } = useTags();
   const queryClient = useQueryClient();
   const updateTransaction = useUpdateTransaction();
@@ -123,7 +127,7 @@ export function InlineTagDropdown({
 
       // The backend returns {id: tag_id}, so we need to fetch the full tag
       const tagId = response.data?.id || (response.data as any)?.id;
-      
+
       if (!tagId) {
         throw new Error("Tag ID not returned from server");
       }
@@ -143,15 +147,15 @@ export function InlineTagDropdown({
           usage_count: 0,
         };
       }
-      
+
       if (createdTag) {
         setSelectedTags([...selectedTags, createdTag]);
         toast.success(`Tag "${nameToCreate}" created successfully`);
       }
-      
+
       setShowCreateDialog(false);
       setSearchQuery("");
-      
+
       // Reset form
       setNewTag({
         name: "",
@@ -197,7 +201,7 @@ export function InlineTagDropdown({
           color: editForm.color,
         },
       });
-      
+
       toast.success("Tag updated successfully");
       setEditingTag(null);
       setEditForm({ name: "", color: "#3B82F6" });
@@ -210,10 +214,10 @@ export function InlineTagDropdown({
   const handleDeleteTag = async (tagId: string, tagName: string) => {
     try {
       await deleteTagMutation.mutateAsync(tagId);
-      
+
       // Remove the tag from selected tags if it was selected
       setSelectedTags(selectedTags.filter(tag => tag.id !== tagId));
-      
+
       toast.success(`Tag "${tagName}" deleted successfully`);
     } catch (error) {
       toast.error(`Failed to delete tag "${tagName}"`);
@@ -226,7 +230,7 @@ export function InlineTagDropdown({
     setEditForm({ name: "", color: "#3B82F6" });
   };
 
-  const handleSave = async () => {
+  const handleSave = async (andNavigate: 'none' | 'next' | 'previous' = 'none') => {
     try {
       await updateTransaction.mutateAsync({
         id: transactionId,
@@ -237,6 +241,12 @@ export function InlineTagDropdown({
       toast.success("Tags updated successfully");
       setOpen(false); // Close the popover
       onSuccess();
+
+      if (andNavigate === 'next') {
+        onTabNext?.();
+      } else if (andNavigate === 'previous') {
+        onTabPrevious?.();
+      }
     } catch (error) {
       toast.error("Failed to update tags");
       console.error("Update tags error:", error);
@@ -250,7 +260,7 @@ export function InlineTagDropdown({
 
   const availableTags = allTags.filter(
     (tag) => !selectedTags.some((selected) => selected.id === tag.id) &&
-    (searchQuery === "" || tag.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      (searchQuery === "" || tag.name.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   // Check if search query matches any existing tag
@@ -265,7 +275,7 @@ export function InlineTagDropdown({
       <Popover open={open} onOpenChange={(newOpen) => {
         // Don't close the popover if the create dialog is opening
         if (!newOpen && !showCreateDialog) {
-        setOpen(newOpen);
+          setOpen(newOpen);
           // If popover is being closed, call onCancel to return to transaction view
           onCancel();
         } else if (newOpen) {
@@ -279,15 +289,15 @@ export function InlineTagDropdown({
             aria-expanded={open}
             className="flex-1 min-w-0 h-7 text-xs justify-between"
           >
-            {selectedTags.length === 0 
+            {selectedTags.length === 0
               ? "Select tags..."
               : `${selectedTags.length} tag${selectedTags.length === 1 ? '' : 's'}`
             }
             <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent 
-          className="w-64 p-2" 
+        <PopoverContent
+          className="w-64 p-2"
           align="start"
           onInteractOutside={(e) => {
             // Prevent closing when clicking on dialog
@@ -313,6 +323,11 @@ export function InlineTagDropdown({
                     if (e.key === "Enter" && canCreateFromSearch) {
                       e.preventDefault();
                       handleCreateFromSearch();
+                    }
+                    // Handle Tab to save and navigate
+                    if (e.key === 'Tab') {
+                      e.preventDefault();
+                      handleSave(e.shiftKey ? 'previous' : 'next');
                     }
                   }}
                 />
@@ -377,7 +392,7 @@ export function InlineTagDropdown({
                       onMouseEnter={() => setHoveredTagId(tag.id)}
                       onMouseLeave={() => setHoveredTagId(null)}
                     >
-                      <div 
+                      <div
                         className="flex items-center gap-2 flex-1 cursor-pointer"
                         onClick={() => handleSelectTag(tag)}
                       >
@@ -422,10 +437,10 @@ export function InlineTagDropdown({
                             <AlertDialogHeader>
                               <AlertDialogTitle>Delete Tag</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Are you sure you want to delete the tag "{tag.name}"? 
+                                Are you sure you want to delete the tag "{tag.name}"?
                                 {tag.usage_count && tag.usage_count > 0 && (
                                   <span className="block mt-2 text-amber-600 dark:text-amber-400 font-medium">
-                                    ⚠️ This tag is currently used in {tag.usage_count} transaction{tag.usage_count === 1 ? '' : 's'}. 
+                                    ⚠️ This tag is currently used in {tag.usage_count} transaction{tag.usage_count === 1 ? '' : 's'}.
                                     Deleting it will remove the tag from all those transactions.
                                   </span>
                                 )}
@@ -450,7 +465,7 @@ export function InlineTagDropdown({
             </div>
 
             {/* Create Tag Button */}
-            <div 
+            <div
               className="pt-2 border-t border-gray-100 dark:border-gray-700"
               onClick={(e) => {
                 console.log("Create Tag button container clicked!", e);
@@ -477,26 +492,26 @@ export function InlineTagDropdown({
               </Button>
             </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex justify-end gap-2 pt-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleCancel}
-                        disabled={updateTransaction.isPending}
-                        className="h-6 px-2 text-xs"
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={handleSave}
-                        disabled={updateTransaction.isPending}
-                        className="h-6 px-2 text-xs"
-                      >
-                        Save
-                      </Button>
-                    </div>
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCancel}
+                disabled={updateTransaction.isPending}
+                className="h-6 px-2 text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => handleSave()}
+                disabled={updateTransaction.isPending}
+                className="h-6 px-2 text-xs"
+              >
+                Save
+              </Button>
+            </div>
           </div>
         </PopoverContent>
       </Popover>
