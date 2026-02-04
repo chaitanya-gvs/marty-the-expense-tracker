@@ -15,7 +15,7 @@ import json
 import os
 import shutil
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
@@ -1033,7 +1033,11 @@ class StatementWorkflow:
                 workflow_results["combined_transaction_count"] = len(combined_data)
                 workflow_results["all_standardized_data"] = combined_data
                 logger.info(f"✅ Combined and standardized {len(combined_data)} total transactions")
-                
+
+                # Step 5.5: Reconcile statement transactions with email alerts
+                logger.info("🔄 Step 5.5: Reconciling statement transactions with email alerts")
+                combined_data = await self._apply_email_reconciliation(combined_data)
+
                 # Step 6: Store data in database
                 logger.info("🔄 Step 6: Storing transactions in database")
                 db_result = await TransactionOperations.bulk_insert_transactions(
@@ -1198,6 +1202,63 @@ class StatementWorkflow:
         except Exception as e:
             logger.error("Error standardizing and combining all data", exc_info=True)
             return []
+
+    async def _apply_email_reconciliation(self, transactions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Set source_type, compute dedupe keys, and mark statement transactions matched to email."""
+        if not transactions:
+            return transactions
+
+        def _to_date(value: Any) -> Optional[date]:
+            if value is None:
+                return None
+            if hasattr(value, "date"):
+                return value if isinstance(value, date) else value.date()
+            if isinstance(value, str):
+                try:
+                    return datetime.strptime(value, "%Y-%m-%d").date()
+                except ValueError:
+                    return None
+            return None
+
+        statement_transactions: List[Dict[str, Any]] = []
+
+        for transaction in transactions:
+            account_value = str(transaction.get("account", "")).lower()
+            source_file = str(transaction.get("source_file", "")).lower()
+            if account_value == "splitwise" or source_file == "splitwise_data":
+                transaction["source_type"] = "splitwise"
+                transaction["email_matched"] = None
+                continue
+
+            transaction["source_type"] = transaction.get("source_type", "statement")
+            transaction["dedupe_key"] = TransactionOperations._create_dedupe_key(
+                transaction.get("transaction_date"),
+                transaction.get("transaction_type", "debit"),
+                float(transaction.get("amount", 0)),
+                transaction.get("account", ""),
+                transaction.get("description", ""),
+                str(transaction.get("reference_number", "") or "")
+            )
+            statement_transactions.append(transaction)
+
+        if not statement_transactions:
+            return transactions
+
+        dates = [_to_date(t.get("transaction_date")) for t in statement_transactions]
+        dates = [d for d in dates if d]
+        if not dates:
+            return transactions
+
+        min_date = min(dates)
+        max_date = max(dates)
+        email_keys = await TransactionOperations.get_email_dedupe_keys(min_date, max_date)
+
+        for transaction in statement_transactions:
+            dedupe_key = transaction.get("dedupe_key")
+            transaction["email_matched"] = bool(dedupe_key and dedupe_key in email_keys)
+
+        logger.info(f"Reconciled {len(statement_transactions)} statement transactions with email alerts")
+        return transactions
     
     async def _remove_duplicate_transactions(self, transactions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Remove duplicate transactions using composite key"""

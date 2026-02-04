@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import hashlib
 import json
 import pandas as pd
+import re
 
 from .connection import get_session_factory
 from src.utils.logger import get_logger
@@ -32,6 +33,7 @@ class AccountOperations:
                     SELECT 
                         id, account_number, account_type, bank_name, card_type, 
                         nickname, notes, statement_sender, statement_password,
+                        alert_senders, alert_keywords,
                         last_statement_date, last_processed_at, credit_limit,
                         available_credit, due_date, billing_cycle_start, 
                         billing_cycle_end, is_active, created_at, updated_at
@@ -1112,12 +1114,14 @@ class TransactionOperations:
                     transaction_date, transaction_time, amount, split_share_amount,
                     direction, transaction_type, is_partial_refund, is_shared, split_breakdown,
                     account, sub_category, tags, description, notes, reference_number,
-                    related_mails, source_file, raw_data, link_parent_id, transaction_group_id
+                    related_mails, source_file, source_type, dedupe_key, email_message_id,
+                    email_matched, raw_data, link_parent_id, transaction_group_id
                 ) VALUES (
                     :transaction_date, :transaction_time, :amount, :split_share_amount,
                     :direction, :transaction_type, :is_partial_refund, :is_shared, :split_breakdown,
                     :account, :sub_category, :tags, :description, :notes, :reference_number,
-                    :related_mails, :source_file, :raw_data, :link_parent_id, :transaction_group_id
+                    :related_mails, :source_file, :source_type, :dedupe_key, :email_message_id,
+                    :email_matched, :raw_data, :link_parent_id, :transaction_group_id
                 )
             """)
             
@@ -1663,6 +1667,57 @@ class TransactionOperations:
             await session.close()
     
     @staticmethod
+    def _normalize_description_for_dedupe(description: str) -> str:
+        """Normalize description to improve cross-source dedupe matching."""
+        if not description:
+            return ""
+        text_value = description.lower().strip()
+        # Remove common noise tokens
+        noise_patterns = [
+            r"\bupi\b",
+            r"\bimps\b",
+            r"\bneft\b",
+            r"\bcard\b",
+            r"\btxn\b",
+            r"\btxnid\b",
+            r"\btransaction\b",
+            r"\bref\b",
+            r"\brrn\b",
+            r"\butr\b",
+            r"\bending\b",
+            r"\bacct\b",
+            r"\ba/c\b",
+        ]
+        for pattern in noise_patterns:
+            text_value = re.sub(pattern, " ", text_value)
+        # Remove card/account last-4 patterns
+        text_value = re.sub(r"(?:x{2,}|[*]{2,})\s*\d{3,4}", " ", text_value)
+        text_value = re.sub(r"\b\d{4}\b", " ", text_value)
+        text_value = re.sub(r"\s+", " ", text_value)
+        return text_value.strip()
+
+    @staticmethod
+    def _create_dedupe_key(
+        transaction_date: Any,
+        direction: str,
+        amount: float,
+        account: str,
+        description: str,
+        reference_number: Optional[str] = None,
+    ) -> str:
+        """Create a deterministic key to match emails with statements."""
+        # Normalize date
+        if hasattr(transaction_date, "isoformat"):
+            date_value = transaction_date.isoformat()
+        else:
+            date_value = str(transaction_date)
+
+        normalized_desc = TransactionOperations._normalize_description_for_dedupe(description)
+        rounded_amount = round(float(amount or 0), 2)
+        ref = (reference_number or "").strip()
+        return f"{date_value}|{direction}|{rounded_amount}|{account}|{normalized_desc}|{ref}"
+
+    @staticmethod
     def _create_transaction_key(
         transaction_date: str,
         amount: float,
@@ -1859,13 +1914,38 @@ class TransactionOperations:
                     elif 'split_breakdown' in raw_data and isinstance(raw_data['split_breakdown'], dict):
                         paid_by = raw_data['split_breakdown'].get('paid_by')
         
+        # Determine source type
+        source_type = transaction.get("source_type")
+        if not source_type:
+            account_value = str(transaction.get("account", "")).lower()
+            source_file = str(transaction.get("source_file", "")).lower()
+            if account_value == "splitwise" or source_file == "splitwise_data":
+                source_type = "splitwise"
+            else:
+                source_type = "statement"
+
+        # Direction is derived from transaction_type for legacy imports
+        direction_value = transaction.get("transaction_type", "debit")
+
+        # Compute dedupe key if not provided
+        dedupe_key = transaction.get("dedupe_key")
+        if not dedupe_key:
+            dedupe_key = TransactionOperations._create_dedupe_key(
+                transaction_date,
+                direction_value,
+                float(transaction.get("amount", 0)),
+                transaction.get("account", ""),
+                transaction.get("description", ""),
+                str(transaction.get("reference_number", "") or "")
+            )
+
         # Map standardized fields to database fields
         return {
             "transaction_date": transaction_date,
             "transaction_time": transaction_time,
             "amount": Decimal(str(transaction.get('amount', 0))),  # Full transaction amount
             "split_share_amount": Decimal(str(my_share)) if (is_shared and my_share) else None,  # My share of the split
-            "direction": transaction.get('transaction_type', 'debit'),  # Map transaction_type to direction (debit/credit)
+            "direction": direction_value,  # Map transaction_type to direction (debit/credit)
             "transaction_type": "purchase",  # Default to purchase for Splitwise transactions
             "is_partial_refund": False,
             "is_shared": is_shared,
@@ -1879,10 +1959,64 @@ class TransactionOperations:
             "reference_number": str(transaction.get('reference_number', '')),
             "related_mails": [],
             "source_file": transaction.get('source_file', ''),
+            "source_type": source_type,
+            "dedupe_key": dedupe_key,
+            "email_message_id": transaction.get("email_message_id"),
+            "email_matched": transaction.get("email_matched"),
             "raw_data": TransactionOperations._prepare_raw_data_for_json(transaction.get('raw_data')),
             "link_parent_id": None,
             "transaction_group_id": None
         }
+
+    @staticmethod
+    async def get_email_dedupe_keys(
+        start_date: date,
+        end_date: date,
+        account: Optional[str] = None
+    ) -> set[str]:
+        """Fetch dedupe keys for email-ingested transactions within a date range."""
+        session_factory = get_session_factory()
+        session = session_factory()
+        try:
+            base_query = """
+                SELECT dedupe_key
+                FROM transactions
+                WHERE source_type = 'email'
+                  AND dedupe_key IS NOT NULL
+                  AND is_deleted = false
+                  AND transaction_date BETWEEN :start_date AND :end_date
+            """
+            params = {"start_date": start_date, "end_date": end_date}
+            if account:
+                base_query += " AND account = :account"
+                params["account"] = account
+            result = await session.execute(text(base_query), params)
+            rows = result.fetchall()
+            return {row.dedupe_key for row in rows if row.dedupe_key}
+        finally:
+            await session.close()
+
+    @staticmethod
+    async def get_existing_email_message_ids(message_ids: List[str]) -> set[str]:
+        """Fetch existing email message IDs to avoid reprocessing."""
+        if not message_ids:
+            return set()
+        session_factory = get_session_factory()
+        session = session_factory()
+        try:
+            placeholders = ", ".join([f":id_{i}" for i in range(len(message_ids))])
+            query = text(f"""
+                SELECT email_message_id
+                FROM transactions
+                WHERE email_message_id IN ({placeholders})
+                  AND is_deleted = false
+            """)
+            params = {f"id_{i}": message_id for i, message_id in enumerate(message_ids)}
+            result = await session.execute(query, params)
+            rows = result.fetchall()
+            return {row.email_message_id for row in rows if row.email_message_id}
+        finally:
+            await session.close()
 
 
     @staticmethod
