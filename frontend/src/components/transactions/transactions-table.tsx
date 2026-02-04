@@ -108,6 +108,7 @@ function RelatedTransactionsDrawerWithFetch({
   isOpen,
   onClose,
   onUnlink,
+  onUnlinkChild,
   onUngroup,
   onRemoveFromGroup,
 }: {
@@ -117,6 +118,7 @@ function RelatedTransactionsDrawerWithFetch({
   isOpen: boolean;
   onClose: () => void;
   onUnlink: () => void;
+  onUnlinkChild?: (childId: string) => void;
   onUngroup: () => void;
   onRemoveFromGroup: (transactionId: string) => void;
 }) {
@@ -218,6 +220,7 @@ function RelatedTransactionsDrawerWithFetch({
       isOpen={isOpen}
       onClose={onClose}
       onUnlink={onUnlink}
+      onUnlinkChild={onUnlinkChild}
       onUngroup={onUngroup}
       onRemoveFromGroup={onRemoveFromGroup}
     />
@@ -2403,6 +2406,33 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             });
             setIsDrawerOpen(false);
             setDrawerTransaction(null);
+          }}
+          onUnlinkChild={async (childId: string) => {
+            try {
+              // Note: Must use null instead of undefined, as JSON.stringify removes undefined values
+              await updateTransaction.mutateAsync({
+                id: childId,
+                updates: {
+                  link_parent_id: null,
+                  is_refund: false,
+                },
+              });
+
+              // Close and reopen the drawer to refresh the data
+              const currentTransaction = drawerTransaction;
+              setIsDrawerOpen(false);
+              setDrawerTransaction(null);
+
+              // Wait a bit for the cache to update
+              await new Promise(resolve => setTimeout(resolve, 300));
+
+              // Reopen the drawer with the same transaction
+              setDrawerTransaction(currentTransaction);
+              setIsDrawerOpen(true);
+            } catch (error) {
+              console.error("Failed to unlink child refund:", error);
+              toast.error("Failed to unlink refund");
+            }
           }}
           onUngroup={async () => {
             try {
