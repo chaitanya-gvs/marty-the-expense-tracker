@@ -139,6 +139,55 @@ class EmailClient:
             logger.error("Error listing Gmail messages", exc_info=True)
             raise
 
+    def list_recent_alert_emails(
+        self,
+        max_results: int = 50,
+        days_back: int = 2,
+        alert_senders: Optional[List[str]] = None,
+        keywords: Optional[List[str]] = None,
+    ) -> List[dict[str, Any]]:
+        """List recent UPI/credit/debit alert emails using Gmail search."""
+        if not self._refresh_credentials():
+            raise Exception("Failed to authenticate with Gmail")
+
+        date_filter = (datetime.now() - timedelta(days=days_back)).strftime("%Y/%m/%d")
+        query_parts = [f"after:{date_filter}"]
+
+        if keywords:
+            safe_keywords = []
+            for keyword in keywords:
+                kw = keyword.strip()
+                if " " in kw:
+                    kw = f"\"{kw}\""
+                safe_keywords.append(kw)
+            query_parts.append(f"({' OR '.join(safe_keywords)})")
+
+        if alert_senders:
+            sender_terms = []
+            for sender in alert_senders:
+                sender_term = sender.strip()
+                if " " in sender_term:
+                    sender_term = f"\"{sender_term}\""
+                sender_terms.append(sender_term)
+            query_parts.append(f"from:({' OR '.join(sender_terms)})")
+
+        query = " AND ".join(query_parts)
+        logger.info(f"Using alert search query: {query}")
+
+        try:
+            resp = (
+                self.service.users()
+                .messages()
+                .list(userId="me", q=query, maxResults=max_results)
+                .execute()
+            )
+            messages = resp.get("messages", [])
+            logger.info(f"Found {len(messages)} alert emails")
+            return messages
+        except Exception as e:
+            logger.error("Error listing Gmail alert messages", exc_info=True)
+            raise
+
     def get_email_content(self, message_id: str) -> dict[str, Any]:
         """Get full email content including body and attachments"""
         if not self._refresh_credentials():
@@ -1281,5 +1330,4 @@ class EmailClient:
         except Exception as e:
             logger.error("Error saving attachment", exc_info=True)
             return None
-
 
