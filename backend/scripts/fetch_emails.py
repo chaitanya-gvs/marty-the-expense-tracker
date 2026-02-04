@@ -31,20 +31,20 @@ logger = get_logger(__name__)
 
 
 class EmailFetcher:
-    def __init__(self):
-        self.email_client = EmailClient()
+    def __init__(self, account: str = "primary"):
+        self.email_client = EmailClient(account_id=account)
         self.settings = get_settings()
 
-    def fetch_emails_by_sender(self, sender: str, limit: int = 10) -> List[Dict[str, Any]]:
+    def fetch_emails_by_sender(self, sender: str, limit: int = 10, days_back: int = 30) -> List[Dict[str, Any]]:
         """Fetch emails from a specific sender"""
         try:
-            logger.info(f"Fetching emails from {sender} (limit: {limit})")
+            logger.info(f"Fetching emails from {sender} (limit: {limit}, days: {days_back})")
             
             # Build query for sender
             query = f"from:{sender}"
             
-            # Get emails from the last 30 days
-            date_filter = (datetime.now() - timedelta(days=30)).strftime("%Y/%m/%d")
+            # Get emails from the last N days
+            date_filter = (datetime.now() - timedelta(days=days_back)).strftime("%Y/%m/%d")
             query += f" after:{date_filter}"
             
             messages = self.email_client.search_emails_by_date_range(
@@ -72,16 +72,16 @@ class EmailFetcher:
             logger.error(f"Error fetching emails from {sender}", exc_info=True)
             raise
 
-    def fetch_emails_by_subject(self, subject: str, limit: int = 10) -> List[Dict[str, Any]]:
+    def fetch_emails_by_subject(self, subject: str, limit: int = 10, days_back: int = 30) -> List[Dict[str, Any]]:
         """Fetch emails with specific subject keywords"""
         try:
-            logger.info(f"Fetching emails with subject '{subject}' (limit: {limit})")
+            logger.info(f"Fetching emails with subject '{subject}' (limit: {limit}, days: {days_back})")
             
             # Build query for subject
             query = f"subject:{subject}"
             
-            # Get emails from the last 30 days
-            date_filter = (datetime.now() - timedelta(days=30)).strftime("%Y/%m/%d")
+            # Get emails from the last N days
+            date_filter = (datetime.now() - timedelta(days=days_back)).strftime("%Y/%m/%d")
             query += f" after:{date_filter}"
             
             messages = self.email_client.search_emails_by_date_range(
@@ -230,6 +230,7 @@ def main():
     parser.add_argument("--limit", type=int, default=10, help="Maximum number of emails to fetch (default: 10)")
     parser.add_argument("--detailed", action="store_true", help="Show detailed email content")
     parser.add_argument("--json", action="store_true", help="Output in JSON format")
+    parser.add_argument("--account", default="primary", help="Account to fetch from (primary/secondary)")
     
     args = parser.parse_args()
     
@@ -245,13 +246,15 @@ def main():
         sys.exit(1)
     
     try:
-        fetcher = EmailFetcher()
+        fetcher = EmailFetcher(account=args.account)
         emails = []
         
         if args.sender:
-            emails = fetcher.fetch_emails_by_sender(args.sender, args.limit)
+            days = args.days if args.days else 30
+            emails = fetcher.fetch_emails_by_sender(args.sender, args.limit, days)
         elif args.subject:
-            emails = fetcher.fetch_emails_by_subject(args.subject, args.limit)
+            days = args.days if args.days else 30
+            emails = fetcher.fetch_emails_by_subject(args.subject, args.limit, days)
         elif args.recent:
             emails = fetcher.fetch_recent_transaction_emails(args.limit)
         elif args.days:
