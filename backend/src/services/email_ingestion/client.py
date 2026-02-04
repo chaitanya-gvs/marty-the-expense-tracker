@@ -322,149 +322,121 @@ class EmailClient:
             if HAS_BS4:
                 soup = BeautifulSoup(html_content, 'html.parser')
                 
-                # Extract amount
+                # --- PRE-PROCESSING: REMOVE NOISE ---
+                # Remove style, script, and other non-visible tags to prevent CSS leakage
+                for tag in soup(["script", "style", "meta", "link", "noscript", "iframe"]):
+                    tag.decompose()
+                
+                # Get clean plain text for regex searches where structure is less distinct
+                plain_text = soup.get_text(separator=' ', strip=True)
+                
+                # --- 1. AMOUNT ---
+                # Try specific data attributes first (most reliable)
                 amount_elem = soup.find(attrs={"data-testid": "total_fare_amount"})
                 if amount_elem:
                     amount_text = amount_elem.get_text(strip=True)
-                    # Remove currency symbols and extract number
                     amount_match = re.search(r'[\d,]+\.?\d*', amount_text.replace(',', ''))
                     if amount_match:
                         trip_info["amount"] = amount_match.group()
                 
-                # Extract vehicle type (look for badge/span with "Auto", "UberX", etc.)
-                vehicle_patterns = [r'\bAuto\b', r'\bUberX\b', r'\bUberGo\b', r'\bUberXL\b', r'\bUberPremier\b']
-                for pattern in vehicle_patterns:
-                    vehicle_elem = soup.find(string=re.compile(pattern, re.I))
-                    if vehicle_elem:
-                        trip_info["vehicle_type"] = vehicle_elem.strip()
+                # Fallback: Look for "Total" followed by price in plain text
+                if "amount" not in trip_info:
+                    total_match = re.search(r'Total\s*(?:Fare|:)?\s*₹?\s*(\d+(?:,\d+)*(?:\.\d{2})?)', plain_text, re.I)
+                    if total_match:
+                         trip_info["amount"] = total_match.group(1).replace(',', '')
+
+                # --- 2. VEHICLE TYPE ---
+                # Search in clean plain text only
+                # Patterns ordered by specificity
+                vehicle_patterns = [
+                    (r'\bUber\s*Premier\b', 'Uber Premier'),
+                    (r'\bUber\s*XL\b', 'Uber XL'),
+                    (r'\bUber\s*Go\s*Sedan\b', 'Uber Go Sedan'),
+                    (r'\bUber\s*Go\b', 'Uber Go'),
+                    (r'\bUber\s*Auto\b', 'Auto'),
+                    (r'\bAuto\b', 'Auto'),
+                    (r'\bMoto\b', 'Moto'),
+                    (r'\bUber\s*X\b', 'Uber X'),
+                    (r'\bUber\s*Intercity\b', 'Uber Intercity'),
+                    (r'\bSedan\b', 'Sedan')  # Generic fallback
+                ]
+                
+                for pattern, name in vehicle_patterns:
+                    if re.search(pattern, plain_text, re.I):
+                        trip_info["vehicle_type"] = name
                         break
+
+                # --- 3. LOCATIONS (Pickup / Drop) ---
+                # Uber emails typically list locations with timestamps
+                # Look for time patterns (HH:MM) which act as anchors for addresses
                 
-                # Extract distance and duration (format: "11.63 kilometres | 41 minutes")
-                distance_duration_elem = soup.find(string=re.compile(r'\d+\.?\d*\s*(kilometres|km|miles|mi).*?\d+\s*(minutes|mins|hours|hrs)', re.I))
-                if distance_duration_elem:
-                    text = distance_duration_elem.strip()
-                    # Extract distance
-                    distance_match = re.search(r'(\d+\.?\d*)\s*(kilometres|km|miles|mi)', text, re.I)
-                    if distance_match:
-                        trip_info["distance"] = f"{distance_match.group(1)} {distance_match.group(2).lower()}"
-                    # Extract duration
-                    duration_match = re.search(r'(\d+)\s*(minutes|mins|hours|hrs)', text, re.I)
-                    if duration_match:
-                        trip_info["duration"] = f"{duration_match.group(1)} {duration_match.group(2).lower()}"
-                
-                # Extract from and to locations
-                # Uber emails have structure: time (like "10:39") in one table row, address in next row
-                # Look for table rows containing time patterns
-                time_pattern = re.compile(r'^\d{1,2}:\d{2}$')
                 locations = []
+                time_pattern = re.compile(r'(\d{1,2}:\d{2}\s*(?:AM|PM)?)', re.I)
                 
-                # Find all elements that contain time patterns (exact match for HH:MM format)
-                all_elements = soup.find_all(string=time_pattern)
+                # Find all text nodes that look like times
+                time_nodes = soup.find_all(string=time_pattern)
                 
-                for time_text in all_elements:
-                    time_value = time_text.strip()
-                    # Get the parent element (usually a td)
-                    parent = time_text.parent
-                    if not parent:
-                        continue
+                for node in time_nodes:
+                    time_val = node.strip()
+                    parent = node.parent
+                    if not parent: continue
                     
-                    # Try multiple strategies to find the address
-                    address_text = None
+                    # Heuristic: The address is usually nearby in the DOM
+                    # 1. Check siblings (common in some templates)
+                    # 2. Check next table row (common in others)
+                    # 3. Check "cousin" elements (up to tr, then next tr, then down)
                     
-                    # Strategy 1: Look for next table row (most common in Uber emails)
-                    parent_tr = parent.find_parent('tr')
-                    if parent_tr:
-                        next_tr = parent_tr.find_next_sibling('tr')
-                        if next_tr:
-                            # Get all text from the next row
-                            address_candidate = next_tr.get_text(separator=' ', strip=True)
-                            if len(address_candidate) > 20 and address_candidate != time_value:
-                                address_text = address_candidate
+                    address_candidate = None
                     
-                    # Strategy 2: Look for next sibling td in the same row
-                    if not address_text and parent.name == 'td':
-                        next_td = parent.find_next_sibling('td')
-                        if next_td:
-                            address_candidate = next_td.get_text(separator=' ', strip=True)
-                            if len(address_candidate) > 20 and address_candidate != time_value:
-                                address_text = address_candidate
+                    # Check next sibling text
+                    next_node = node.find_next(string=True)
+                    if next_node and len(next_node.strip()) > 10 and not re.search(time_pattern, next_node):
+                         address_candidate = next_node.strip()
                     
-                    # Strategy 3: Look for next element in the DOM
-                    if not address_text:
-                        next_elem = parent.find_next()
-                        if next_elem:
-                            address_candidate = next_elem.get_text(separator=' ', strip=True)
-                            if len(address_candidate) > 20 and address_candidate != time_value:
-                                address_text = address_candidate
-                    
-                    # Validate address text
-                    if address_text and len(address_text) > 20:
-                        # Check if it looks like an address (contains common address words or is long enough)
-                        address_lower = address_text.lower()
-                        is_address = (
-                            any(word in address_lower for word in [
-                                'road', 'street', 'avenue', 'lane', 'nagar', 'bangalore', 
-                                'bengaluru', 'india', 'floor', 'tower', 'rd', 'st', 'ave',
-                                'karnataka', 'mumbai', 'delhi', 'chennai', 'hyderabad', 'pune'
-                            ]) or len(address_text) > 50  # Long text is likely an address
-                        )
+                    # If not found, check table structure (common in receipts)
+                    # <tr><td>Time</td><td>Address</td></tr> OR <tr><td>Time</td></tr><tr><td>Address</td></tr>
+                    if not address_candidate:
+                        row = parent.find_parent('tr')
+                        if row:
+                            # Try next cell in same row
+                            cells = row.find_all(['td', 'th'])
+                            for i, cell in enumerate(cells):
+                                if time_val in cell.get_text():
+                                    if i + 1 < len(cells):
+                                        text = cells[i+1].get_text(strip=True)
+                                        if len(text) > 10: 
+                                            address_candidate = text
+                                    break
+                            
+                            # Try next row
+                            if not address_candidate:
+                                next_row = row.find_next_sibling('tr')
+                                if next_row:
+                                    text = next_row.get_text(separator=' ', strip=True)
+                                    # clean up
+                                    if len(text) > 10 and text != time_val:
+                                        address_candidate = text
+
+                    if address_candidate:
+                        # Exclude common non-address phrases
+                        skip_phrases = [
+                            'Thanks for riding', 'Total', 'Fare', 'Switch payment', 
+                            'Download', 'Help', 'Support', 'Rate or tip', 'Uber One',
+                            'License Plate', 'Trip details'
+                        ]
                         
-                        if is_address:
+                        # Validate address heuristic
+                        is_addr = (len(address_candidate) > 12 and 
+                                  not re.search(r'₹', address_candidate) and
+                                  not any(phrase.lower() in address_candidate.lower() for phrase in skip_phrases))
+                        
+                        # Avoid duplicates
+                        if is_addr and not any(loc['address'] == address_candidate for loc in locations):
                             locations.append({
-                                'time': time_value,
-                                'address': address_text
+                                'time': time_val,
+                                'address': address_candidate
                             })
-                
-                # Remove duplicates and keep only first two locations
-                seen_addresses = set()
-                unique_locations = []
-                for loc in locations:
-                    # Normalize address for comparison (remove extra spaces)
-                    normalized_addr = ' '.join(loc['address'].split())
-                    if normalized_addr not in seen_addresses:
-                        seen_addresses.add(normalized_addr)
-                        unique_locations.append({
-                            'time': loc['time'],
-                            'address': normalized_addr
-                        })
-                        if len(unique_locations) >= 2:
-                            break
-                
-                # The first location is typically "from" and the second is "to"
-                if len(unique_locations) >= 1:
-                    trip_info["from_location"] = unique_locations[0]["address"]
-                    trip_info["start_time"] = unique_locations[0]["time"]
-                if len(unique_locations) >= 2:
-                    trip_info["to_location"] = unique_locations[1]["address"]
-                    trip_info["end_time"] = unique_locations[1]["time"]
-                
-            else:
-                # Fallback to regex parsing if BeautifulSoup is not available
-                # Extract amount
-                amount_match = re.search(r'data-testid="total_fare_amount"[^>]*>([^<]+)', html_content)
-                if amount_match:
-                    amount_text = amount_match.group(1)
-                    amount_num = re.search(r'[\d,]+\.?\d*', amount_text.replace(',', ''))
-                    if amount_num:
-                        trip_info["amount"] = amount_num.group()
-                
-                # Extract locations using regex (fallback when BeautifulSoup not available)
-                # Look for time pattern in table row followed by address in next table row
-                # Pattern: time in <td>...</td></tr><tr><td>address</td>
-                time_address_pattern = r'<td[^>]*>(\d{1,2}:\d{2})</td>\s*</tr>\s*<tr>\s*<td[^>]*>([^<]+(?:Road|Street|Avenue|Lane|Nagar|Bangalore|Bengaluru|India|Floor|Tower|Rd|St|Ave)[^<]{20,})</td>'
-                matches = re.finditer(time_address_pattern, html_content, re.IGNORECASE | re.DOTALL)
-                locations = []
-                seen_addresses = set()
-                for match in matches:
-                    address = match.group(2).strip()
-                    if address not in seen_addresses and len(address) > 20:
-                        seen_addresses.add(address)
-                        locations.append({
-                            'time': match.group(1),
-                            'address': address
-                        })
-                        if len(locations) >= 2:
-                            break
+                            if len(locations) >= 2: break
                 
                 if len(locations) >= 1:
                     trip_info["from_location"] = locations[0]["address"]
@@ -472,7 +444,75 @@ class EmailClient:
                 if len(locations) >= 2:
                     trip_info["to_location"] = locations[1]["address"]
                     trip_info["end_time"] = locations[1]["time"]
-        
+                
+                
+                # --- 4. FARE BREAKDOWN (Items) ---
+                items = []
+                
+                # Keywords identifying fare items
+                fare_keywords = [
+                    'Base Fare', 'Distance', 'Time', 'Subtotal', 'Booking Fee', 
+                    'Promotion', 'Tolls', 'Taxes', 'Rounding', 'Wait Time', 
+                    'Cancellation Fee', 'Access Fee', 'Surge', 'Insurance',
+                    'Suggested fare', 'Trip Fare', 'Ride Fare'
+                ]
+                
+                # Find the fare breakdown section
+                # Usually a table. look for rows containing our keywords.
+                
+                # Iterate all table rows in the document
+                for row in soup.find_all('tr'):
+                    row_text = row.get_text(separator=' ', strip=True)
+                    
+                    # Check if this row looks like a fare item: "Name ... Amount"
+                    for keyword in fare_keywords:
+                        if keyword.lower() in row_text.lower():
+                            # Try to extract name and amount
+                            # Usually <td>Name</td> <td>Amount</td>
+                            cells = row.find_all('td')
+                            if len(cells) >= 2:
+                                name_text = cells[0].get_text(strip=True)
+                                amount_text = cells[-1].get_text(strip=True) # Amount usually last
+                                
+                                # Verify amount looks like currency
+                                amount_match = re.search(r'[\d,]+\.?\d*', amount_text.replace(',', ''))
+                                if amount_match and len(name_text) < 50:
+                                    items.append({
+                                        "name": name_text,
+                                        "quantity": 1,
+                                        # Optional: store price if we want, schema expects name/qty, maybe price in name?
+                                        # For now, just name is fine, usage might vary.
+                                    })
+                                    # Append price to name for clarity in UI? "Base Fare (₹45.00)"
+                                    items[-1]["name"] = f"{name_text} ({amount_text})"
+                            break
+                
+                if items:
+                    trip_info["items"] = items
+
+                # Extract distance/duration
+                dist_match = re.search(r'(\d+\.?\d*)\s*(kilometres|km)', plain_text, re.I)
+                if dist_match:
+                    trip_info["distance"] = f"{dist_match.group(1)} {dist_match.group(2)}"
+                
+                dur_match = re.search(r'(\d+)\s*(min|min\.|minutes)', plain_text, re.I)
+                if dur_match:
+                    trip_info["duration"] = f"{dur_match.group(1)} min"
+
+            else:
+                # RegEx fallback (simplified)
+                # Cleanup
+                plain_text = re.sub(r'<style[^>]*>.*?</style>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+                plain_text = re.sub(r'<[^>]+>', ' ', plain_text)
+                
+                amount_match = re.search(r'Total\s*₹?\s*(\d+(?:,\d+)*(?:\.\d{2})?)', plain_text, re.I)
+                if amount_match:
+                    trip_info["amount"] = amount_match.group(1).replace(',', '')
+                
+                if 'Uber Auto' in plain_text: trip_info["vehicle_type"] = 'Auto'
+                elif 'Uber Go' in plain_text: trip_info["vehicle_type"] = 'Uber Go'
+                elif 'Uber Premier' in plain_text: trip_info["vehicle_type"] = 'Uber Premier'
+                
         except Exception as e:
             logger.warning(f"Error parsing Uber trip info: {e}")
             return None
