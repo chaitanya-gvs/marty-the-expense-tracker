@@ -30,6 +30,16 @@ export interface Transaction {
   deleted_at?: string | null;
 }
 
+export interface MissingEmailTransaction {
+  id: string;
+  date: string;
+  account: string;
+  description: string;
+  amount: number;
+  direction: "debit" | "credit";
+  reference_number?: string | null;
+}
+
 export interface SplitEntry {
   participant: string;
   amount: number | null;

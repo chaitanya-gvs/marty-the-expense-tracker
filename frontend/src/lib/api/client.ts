@@ -1,4 +1,4 @@
-import { ApiResponse, Transaction, Budget, Category, Tag, TransactionFilters, TransactionSort, PaginationParams, TransferSuggestion, RefundSuggestion, SplitBreakdown, EmailMetadata, EmailDetails, EmailSearchFilters, ExpenseAnalytics, ExpenseAnalyticsFilters } from "@/lib/types";
+import { ApiResponse, Transaction, Budget, Category, Tag, TransactionFilters, TransactionSort, PaginationParams, TransferSuggestion, RefundSuggestion, SplitBreakdown, EmailMetadata, EmailDetails, EmailSearchFilters, ExpenseAnalytics, ExpenseAnalyticsFilters, MissingEmailTransaction } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
@@ -119,6 +119,20 @@ class ApiClient {
     }
 
     return this.request<Transaction[]>(`/transactions/?${params.toString()}`);
+  }
+
+  async getMissingEmailTransactions(params?: {
+    start_date?: string;
+    end_date?: string;
+    account?: string;
+    limit?: number;
+  }): Promise<ApiResponse<MissingEmailTransaction[]>> {
+    const query = new URLSearchParams();
+    if (params?.start_date) query.append("start_date", params.start_date);
+    if (params?.end_date) query.append("end_date", params.end_date);
+    if (params?.account) query.append("account", params.account);
+    if (params?.limit) query.append("limit", String(params.limit));
+    return this.request<MissingEmailTransaction[]>(`/email-alerts/missing?${query.toString()}`);
   }
 
   async getTransaction(id: string): Promise<ApiResponse<Transaction>> {
