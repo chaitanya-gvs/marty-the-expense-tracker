@@ -1073,27 +1073,67 @@ async def get_unique_field_values(
         try:
             # Build query based on whether we have a search query
             if query:
-                sql_query = text(f"""
-                    SELECT DISTINCT {db_field} as value
-                    FROM transactions
-                    WHERE {db_field} IS NOT NULL 
-                    AND {db_field} != ''
-                    AND LOWER({db_field}) LIKE LOWER(:query)
-                    ORDER BY {db_field}
-                    LIMIT :limit
-                """)
-                result = await session.execute(
-                    sql_query, 
-                    {"query": f"%{query}%", "limit": limit}
-                )
+                if field_name == "description":
+                    # Smart Search for description:
+                    # 1. Matches logic: COALESCE(user_description, description)
+                    # 2. Ranking: Exact Match > Starts With > Contains
+                    # 3. Secondary Ranking: Usage Count
+                    
+                    search_term = f"%{query}%"
+                    
+                    sql_query = text("""
+                        SELECT 
+                            COALESCE(user_description, description) as value,
+                            COUNT(*) as usage_count
+                        FROM transactions
+                        WHERE 
+                            COALESCE(user_description, description) IS NOT NULL 
+                            AND COALESCE(user_description, description) != ''
+                            AND COALESCE(user_description, description) ILIKE :search_term
+                            AND is_deleted = false
+                        GROUP BY 1
+                        ORDER BY 
+                            CASE 
+                                WHEN LOWER(COALESCE(user_description, description)) = LOWER(:query) THEN 0 
+                                WHEN LOWER(COALESCE(user_description, description)) LIKE LOWER(:query) || '%' THEN 1 
+                                ELSE 2 
+                            END,
+                            usage_count DESC,
+                            value ASC
+                        LIMIT :limit
+                    """)
+                    
+                    result = await session.execute(
+                        sql_query, 
+                        {"search_term": search_term, "query": query, "limit": limit}
+                    )
+                else:
+                    # Standard behavior for other fields
+                    sql_query = text(f"""
+                        SELECT DISTINCT {db_field} as value
+                        FROM transactions
+                        WHERE {db_field} IS NOT NULL 
+                        AND {db_field} != ''
+                        AND LOWER({db_field}) LIKE LOWER(:query)
+                        AND is_deleted = false
+                        ORDER BY {db_field}
+                        LIMIT :limit
+                    """)
+                    result = await session.execute(
+                        sql_query, 
+                        {"query": f"%{query}%", "limit": limit}
+                    )
             else:
+                target_field = f"COALESCE(user_description, description)" if field_name == "description" else db_field
+                
                 sql_query = text(f"""
-                    SELECT DISTINCT {db_field} as value, COUNT(*) as usage_count
+                    SELECT DISTINCT {target_field} as value, COUNT(*) as usage_count
                     FROM transactions
-                    WHERE {db_field} IS NOT NULL 
-                    AND {db_field} != ''
-                    GROUP BY {db_field}
-                    ORDER BY usage_count DESC, {db_field}
+                    WHERE {target_field} IS NOT NULL 
+                    AND {target_field} != ''
+                    AND is_deleted = false
+                    GROUP BY 1
+                    ORDER BY usage_count DESC, value ASC
                     LIMIT :limit
                 """)
                 result = await session.execute(sql_query, {"limit": limit})
@@ -1110,7 +1150,19 @@ async def get_unique_field_values(
         raise
     except Exception as e:
         logger.error(f"Failed to get unique field values for {field_name}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/predict-category", response_model=ApiResponse)
+async def predict_category(
+    description: str = Query(..., description="Details to predict category from")
+):
+    """Predict category based on transaction description."""
+    try:
+        prediction = await TransactionOperations.predict_category(description)
+        return ApiResponse(data=prediction)
+    except Exception as e:
+        logger.error(f"Failed to predict category: {e}")
+        # Return null data instead of error for prediction
+        return ApiResponse(data=None, message=str(e))
 
 
 @router.get("/analytics", response_model=ApiResponse)

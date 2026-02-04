@@ -808,6 +808,39 @@ class TransactionOperations:
             return TransactionOperations._process_transactions(transactions)
         finally:
             await session.close()
+            
+    @staticmethod
+    async def predict_category(description: str) -> Optional[Dict[str, Any]]:
+        """Predict category based on most frequent usage for a given description"""
+        if not description:
+            return None
+            
+        session_factory = get_session_factory()
+        session = session_factory()
+        try:
+            # Check exact matches first, then fuzzy matches if needed (but exact is best for prediction)
+            result = await session.execute(
+                text("""
+                    SELECT c.id, c.name, c.color, COUNT(*) as usage_count
+                    FROM transactions t
+                    JOIN categories c ON t.category_id = c.id
+                    WHERE 
+                        (LOWER(t.description) = LOWER(:description) OR LOWER(t.user_description) = LOWER(:description))
+                        AND t.is_deleted = false
+                        AND t.category_id IS NOT NULL
+                    GROUP BY c.id, c.name, c.color
+                    ORDER BY usage_count DESC
+                    LIMIT 1
+                """), {
+                    "description": description.strip()
+                }
+            )
+            row = result.fetchone()
+            if row:
+                return dict(row._mapping)
+            return None
+        finally:
+            await session.close()
     
     @staticmethod
     async def get_transactions_by_direction(
