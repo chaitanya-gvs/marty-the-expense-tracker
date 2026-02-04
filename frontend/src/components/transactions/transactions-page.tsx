@@ -4,13 +4,14 @@ import { useState, useEffect } from "react";
 import { TransactionFilters } from "@/components/transactions/transaction-filters";
 import { TransactionsTable } from "@/components/transactions/transactions-table";
 import { AddTransactionModal } from "@/components/transactions/add-transaction-modal";
+import { TableSkeleton } from "@/components/transactions/table-skeleton";
 import { TransactionFilters as TransactionFiltersType, TransactionSort } from "@/lib/types";
 import { useInfiniteTransactions } from "@/hooks/use-transactions";
 import { Button } from "@/components/ui/button";
-import { 
-  Plus, 
-  Download, 
-  BarChart3, 
+import {
+  Plus,
+  Download,
+  BarChart3,
   TrendingUp,
   TrendingDown
 } from "lucide-react";
@@ -28,7 +29,7 @@ function getDefaultDateRange() {
 // Load filters from localStorage or use defaults
 function getInitialFilters(): TransactionFiltersType {
   if (typeof window === 'undefined') return {};
-  
+
   try {
     const saved = localStorage.getItem('transaction-filters');
     if (saved) {
@@ -37,7 +38,7 @@ function getInitialFilters(): TransactionFiltersType {
   } catch (error) {
     console.error('Error loading filters from localStorage:', error);
   }
-  
+
   // Default to "This Month" preset if no saved filters
   return {
     date_range: getDefaultDateRange()
@@ -48,7 +49,7 @@ export function TransactionsPage() {
   const [filters, setFilters] = useState<TransactionFiltersType>(getInitialFilters);
   const [sort, setSort] = useState<TransactionSort | undefined>();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  
+
   // Persist filters to localStorage whenever they change
   useEffect(() => {
     try {
@@ -73,36 +74,36 @@ export function TransactionsPage() {
   // Calculate real data from transactions
   const allTransactions = data?.pages?.flatMap(page => page.data || []) || [];
   const totalTransactions = allTransactions.length;
-  
+
   // Calculate date range from actual data with null checks
   const validDates = allTransactions
     .filter(t => t && t.date) // Filter out null/undefined transactions and those without dates
     .map(t => new Date(t.date))
     .filter(date => !isNaN(date.getTime())) // Filter out invalid dates
     .sort((a, b) => a.getTime() - b.getTime());
-  
-  const dateRange = validDates.length > 0 
+
+  const dateRange = validDates.length > 0
     ? `${validDates[0].toLocaleDateString('en-US', { month: 'short' })}–${validDates[validDates.length - 1].toLocaleDateString('en-US', { month: 'short' })} ${validDates[validDates.length - 1].getFullYear()}`
     : totalTransactions > 0 ? "Invalid dates" : "No data";
-  
+
   // Calculate unique accounts with null checks
   const uniqueAccounts = new Set(
     allTransactions
       .filter(t => t && t.account) // Filter out null/undefined transactions and those without accounts
       .map(t => t.account)
   ).size;
-  
+
   // Calculate monthly spending (current month) with null checks
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
   const monthlyTransactions = allTransactions.filter(t => {
     if (!t || !t.date) return false; // Skip if transaction or date is null/undefined
     const transactionDate = new Date(t.date);
-    return !isNaN(transactionDate.getTime()) && 
-           transactionDate.getMonth() === currentMonth && 
-           transactionDate.getFullYear() === currentYear;
+    return !isNaN(transactionDate.getTime()) &&
+      transactionDate.getMonth() === currentMonth &&
+      transactionDate.getFullYear() === currentYear;
   });
-  
+
   // Helper function to get effective amount (my share for shared transactions)
   const getEffectiveAmount = (transaction: any) => {
     if (!transaction) return 0;
@@ -114,7 +115,7 @@ export function TransactionsPage() {
   const monthlySpent = monthlyTransactions
     .filter(t => t && t.direction === 'debit')
     .reduce((sum, t) => sum + getEffectiveAmount(t), 0);
-  
+
   const monthlyRefunded = monthlyTransactions
     .filter(t => t && t.direction === 'credit')
     .reduce((sum, t) => sum + getEffectiveAmount(t), 0);
@@ -123,6 +124,7 @@ export function TransactionsPage() {
   if (isLoading) {
     return (
       <div className="space-y-6">
+        {/* Header - kept consistent to prevent layout shift */}
         <div className="space-y-4">
           <div className="flex items-start justify-between">
             <div className="space-y-2">
@@ -137,6 +139,9 @@ export function TransactionsPage() {
             </div>
           </div>
         </div>
+
+        {/* Loading Skeleton */}
+        <TableSkeleton />
       </div>
     );
   }
@@ -189,7 +194,7 @@ export function TransactionsPage() {
               </div>
             </div>
           </div>
-          
+
           {/* Action Buttons */}
           <div className="flex items-center gap-3">
             <Button variant="outline" size="sm" className="gap-2">
@@ -200,8 +205,8 @@ export function TransactionsPage() {
               <BarChart3 className="h-4 w-4" />
               Insights
             </Button>
-            <Button 
-              size="sm" 
+            <Button
+              size="sm"
               className="gap-2"
               onClick={() => setIsAddModalOpen(true)}
             >

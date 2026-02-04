@@ -15,6 +15,18 @@ import { useTags } from "@/hooks/use-tags";
 import { useAccounts } from "@/hooks/use-accounts";
 import { useParticipants } from "@/hooks/use-participants";
 import { cn } from "@/lib/utils";
+import { useDebounce } from "@/hooks/use-debounce";
+
+// Helper to check if two arrays are equal
+function arraysEqual(a: any[] | undefined, b: any[] | undefined) {
+  if (a === b) return true;
+  const arrA = a || [];
+  const arrB = b || [];
+  if (arrA.length !== arrB.length) return false;
+  const sortedA = [...arrA].sort();
+  const sortedB = [...arrB].sort();
+  return sortedA.every((val, index) => val === sortedB[index]);
+}
 
 // Custom hook for localStorage persistence
 function useLocalStorage<T>(key: string, initialValue: T) {
@@ -91,12 +103,19 @@ export function TransactionFilters({
   const [isCategoryPopoverOpen, setIsCategoryPopoverOpen] = useState(false);
   const [isParticipantPopoverOpen, setIsParticipantPopoverOpen] = useState(false);
 
+  // Debounce text inputs
+  const debouncedSearch = useDebounce(searchInput, 500);
+  const debouncedAmountMin = useDebounce(amountMinInput, 500);
+  const debouncedAmountMax = useDebounce(amountMaxInput, 500);
+  const debouncedDateStart = useDebounce(dateRangeStartInput, 500); // Also debounce date text inputs to avoid incomplete dates
+  const debouncedDateEnd = useDebounce(dateRangeEndInput, 500);
+
   // Fetch categories, tags, accounts, and participants data
   const { data: categories = [] } = useCategories();
   const { data: tags = [] } = useTags();
   const { data: accounts = [], isLoading: accountsLoading, error: accountsError } = useAccounts();
   const { participants = [], isLoading: participantsLoading } = useParticipants(participantSearchQuery);
-  
+
   // Log for debugging
   useEffect(() => {
     if (accountsError) {
@@ -127,14 +146,14 @@ export function TransactionFilters({
 
     // Apply search
     newFilters.search = searchInput.trim() || undefined;
-    
+
     // Apply amount range
     const min = amountMinInput ? Number(amountMinInput) : undefined;
     const max = amountMaxInput ? Number(amountMaxInput) : undefined;
     if (min !== undefined || max !== undefined) {
-      newFilters.amount_range = { 
-        min: min!, 
-        max: max! 
+      newFilters.amount_range = {
+        min: min!,
+        max: max!
       };
     } else {
       newFilters.amount_range = undefined;
@@ -230,16 +249,33 @@ export function TransactionFilters({
       newFilters.is_split = undefined; // Show all
     }
 
-    // Apply all filters at once
-    onFiltersChange(newFilters);
+    // Check if filters have actually changed
+    const filtersChanged =
+      newFilters.search !== filters.search ||
+      newFilters.amount_range?.min !== filters.amount_range?.min ||
+      newFilters.amount_range?.max !== filters.amount_range?.max ||
+      newFilters.date_range?.start !== filters.date_range?.start ||
+      newFilters.date_range?.end !== filters.date_range?.end ||
+      !arraysEqual(newFilters.categories, filters.categories) ||
+      !arraysEqual(newFilters.exclude_categories, filters.exclude_categories) ||
+      !arraysEqual(newFilters.tags, filters.tags) ||
+      !arraysEqual(newFilters.accounts, filters.accounts) ||
+      !arraysEqual(newFilters.exclude_accounts, filters.exclude_accounts) ||
+      !arraysEqual(newFilters.participants, filters.participants) ||
+      !arraysEqual(newFilters.exclude_participants, filters.exclude_participants) ||
+      newFilters.direction !== filters.direction ||
+      newFilters.transaction_type !== filters.transaction_type ||
+      newFilters.include_uncategorized !== filters.include_uncategorized ||
+      newFilters.flagged !== filters.flagged ||
+      newFilters.is_shared !== filters.is_shared ||
+      newFilters.is_split !== filters.is_split;
 
-    console.log("✅ Filters applied!", newFilters);
-    
-    // Collapse panel after applying
-    setExpanded(false);
-    
-    // Return focus to filters button
-    setTimeout(() => filtersButtonRef.current?.focus(), 100);
+    if (filtersChanged) {
+      onFiltersChange(newFilters);
+      console.log("✅ Filters applied (Auto)!", newFilters);
+    } else {
+      console.log("⏭️ Filters unchanged, skipping update");
+    }
   };
 
   const resetAllFilters = () => {
@@ -263,10 +299,10 @@ export function TransactionFilters({
     setHideShared(false);
     setSplitFilter("all");
     onClearFilters();
-    
+
     // Collapse panel after reset
     setExpanded(false);
-    
+
     // Return focus to filters button
     setTimeout(() => filtersButtonRef.current?.focus(), 100);
   };
@@ -274,7 +310,7 @@ export function TransactionFilters({
   const handleDatePreset = (preset: string) => {
     setSelectedDatePreset(preset);
     const today = new Date();
-    
+
     switch (preset) {
       case "this_month":
         const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -304,66 +340,75 @@ export function TransactionFilters({
   };
 
   // Sync input states with filters when they change externally (e.g., clear all)
+  // Sync input states with filters when they change externally (e.g., clear all)
   useEffect(() => {
-    setSearchInput(filters.search || "");
-    setAmountMinInput(filters.amount_range?.min?.toString() || "");
-    setAmountMaxInput(filters.amount_range?.max?.toString() || "");
-    setDateRangeStartInput(filters.date_range?.start || "");
-    setDateRangeEndInput(filters.date_range?.end || "");
-    setSelectedCategories(filters.categories || []);
-    setExcludeCategories(filters.exclude_categories || []);
-    setSelectedTags(filters.tags || []);
-    setSelectedAccounts(filters.accounts || []);
-    setExcludeAccounts(filters.exclude_accounts || []);
-    setSelectedParticipants(filters.participants || []);
-    setExcludeParticipants(filters.exclude_participants || []);
-    setSelectedDirection(filters.direction || "all");
-    setSelectedTransactionType(filters.transaction_type || "all");
-    setIncludeUncategorized(filters.include_uncategorized || false);
-    setFlaggedFilter(
-      filters.flagged === true ? "flagged" : filters.flagged === false ? "not_flagged" : "all"
-    );
-    setHideShared(filters.is_shared === false);
-    setSplitFilter(
-      filters.is_split === false ? "exclude" : filters.is_split === true ? "only" : "all"
-    );
+    // Only update state if values differ to avoid infinite loops with auto-apply
+    if ((filters.search || "") !== searchInput) setSearchInput(filters.search || "");
+    if ((filters.amount_range?.min?.toString() || "") !== amountMinInput) setAmountMinInput(filters.amount_range?.min?.toString() || "");
+    if ((filters.amount_range?.max?.toString() || "") !== amountMaxInput) setAmountMaxInput(filters.amount_range?.max?.toString() || "");
+    if ((filters.date_range?.start || "") !== dateRangeStartInput) setDateRangeStartInput(filters.date_range?.start || "");
+    if ((filters.date_range?.end || "") !== dateRangeEndInput) setDateRangeEndInput(filters.date_range?.end || "");
+
+    // Arrays need deep comparison
+    if (!arraysEqual(filters.categories, selectedCategories)) setSelectedCategories(filters.categories || []);
+    if (!arraysEqual(filters.exclude_categories, excludeCategories)) setExcludeCategories(filters.exclude_categories || []);
+    if (!arraysEqual(filters.tags, selectedTags)) setSelectedTags(filters.tags || []);
+    if (!arraysEqual(filters.accounts, selectedAccounts)) setSelectedAccounts(filters.accounts || []);
+    if (!arraysEqual(filters.exclude_accounts, excludeAccounts)) setExcludeAccounts(filters.exclude_accounts || []);
+    if (!arraysEqual(filters.participants, selectedParticipants)) setSelectedParticipants(filters.participants || []);
+    if (!arraysEqual(filters.exclude_participants, excludeParticipants)) setExcludeParticipants(filters.exclude_participants || []);
+
+    if ((filters.direction || "all") !== selectedDirection) setSelectedDirection(filters.direction || "all");
+    if ((filters.transaction_type || "all") !== selectedTransactionType) setSelectedTransactionType(filters.transaction_type || "all");
+    if ((filters.include_uncategorized || false) !== includeUncategorized) setIncludeUncategorized(filters.include_uncategorized || false);
+
+    const newFlagged = filters.flagged === true ? "flagged" : filters.flagged === false ? "not_flagged" : "all";
+    if (newFlagged !== flaggedFilter) setFlaggedFilter(newFlagged);
+
+    const newHideShared = filters.is_shared === false;
+    if (newHideShared !== hideShared) setHideShared(newHideShared);
+
+    const newSplitFilter = filters.is_split === false ? "exclude" : filters.is_split === true ? "only" : "all";
+    if (newSplitFilter !== splitFilter) setSplitFilter(newSplitFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
-  const hasActiveFilters = Object.values(filters).some(value => 
+  const hasActiveFilters = Object.values(filters).some(value =>
     value !== undefined && value !== null && value !== ""
   );
 
-  const hasUnappliedChanges = 
-    searchInput !== (filters.search || "") ||
-    amountMinInput !== (filters.amount_range?.min?.toString() || "") ||
-    amountMaxInput !== (filters.amount_range?.max?.toString() || "") ||
-    dateRangeStartInput !== (filters.date_range?.start || "") ||
-    dateRangeEndInput !== (filters.date_range?.end || "") ||
-    JSON.stringify(selectedCategories.sort()) !== JSON.stringify((filters.categories || []).sort()) ||
-    JSON.stringify(excludeCategories.sort()) !== JSON.stringify((filters.exclude_categories || []).sort()) ||
-    JSON.stringify(selectedTags.sort()) !== JSON.stringify((filters.tags || []).sort()) ||
-    JSON.stringify(selectedAccounts.sort()) !== JSON.stringify((filters.accounts || []).sort()) ||
-    JSON.stringify(excludeAccounts.sort()) !== JSON.stringify((filters.exclude_accounts || []).sort()) ||
-    JSON.stringify(selectedParticipants.sort()) !== JSON.stringify((filters.participants || []).sort()) ||
-    JSON.stringify(excludeParticipants.sort()) !== JSON.stringify((filters.exclude_participants || []).sort()) ||
-    selectedDirection !== (filters.direction || "all") ||
-    selectedTransactionType !== (filters.transaction_type || "all") ||
-    includeUncategorized !== (filters.include_uncategorized || false) ||
-    flaggedFilter !== (filters.flagged === true ? "flagged" : filters.flagged === false ? "not_flagged" : "all") ||
-    hideShared !== (filters.is_shared === false) ||
-    splitFilter !== (filters.is_split === false ? "exclude" : filters.is_split === true ? "only" : "all");
 
-  // Keyboard support
+
+  // Auto-apply filters when inputs change
+  useEffect(() => {
+    applyAllFilters();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    debouncedSearch,
+    debouncedAmountMin,
+    debouncedAmountMax,
+    debouncedDateStart,
+    debouncedDateEnd,
+    selectedDatePreset, // Ensure preset changes trigger
+    selectedCategories,
+    selectedTags,
+    selectedAccounts,
+    selectedParticipants,
+    selectedDirection,
+    selectedTransactionType,
+    includeUncategorized,
+    flaggedFilter,
+    hideShared,
+    splitFilter,
+    // Explicitly exclude non-filter state like popover open states
+  ]);
+
+  // Keyboard support - Escape only
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && expanded) {
         setExpanded(false);
         filtersButtonRef.current?.focus();
-      }
-      // Apply filters on Enter key when panel is expanded
-      if (e.key === "Enter" && expanded && hasUnappliedChanges) {
-        e.preventDefault();
-        applyAllFilters();
       }
     };
 
@@ -371,13 +416,13 @@ export function TransactionFilters({
       document.addEventListener("keydown", handleKeyDown);
       return () => document.removeEventListener("keydown", handleKeyDown);
     }
-  }, [expanded, hasUnappliedChanges, applyAllFilters]);
+  }, [expanded]);
 
   // Clear a specific filter and apply immediately
   const clearFilter = (key: keyof TransactionFilters) => {
     const newFilters = { ...filters };
     delete newFilters[key];
-    
+
     // Also update local state
     if (key === "search") setSearchInput("");
     else if (key === "accounts") {
@@ -408,7 +453,7 @@ export function TransactionFilters({
     else if (key === "flagged") setFlaggedFilter("all");
     else if (key === "is_shared") setHideShared(false);
     else if (key === "is_split") setSplitFilter("all");
-    
+
     onFiltersChange(newFilters);
   };
 
@@ -421,7 +466,7 @@ export function TransactionFilters({
   // Quick date preset handlers
   const applyQuickDatePreset = (preset: "this_month" | "last_30") => {
     const today = new Date();
-    
+
     if (preset === "this_month") {
       const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
       const newFilters = {
@@ -431,7 +476,7 @@ export function TransactionFilters({
           end: today.toISOString().split("T")[0]
         }
       };
-      
+
       setDateRangeStartInput(newFilters.date_range.start);
       setDateRangeEndInput(newFilters.date_range.end);
       setSelectedDatePreset("this_month");
@@ -446,7 +491,7 @@ export function TransactionFilters({
           end: today.toISOString().split("T")[0]
         }
       };
-      
+
       setDateRangeStartInput(newFilters.date_range.start);
       setDateRangeEndInput(newFilters.date_range.end);
       setSelectedDatePreset("custom");
@@ -457,7 +502,7 @@ export function TransactionFilters({
   // Get active filter badges
   const getActiveFilterBadges = () => {
     const badges = [];
-    
+
     if (filters.search) {
       badges.push({ key: "search", label: `Search: "${filters.search}"`, value: filters.search });
     }
@@ -513,7 +558,7 @@ export function TransactionFilters({
     if (filters.is_split === true) {
       badges.push({ key: "is_split", label: "Split transactions only", value: true });
     }
-    
+
     return badges;
   };
 
@@ -587,874 +632,853 @@ export function TransactionFilters({
       >
         <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 mt-2">
 
-        {/* 2-Row Grid Layout */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {/* Row 1 */}
-          <div className="space-y-1">
-            <Label htmlFor="search" className="text-xs text-slate-400 uppercase tracking-wide">Search</Label>
-            <div className="flex gap-2">
-              <Input
-                id="search"
-                placeholder="Search transactions..."
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500"
-              />
+          {/* 2-Row Grid Layout */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* Row 1 */}
+            <div className="space-y-1">
+              <Label htmlFor="search" className="text-xs text-slate-400 uppercase tracking-wide">Search</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="search"
+                  placeholder="Search transactions..."
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="space-y-1">
-            <Label htmlFor="account" className="text-xs text-slate-400 uppercase tracking-wide">Accounts</Label>
-            <Popover 
-              open={isAccountPopoverOpen} 
-              onOpenChange={(open) => {
-                setIsAccountPopoverOpen(open);
-                if (!open) setAccountSearchQuery("");
-              }}
-            >
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={isAccountPopoverOpen}
-                  className="h-auto min-h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 justify-between w-full py-2"
-                >
-                  <div className="flex flex-wrap gap-1 flex-1 text-left">
-                    {selectedAccounts.length === 0 && excludeAccounts.length === 0 ? (
-                      <span className="text-slate-400">All accounts</span>
-                    ) : (
-                      <>
-                        {selectedAccounts.map((account) => (
-                          <Badge
-                            key={`include-${account}`}
-                            variant="secondary"
-                            className="mr-1 mb-0.5 bg-blue-600/20 text-blue-200 border-blue-500/50"
-                          >
-                            {account}
-                            <X
-                              className="h-3 w-3 ml-1 cursor-pointer hover:text-blue-100"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedAccounts(selectedAccounts.filter((a) => a !== account));
-                              }}
-                            />
-                          </Badge>
-                        ))}
-                        {excludeAccounts.map((account) => (
-                          <Badge
-                            key={`exclude-${account}`}
-                            variant="secondary"
-                            className="mr-1 mb-0.5 bg-red-600/20 text-red-200 border-red-500/50"
-                          >
-                            Not {account}
-                            <X
-                              className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setExcludeAccounts(excludeAccounts.filter((a) => a !== account));
-                              }}
-                            />
-                          </Badge>
-                        ))}
-                      </>
-                    )}
-                  </div>
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[400px] p-0 bg-slate-800 border-slate-600" align="start">
-                <div className="flex items-center border-b border-slate-700 px-3">
-                  <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 text-slate-400" />
-                  <Input
-                    placeholder="Search accounts..."
-                    value={accountSearchQuery}
-                    onChange={(e) => setAccountSearchQuery(e.target.value)}
-                    className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50 border-0 focus-visible:ring-0 text-slate-200"
-                  />
-                </div>
-                <div className="max-h-[300px] overflow-auto">
-                  {accountsLoading ? (
-                    <div className="py-6 text-center text-sm text-slate-400">Loading accounts...</div>
-                  ) : accountsError ? (
-                    <div className="py-6 text-center text-sm text-red-400">Error loading accounts</div>
-                  ) : (() => {
-                    const filteredAccounts = accounts.filter((account) =>
-                      account.toLowerCase().includes(accountSearchQuery.toLowerCase())
-                    );
-                    return filteredAccounts.length === 0 ? (
-                      <div className="py-6 text-center text-sm text-slate-400">No accounts found</div>
-                    ) : (
-                      <div className="p-1">
-                        {filteredAccounts.map((account) => {
-                          const inInclude = selectedAccounts.includes(account);
-                          const inExclude = excludeAccounts.includes(account);
-                          const isActive = inInclude || inExclude;
-                          return (
-                            <div
-                              key={account}
-                              className={cn(
-                                "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-700 hover:text-slate-50",
-                                isActive && "bg-slate-700/50"
-                              )}
-                              onClick={() => {
-                                if (inInclude) {
+            <div className="space-y-1">
+              <Label htmlFor="account" className="text-xs text-slate-400 uppercase tracking-wide">Accounts</Label>
+              <Popover
+                open={isAccountPopoverOpen}
+                onOpenChange={(open) => {
+                  setIsAccountPopoverOpen(open);
+                  if (!open) setAccountSearchQuery("");
+                }}
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={isAccountPopoverOpen}
+                    className="h-auto min-h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 justify-between w-full py-2"
+                  >
+                    <div className="flex flex-wrap gap-1 flex-1 text-left">
+                      {selectedAccounts.length === 0 && excludeAccounts.length === 0 ? (
+                        <span className="text-slate-400">All accounts</span>
+                      ) : (
+                        <>
+                          {selectedAccounts.map((account) => (
+                            <Badge
+                              key={`include-${account}`}
+                              variant="secondary"
+                              className="mr-1 mb-0.5 bg-blue-600/20 text-blue-200 border-blue-500/50"
+                            >
+                              {account}
+                              <X
+                                className="h-3 w-3 ml-1 cursor-pointer hover:text-blue-100"
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   setSelectedAccounts(selectedAccounts.filter((a) => a !== account));
-                                  setExcludeAccounts([...excludeAccounts, account]);
-                                } else if (inExclude) {
+                                }}
+                              />
+                            </Badge>
+                          ))}
+                          {excludeAccounts.map((account) => (
+                            <Badge
+                              key={`exclude-${account}`}
+                              variant="secondary"
+                              className="mr-1 mb-0.5 bg-red-600/20 text-red-200 border-red-500/50"
+                            >
+                              Not {account}
+                              <X
+                                className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100"
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   setExcludeAccounts(excludeAccounts.filter((a) => a !== account));
-                                } else {
-                                  setSelectedAccounts([...selectedAccounts, account]);
-                                }
-                              }}
-                            >
+                                }}
+                              />
+                            </Badge>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[400px] p-0 bg-slate-800 border-slate-600" align="start">
+                  <div className="flex items-center border-b border-slate-700 px-3">
+                    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 text-slate-400" />
+                    <Input
+                      placeholder="Search accounts..."
+                      value={accountSearchQuery}
+                      onChange={(e) => setAccountSearchQuery(e.target.value)}
+                      className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50 border-0 focus-visible:ring-0 text-slate-200"
+                    />
+                  </div>
+                  <div className="max-h-[300px] overflow-auto">
+                    {accountsLoading ? (
+                      <div className="py-6 text-center text-sm text-slate-400">Loading accounts...</div>
+                    ) : accountsError ? (
+                      <div className="py-6 text-center text-sm text-red-400">Error loading accounts</div>
+                    ) : (() => {
+                      const filteredAccounts = accounts.filter((account) =>
+                        account.toLowerCase().includes(accountSearchQuery.toLowerCase())
+                      );
+                      return filteredAccounts.length === 0 ? (
+                        <div className="py-6 text-center text-sm text-slate-400">No accounts found</div>
+                      ) : (
+                        <div className="p-1">
+                          {filteredAccounts.map((account) => {
+                            const inInclude = selectedAccounts.includes(account);
+                            const inExclude = excludeAccounts.includes(account);
+                            const isActive = inInclude || inExclude;
+                            return (
                               <div
+                                key={account}
                                 className={cn(
-                                  "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
-                                  inInclude
-                                    ? "border-blue-500 bg-blue-500 text-white"
-                                    : inExclude
-                                    ? "border-red-500 bg-red-500 text-white"
-                                    : "border-slate-500 opacity-50 [&_svg]:invisible"
+                                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-700 hover:text-slate-50",
+                                  isActive && "bg-slate-700/50"
                                 )}
+                                onClick={() => {
+                                  if (inInclude) {
+                                    setSelectedAccounts(selectedAccounts.filter((a) => a !== account));
+                                    setExcludeAccounts([...excludeAccounts, account]);
+                                  } else if (inExclude) {
+                                    setExcludeAccounts(excludeAccounts.filter((a) => a !== account));
+                                  } else {
+                                    setSelectedAccounts([...selectedAccounts, account]);
+                                  }
+                                }}
                               >
-                                <Check className="h-4 w-4" />
+                                <div
+                                  className={cn(
+                                    "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
+                                    inInclude
+                                      ? "border-blue-500 bg-blue-500 text-white"
+                                      : inExclude
+                                        ? "border-red-500 bg-red-500 text-white"
+                                        : "border-slate-500 opacity-50 [&_svg]:invisible"
+                                  )}
+                                >
+                                  <Check className="h-4 w-4" />
+                                </div>
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                  <span className="truncate">{account}</span>
+                                  {inInclude && (
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-blue-500/50 text-blue-300">
+                                      Include
+                                    </Badge>
+                                  )}
+                                  {inExclude && (
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-red-500/50 text-red-300">
+                                      Exclude
+                                    </Badge>
+                                  )}
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2 flex-1 min-w-0">
-                                <span className="truncate">{account}</span>
-                                {inInclude && (
-                                  <Badge variant="outline" className="text-[10px] px-1 py-0 border-blue-500/50 text-blue-300">
-                                    Include
-                                  </Badge>
-                                )}
-                                {inExclude && (
-                                  <Badge variant="outline" className="text-[10px] px-1 py-0 border-red-500/50 text-red-300">
-                                    Exclude
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
-                </div>
-                {(selectedAccounts.length > 0 || excludeAccounts.length > 0) && (
-                  <div className="border-t border-slate-700 p-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-400 text-xs">
-                        {selectedAccounts.length > 0 && (
-                          <span className="text-blue-300">{selectedAccounts.length} included</span>
-                        )}
-                        {selectedAccounts.length > 0 && excludeAccounts.length > 0 && " · "}
-                        {excludeAccounts.length > 0 && (
-                          <span className="text-red-300">{excludeAccounts.length} excluded</span>
-                        )}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-xs"
-                        onClick={() => {
-                          setSelectedAccounts([]);
-                          setExcludeAccounts([]);
-                        }}
-                      >
-                        Clear
-                      </Button>
-                    </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </div>
-                )}
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          <div className="space-y-1">
-            <Label htmlFor="direction" className="text-xs text-slate-400 uppercase tracking-wide">Direction</Label>
-            <Select
-              value={selectedDirection}
-              onValueChange={(value) => setSelectedDirection(value)}
-            >
-              <SelectTrigger className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200">
-                <SelectValue placeholder="All directions" />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-600">
-                <SelectItem value="all">All directions</SelectItem>
-                <SelectItem value="debit">Debit</SelectItem>
-                <SelectItem value="credit">Credit</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1">
-            <Label htmlFor="transaction-type" className="text-xs text-slate-400 uppercase tracking-wide">Type</Label>
-            <Select
-              value={selectedTransactionType}
-              onValueChange={(value) => setSelectedTransactionType(value)}
-            >
-              <SelectTrigger className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200">
-                <SelectValue placeholder="All types" />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-600">
-                <SelectItem value="all">All types</SelectItem>
-                <SelectItem value="shared">Shared only</SelectItem>
-                <SelectItem value="refunds">Refunds only</SelectItem>
-                <SelectItem value="transfers">Transfers only</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Row 2 */}
-          <div className="space-y-1">
-            <Label className="text-xs text-slate-400 uppercase tracking-wide">Date Range</Label>
-            <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
-              <PopoverTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 justify-start"
-                >
-                  <Calendar className="h-4 w-4 mr-2" />
-                  {selectedDatePreset === "custom" ? "Custom Range" : 
-                   selectedDatePreset === "this_month" ? "This Month" :
-                   selectedDatePreset === "last_month" ? "Last Month" :
-                   selectedDatePreset === "last_3_months" ? "Last 3 Months" :
-                   selectedDatePreset === "this_year" ? "This Year" : "Custom Range"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80 bg-slate-800 border-slate-600" align="start">
-                <div className="space-y-4">
-                  {/* Quick Presets */}
-                  <div className="space-y-2">
-                    <Label className="text-xs text-slate-400 uppercase tracking-wide">Quick Presets</Label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        size="sm"
-                        variant={selectedDatePreset === "this_month" ? "default" : "outline"}
-                        onClick={() => handleDatePreset("this_month")}
-                        className="text-xs h-8"
-                      >
-                        This Month
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={selectedDatePreset === "last_month" ? "default" : "outline"}
-                        onClick={() => handleDatePreset("last_month")}
-                        className="text-xs h-8"
-                      >
-                        Last Month
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={selectedDatePreset === "last_3_months" ? "default" : "outline"}
-                        onClick={() => handleDatePreset("last_3_months")}
-                        className="text-xs h-8"
-                      >
-                        Last 3 Months
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={selectedDatePreset === "this_year" ? "default" : "outline"}
-                        onClick={() => handleDatePreset("this_year")}
-                        className="text-xs h-8"
-                      >
-                        This Year
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Custom Range */}
-                  <div className="space-y-2 pt-2 border-t border-slate-600">
-                    <Label className="text-xs text-slate-400 uppercase tracking-wide">Custom Range</Label>
-                    <Button
-                      size="sm"
-                      variant={selectedDatePreset === "custom" ? "default" : "outline"}
-                      onClick={() => handleDatePreset("custom")}
-                      className="w-full text-xs h-8"
-                    >
-                      Custom Range
-                    </Button>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="space-y-1">
-                        <Label htmlFor="start-date" className="text-xs text-slate-300">Start Date</Label>
-                        <Input
-                          id="start-date"
-                          type="date"
-                          value={dateRangeStartInput}
-                          onChange={(e) => setDateRangeStartInput(e.target.value)}
-                          className="h-8 text-sm bg-slate-700 border-slate-600 text-slate-200"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor="end-date" className="text-xs text-slate-300">End Date</Label>
-                        <Input
-                          id="end-date"
-                          type="date"
-                          value={dateRangeEndInput}
-                          onChange={(e) => setDateRangeEndInput(e.target.value)}
-                          className="h-8 text-sm bg-slate-700 border-slate-600 text-slate-200"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          <div className="space-y-1">
-            <Label className="text-xs text-slate-400 uppercase tracking-wide">Amount Range</Label>
-            <div className="flex gap-2">
-              <Input
-                type="number"
-                placeholder="Min"
-                value={amountMinInput}
-                onChange={(e) => setAmountMinInput(e.target.value)}
-                className="h-9 text-sm w-[100px] bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500"
-              />
-              <span className="text-slate-400 self-center text-sm">-</span>
-              <Input
-                type="number"
-                placeholder="Max"
-                value={amountMaxInput}
-                onChange={(e) => setAmountMaxInput(e.target.value)}
-                className="h-9 text-sm w-[100px] bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <Label className="text-xs text-slate-400 uppercase tracking-wide">Categories</Label>
-            <Popover 
-              open={isCategoryPopoverOpen} 
-              onOpenChange={(open) => {
-                setIsCategoryPopoverOpen(open);
-                if (!open) setCategorySearchQuery("");
-              }}
-            >
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={isCategoryPopoverOpen}
-                  className="h-auto min-h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 justify-between w-full py-2"
-                >
-                  <div className="flex flex-wrap gap-1 flex-1 text-left">
-                    {selectedCategories.length === 0 && excludeCategories.length === 0 && !includeUncategorized ? (
-                      <span className="text-slate-400">All categories</span>
-                    ) : (
-                      <>
-                        {selectedCategories.map((category) => (
-                          <Badge
-                            key={`include-${category}`}
-                            variant="secondary"
-                            className="mr-1 mb-0.5 bg-blue-600/20 text-blue-200 border-blue-500/50"
-                          >
-                            {category}
-                            <X
-                              className="h-3 w-3 ml-1 cursor-pointer hover:text-blue-100"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedCategories(selectedCategories.filter((c) => c !== category));
-                              }}
-                            />
-                          </Badge>
-                        ))}
-                        {excludeCategories.map((category) => (
-                          <Badge
-                            key={`exclude-${category}`}
-                            variant="secondary"
-                            className="mr-1 mb-0.5 bg-red-600/20 text-red-200 border-red-500/50"
-                          >
-                            Not {category}
-                            <X
-                              className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setExcludeCategories(excludeCategories.filter((c) => c !== category));
-                              }}
-                            />
-                          </Badge>
-                        ))}
-                        {includeUncategorized && (
-                          <Badge
-                            variant="secondary"
-                            className="mr-1 mb-0.5 bg-purple-600/20 text-purple-200 border-purple-500/50"
-                          >
-                            Uncategorized
-                            <X
-                              className="h-3 w-3 ml-1 cursor-pointer hover:text-purple-100"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setIncludeUncategorized(false);
-                              }}
-                            />
-                          </Badge>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[400px] p-0 bg-slate-800 border-slate-600" align="start">
-                <div className="flex items-center border-b border-slate-700 px-3">
-                  <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 text-slate-400" />
-                  <Input
-                    placeholder="Search categories..."
-                    value={categorySearchQuery}
-                    onChange={(e) => setCategorySearchQuery(e.target.value)}
-                    className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50 border-0 focus-visible:ring-0 text-slate-200"
-                  />
-                </div>
-                <div className="max-h-[300px] overflow-auto">
-                  {categories.length === 0 ? (
-                    <div className="py-6 text-center text-sm text-slate-400">No categories found</div>
-                  ) : (() => {
-                    const filteredCategories = categories.filter((category) =>
-                      category.name.toLowerCase().includes(categorySearchQuery.toLowerCase())
-                    );
-                    return filteredCategories.length === 0 ? (
-                      <div className="py-6 text-center text-sm text-slate-400">No categories found</div>
-                    ) : (
-                      <div className="p-1">
-                        {filteredCategories.map((category) => {
-                          const name = category.name;
-                          const inInclude = selectedCategories.includes(name);
-                          const inExclude = excludeCategories.includes(name);
-                          const isActive = inInclude || inExclude;
-                          return (
-                            <div
-                              key={category.id}
-                              className={cn(
-                                "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-700 hover:text-slate-50",
-                                isActive && "bg-slate-700/50"
-                              )}
-                              onClick={() => {
-                                if (inInclude) {
-                                  setSelectedCategories(selectedCategories.filter((c) => c !== name));
-                                  setExcludeCategories([...excludeCategories, name]);
-                                } else if (inExclude) {
-                                  setExcludeCategories(excludeCategories.filter((c) => c !== name));
-                                } else {
-                                  setSelectedCategories([...selectedCategories, name]);
-                                }
-                              }}
-                            >
-                              <div
-                                className={cn(
-                                  "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
-                                  inInclude
-                                    ? "border-blue-500 bg-blue-500 text-white"
-                                    : inExclude
-                                    ? "border-red-500 bg-red-500 text-white"
-                                    : "border-slate-500 opacity-50 [&_svg]:invisible"
-                                )}
-                              >
-                                <Check className="h-4 w-4" />
-                              </div>
-                              <div className="flex items-center gap-2 flex-1 min-w-0">
-                                <span className="truncate">{name}</span>
-                                {inInclude && (
-                                  <Badge variant="outline" className="text-[10px] px-1 py-0 border-blue-500/50 text-blue-300">
-                                    Include
-                                  </Badge>
-                                )}
-                                {inExclude && (
-                                  <Badge variant="outline" className="text-[10px] px-1 py-0 border-red-500/50 text-red-300">
-                                    Exclude
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                        <div className="h-px bg-slate-700 my-1" />
-                        <div
-                          className={cn(
-                            "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-700 hover:text-slate-50",
-                            includeUncategorized && "bg-slate-700/50"
+                  {(selectedAccounts.length > 0 || excludeAccounts.length > 0) && (
+                    <div className="border-t border-slate-700 p-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-400 text-xs">
+                          {selectedAccounts.length > 0 && (
+                            <span className="text-blue-300">{selectedAccounts.length} included</span>
                           )}
+                          {selectedAccounts.length > 0 && excludeAccounts.length > 0 && " · "}
+                          {excludeAccounts.length > 0 && (
+                            <span className="text-red-300">{excludeAccounts.length} excluded</span>
+                          )}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
                           onClick={() => {
-                            if (includeUncategorized && selectedCategories.length === 0 && excludeCategories.length === 0) {
-                              setIncludeUncategorized(false);
-                            } else if (!includeUncategorized && selectedCategories.length === 0 && excludeCategories.length === 0) {
-                              setIncludeUncategorized(true);
-                            } else {
-                              setIncludeUncategorized(!includeUncategorized);
-                            }
+                            setSelectedAccounts([]);
+                            setExcludeAccounts([]);
                           }}
                         >
-                          <div
-                            className={cn(
-                              "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
-                              includeUncategorized
-                                ? "border-purple-500 bg-purple-500 text-white"
-                                : "border-slate-500 opacity-50 [&_svg]:invisible"
-                            )}
-                          >
-                            <Check className="h-4 w-4" />
-                          </div>
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <span className="truncate">
-                              {includeUncategorized && selectedCategories.length === 0 && excludeCategories.length === 0
-                                ? "Uncategorized only"
-                                : includeUncategorized
-                                ? "Also include uncategorized"
-                                : "Include uncategorized"}
-                            </span>
-                            {includeUncategorized && (
-                              <Badge variant="outline" className="text-[10px] px-1 py-0 border-purple-500/50 text-purple-300">
-                                Active
-                              </Badge>
-                            )}
-                          </div>
+                          Clear
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="direction" className="text-xs text-slate-400 uppercase tracking-wide">Direction</Label>
+              <Select
+                value={selectedDirection}
+                onValueChange={(value) => setSelectedDirection(value)}
+              >
+                <SelectTrigger className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200">
+                  <SelectValue placeholder="All directions" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-600">
+                  <SelectItem value="all">All directions</SelectItem>
+                  <SelectItem value="debit">Debit</SelectItem>
+                  <SelectItem value="credit">Credit</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="transaction-type" className="text-xs text-slate-400 uppercase tracking-wide">Type</Label>
+              <Select
+                value={selectedTransactionType}
+                onValueChange={(value) => setSelectedTransactionType(value)}
+              >
+                <SelectTrigger className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200">
+                  <SelectValue placeholder="All types" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-600">
+                  <SelectItem value="all">All types</SelectItem>
+                  <SelectItem value="shared">Shared only</SelectItem>
+                  <SelectItem value="refunds">Refunds only</SelectItem>
+                  <SelectItem value="transfers">Transfers only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Row 2 */}
+            <div className="space-y-1">
+              <Label className="text-xs text-slate-400 uppercase tracking-wide">Date Range</Label>
+              <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 justify-start"
+                  >
+                    <Calendar className="h-4 w-4 mr-2" />
+                    {selectedDatePreset === "custom" ? "Custom Range" :
+                      selectedDatePreset === "this_month" ? "This Month" :
+                        selectedDatePreset === "last_month" ? "Last Month" :
+                          selectedDatePreset === "last_3_months" ? "Last 3 Months" :
+                            selectedDatePreset === "this_year" ? "This Year" : "Custom Range"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 bg-slate-800 border-slate-600" align="start">
+                  <div className="space-y-4">
+                    {/* Quick Presets */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-slate-400 uppercase tracking-wide">Quick Presets</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          size="sm"
+                          variant={selectedDatePreset === "this_month" ? "default" : "outline"}
+                          onClick={() => handleDatePreset("this_month")}
+                          className="text-xs h-8"
+                        >
+                          This Month
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={selectedDatePreset === "last_month" ? "default" : "outline"}
+                          onClick={() => handleDatePreset("last_month")}
+                          className="text-xs h-8"
+                        >
+                          Last Month
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={selectedDatePreset === "last_3_months" ? "default" : "outline"}
+                          onClick={() => handleDatePreset("last_3_months")}
+                          className="text-xs h-8"
+                        >
+                          Last 3 Months
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={selectedDatePreset === "this_year" ? "default" : "outline"}
+                          onClick={() => handleDatePreset("this_year")}
+                          className="text-xs h-8"
+                        >
+                          This Year
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Custom Range */}
+                    <div className="space-y-2 pt-2 border-t border-slate-600">
+                      <Label className="text-xs text-slate-400 uppercase tracking-wide">Custom Range</Label>
+                      <Button
+                        size="sm"
+                        variant={selectedDatePreset === "custom" ? "default" : "outline"}
+                        onClick={() => handleDatePreset("custom")}
+                        className="w-full text-xs h-8"
+                      >
+                        Custom Range
+                      </Button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label htmlFor="start-date" className="text-xs text-slate-300">Start Date</Label>
+                          <Input
+                            id="start-date"
+                            type="date"
+                            value={dateRangeStartInput}
+                            onChange={(e) => setDateRangeStartInput(e.target.value)}
+                            className="h-8 text-sm bg-slate-700 border-slate-600 text-slate-200"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="end-date" className="text-xs text-slate-300">End Date</Label>
+                          <Input
+                            id="end-date"
+                            type="date"
+                            value={dateRangeEndInput}
+                            onChange={(e) => setDateRangeEndInput(e.target.value)}
+                            className="h-8 text-sm bg-slate-700 border-slate-600 text-slate-200"
+                          />
                         </div>
                       </div>
-                    );
-                  })()}
-                </div>
-                {(selectedCategories.length > 0 || excludeCategories.length > 0 || includeUncategorized) && (
-                  <div className="border-t border-slate-700 p-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-400 text-xs">
-                        {selectedCategories.length > 0 && (
-                          <span className="text-blue-300">{selectedCategories.length} included</span>
-                        )}
-                        {selectedCategories.length > 0 && excludeCategories.length > 0 && " · "}
-                        {excludeCategories.length > 0 && (
-                          <span className="text-red-300">{excludeCategories.length} excluded</span>
-                        )}
-                        {(selectedCategories.length > 0 || excludeCategories.length > 0) && includeUncategorized && " · "}
-                        {includeUncategorized && (
-                          <span className="text-purple-300">uncategorized</span>
-                        )}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-xs"
-                        onClick={() => {
-                          setSelectedCategories([]);
-                          setExcludeCategories([]);
-                          setIncludeUncategorized(false);
-                        }}
-                      >
-                        Clear
-                      </Button>
                     </div>
                   </div>
-                )}
-              </PopoverContent>
-            </Popover>
-          </div>
+                </PopoverContent>
+              </Popover>
+            </div>
 
-          <div className="space-y-1">
-            <Label className="text-xs text-slate-400 uppercase tracking-wide">Participants</Label>
-            <Popover 
-              open={isParticipantPopoverOpen} 
-              onOpenChange={(open) => {
-                setIsParticipantPopoverOpen(open);
-                if (!open) setParticipantSearchQuery("");
-              }}
-            >
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={isParticipantPopoverOpen}
-                  className="h-auto min-h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 justify-between w-full py-2"
-                >
-                  <div className="flex flex-wrap gap-1 flex-1 text-left">
-                    {selectedParticipants.length === 0 && excludeParticipants.length === 0 ? (
-                      <span className="text-slate-400">All participants</span>
-                    ) : (
-                      <>
-                        {selectedParticipants.map((participant) => (
-                          <Badge
-                            key={`include-${participant}`}
-                            variant="secondary"
-                            className="mr-1 mb-0.5 bg-blue-600/20 text-blue-200 border-blue-500/50"
-                          >
-                            {participant}
-                            <X
-                              className="h-3 w-3 ml-1 cursor-pointer hover:text-blue-100"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedParticipants(selectedParticipants.filter((p) => p !== participant));
-                              }}
-                            />
-                          </Badge>
-                        ))}
-                        {excludeParticipants.map((participant) => (
-                          <Badge
-                            key={`exclude-${participant}`}
-                            variant="secondary"
-                            className="mr-1 mb-0.5 bg-red-600/20 text-red-200 border-red-500/50"
-                          >
-                            Not {participant}
-                            <X
-                              className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setExcludeParticipants(excludeParticipants.filter((p) => p !== participant));
-                              }}
-                            />
-                          </Badge>
-                        ))}
-                      </>
-                    )}
-                  </div>
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[400px] p-0 bg-slate-800 border-slate-600" align="start">
-                <div className="flex items-center border-b border-slate-700 px-3">
-                  <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 text-slate-400" />
-                  <Input
-                    placeholder="Search participants..."
-                    value={participantSearchQuery}
-                    onChange={(e) => setParticipantSearchQuery(e.target.value)}
-                    className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50 border-0 focus-visible:ring-0 text-slate-200"
-                  />
-                </div>
-                <div className="max-h-[300px] overflow-auto">
-                  {participantsLoading ? (
-                    <div className="py-6 text-center text-sm text-slate-400">Loading participants...</div>
-                  ) : (() => {
-                    const filteredParticipants = participants.filter((participant) =>
-                      participant.name.toLowerCase().includes(participantSearchQuery.toLowerCase())
-                    );
-                    return filteredParticipants.length === 0 ? (
-                      <div className="py-6 text-center text-sm text-slate-400">No participants found</div>
-                    ) : (
-                      <div className="p-1">
-                        {filteredParticipants.map((participant) => {
-                          const name = participant.name;
-                          const inInclude = selectedParticipants.includes(name);
-                          const inExclude = excludeParticipants.includes(name);
-                          const isActive = inInclude || inExclude;
-                          return (
-                            <div
-                              key={participant.id}
-                              className={cn(
-                                "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-700 hover:text-slate-50",
-                                isActive && "bg-slate-700/50"
-                              )}
-                              onClick={() => {
-                                if (inInclude) {
-                                  setSelectedParticipants(selectedParticipants.filter((p) => p !== name));
-                                  setExcludeParticipants([...excludeParticipants, name]);
-                                } else if (inExclude) {
-                                  setExcludeParticipants(excludeParticipants.filter((p) => p !== name));
-                                } else {
-                                  setSelectedParticipants([...selectedParticipants, name]);
-                                }
-                              }}
+            <div className="space-y-1">
+              <Label className="text-xs text-slate-400 uppercase tracking-wide">Amount Range</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  placeholder="Min"
+                  value={amountMinInput}
+                  onChange={(e) => setAmountMinInput(e.target.value)}
+                  className="h-9 text-sm w-[100px] bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500"
+                />
+                <span className="text-slate-400 self-center text-sm">-</span>
+                <Input
+                  type="number"
+                  placeholder="Max"
+                  value={amountMaxInput}
+                  onChange={(e) => setAmountMaxInput(e.target.value)}
+                  className="h-9 text-sm w-[100px] bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-slate-400 uppercase tracking-wide">Categories</Label>
+              <Popover
+                open={isCategoryPopoverOpen}
+                onOpenChange={(open) => {
+                  setIsCategoryPopoverOpen(open);
+                  if (!open) setCategorySearchQuery("");
+                }}
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={isCategoryPopoverOpen}
+                    className="h-auto min-h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 justify-between w-full py-2"
+                  >
+                    <div className="flex flex-wrap gap-1 flex-1 text-left">
+                      {selectedCategories.length === 0 && excludeCategories.length === 0 && !includeUncategorized ? (
+                        <span className="text-slate-400">All categories</span>
+                      ) : (
+                        <>
+                          {selectedCategories.map((category) => (
+                            <Badge
+                              key={`include-${category}`}
+                              variant="secondary"
+                              className="mr-1 mb-0.5 bg-blue-600/20 text-blue-200 border-blue-500/50"
                             >
-                              <div
-                                className={cn(
-                                  "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
-                                  inInclude
-                                    ? "border-blue-500 bg-blue-500 text-white"
-                                    : inExclude
-                                    ? "border-red-500 bg-red-500 text-white"
-                                    : "border-slate-500 opacity-50 [&_svg]:invisible"
-                                )}
-                              >
-                                <Check className="h-4 w-4" />
-                              </div>
-                              <div className="flex items-center gap-2 flex-1 min-w-0">
-                                <span className="truncate">{name}</span>
-                                {inInclude && (
-                                  <Badge variant="outline" className="text-[10px] px-1 py-0 border-blue-500/50 text-blue-300">
-                                    Include
-                                  </Badge>
-                                )}
-                                {inExclude && (
-                                  <Badge variant="outline" className="text-[10px] px-1 py-0 border-red-500/50 text-red-300">
-                                    Exclude
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
-                </div>
-                {(selectedParticipants.length > 0 || excludeParticipants.length > 0) && (
-                  <div className="border-t border-slate-700 p-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-400 text-xs">
-                        {selectedParticipants.length > 0 && (
-                          <span className="text-blue-300">{selectedParticipants.length} included</span>
-                        )}
-                        {selectedParticipants.length > 0 && excludeParticipants.length > 0 && " · "}
-                        {excludeParticipants.length > 0 && (
-                          <span className="text-red-300">{excludeParticipants.length} excluded</span>
-                        )}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-xs"
-                        onClick={() => {
-                          setSelectedParticipants([]);
-                          setExcludeParticipants([]);
-                        }}
-                      >
-                        Clear
-                      </Button>
+                              {category}
+                              <X
+                                className="h-3 w-3 ml-1 cursor-pointer hover:text-blue-100"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedCategories(selectedCategories.filter((c) => c !== category));
+                                }}
+                              />
+                            </Badge>
+                          ))}
+                          {excludeCategories.map((category) => (
+                            <Badge
+                              key={`exclude-${category}`}
+                              variant="secondary"
+                              className="mr-1 mb-0.5 bg-red-600/20 text-red-200 border-red-500/50"
+                            >
+                              Not {category}
+                              <X
+                                className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExcludeCategories(excludeCategories.filter((c) => c !== category));
+                                }}
+                              />
+                            </Badge>
+                          ))}
+                          {includeUncategorized && (
+                            <Badge
+                              variant="secondary"
+                              className="mr-1 mb-0.5 bg-purple-600/20 text-purple-200 border-purple-500/50"
+                            >
+                              Uncategorized
+                              <X
+                                className="h-3 w-3 ml-1 cursor-pointer hover:text-purple-100"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIncludeUncategorized(false);
+                                }}
+                              />
+                            </Badge>
+                          )}
+                        </>
+                      )}
                     </div>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[400px] p-0 bg-slate-800 border-slate-600" align="start">
+                  <div className="flex items-center border-b border-slate-700 px-3">
+                    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 text-slate-400" />
+                    <Input
+                      placeholder="Search categories..."
+                      value={categorySearchQuery}
+                      onChange={(e) => setCategorySearchQuery(e.target.value)}
+                      className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50 border-0 focus-visible:ring-0 text-slate-200"
+                    />
                   </div>
-                )}
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          <div className="space-y-1">
-            <Label className="text-xs text-slate-400 uppercase tracking-wide">Tags</Label>
-            <Select
-              value={selectedTags[0] || "all"}
-              onValueChange={(value) => {
-                if (value === "all") {
-                  setSelectedTags([]);
-                } else {
-                  setSelectedTags([value]);
-                }
-              }}
-            >
-              <SelectTrigger className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200">
-                <SelectValue placeholder="+ Select tags" />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-600">
-                <SelectItem value="all">All tags</SelectItem>
-                {tags.map((tag) => (
-                  <SelectItem key={tag.id} value={tag.name}>
-                    {tag.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {/* Additional Filter Options */}
-        <div className="mt-4 pt-4 border-t border-slate-700 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-1 flex-1">
-              <Label htmlFor="include-uncategorized" className="text-sm text-slate-300 cursor-pointer">
-                Also Include Uncategorized
-              </Label>
-              <span className="text-xs text-slate-500">
-                {selectedCategories.length > 0 
-                  ? "Include uncategorized transactions when filtering by category"
-                  : "Show uncategorized transactions (select 'Uncategorized' in dropdown for only uncategorized)"}
-              </span>
+                  <div className="max-h-[300px] overflow-auto">
+                    {categories.length === 0 ? (
+                      <div className="py-6 text-center text-sm text-slate-400">No categories found</div>
+                    ) : (() => {
+                      const filteredCategories = categories.filter((category) =>
+                        category.name.toLowerCase().includes(categorySearchQuery.toLowerCase())
+                      );
+                      return filteredCategories.length === 0 ? (
+                        <div className="py-6 text-center text-sm text-slate-400">No categories found</div>
+                      ) : (
+                        <div className="p-1">
+                          {filteredCategories.map((category) => {
+                            const name = category.name;
+                            const inInclude = selectedCategories.includes(name);
+                            const inExclude = excludeCategories.includes(name);
+                            const isActive = inInclude || inExclude;
+                            return (
+                              <div
+                                key={category.id}
+                                className={cn(
+                                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-700 hover:text-slate-50",
+                                  isActive && "bg-slate-700/50"
+                                )}
+                                onClick={() => {
+                                  if (inInclude) {
+                                    setSelectedCategories(selectedCategories.filter((c) => c !== name));
+                                    setExcludeCategories([...excludeCategories, name]);
+                                  } else if (inExclude) {
+                                    setExcludeCategories(excludeCategories.filter((c) => c !== name));
+                                  } else {
+                                    setSelectedCategories([...selectedCategories, name]);
+                                  }
+                                }}
+                              >
+                                <div
+                                  className={cn(
+                                    "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
+                                    inInclude
+                                      ? "border-blue-500 bg-blue-500 text-white"
+                                      : inExclude
+                                        ? "border-red-500 bg-red-500 text-white"
+                                        : "border-slate-500 opacity-50 [&_svg]:invisible"
+                                  )}
+                                >
+                                  <Check className="h-4 w-4" />
+                                </div>
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                  <span className="truncate">{name}</span>
+                                  {inInclude && (
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-blue-500/50 text-blue-300">
+                                      Include
+                                    </Badge>
+                                  )}
+                                  {inExclude && (
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-red-500/50 text-red-300">
+                                      Exclude
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                          <div className="h-px bg-slate-700 my-1" />
+                          <div
+                            className={cn(
+                              "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-700 hover:text-slate-50",
+                              includeUncategorized && "bg-slate-700/50"
+                            )}
+                            onClick={() => {
+                              if (includeUncategorized && selectedCategories.length === 0 && excludeCategories.length === 0) {
+                                setIncludeUncategorized(false);
+                              } else if (!includeUncategorized && selectedCategories.length === 0 && excludeCategories.length === 0) {
+                                setIncludeUncategorized(true);
+                              } else {
+                                setIncludeUncategorized(!includeUncategorized);
+                              }
+                            }}
+                          >
+                            <div
+                              className={cn(
+                                "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
+                                includeUncategorized
+                                  ? "border-purple-500 bg-purple-500 text-white"
+                                  : "border-slate-500 opacity-50 [&_svg]:invisible"
+                              )}
+                            >
+                              <Check className="h-4 w-4" />
+                            </div>
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <span className="truncate">
+                                {includeUncategorized && selectedCategories.length === 0 && excludeCategories.length === 0
+                                  ? "Uncategorized only"
+                                  : includeUncategorized
+                                    ? "Also include uncategorized"
+                                    : "Include uncategorized"}
+                              </span>
+                              {includeUncategorized && (
+                                <Badge variant="outline" className="text-[10px] px-1 py-0 border-purple-500/50 text-purple-300">
+                                  Active
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  {(selectedCategories.length > 0 || excludeCategories.length > 0 || includeUncategorized) && (
+                    <div className="border-t border-slate-700 p-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-400 text-xs">
+                          {selectedCategories.length > 0 && (
+                            <span className="text-blue-300">{selectedCategories.length} included</span>
+                          )}
+                          {selectedCategories.length > 0 && excludeCategories.length > 0 && " · "}
+                          {excludeCategories.length > 0 && (
+                            <span className="text-red-300">{excludeCategories.length} excluded</span>
+                          )}
+                          {(selectedCategories.length > 0 || excludeCategories.length > 0) && includeUncategorized && " · "}
+                          {includeUncategorized && (
+                            <span className="text-purple-300">uncategorized</span>
+                          )}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => {
+                            setSelectedCategories([]);
+                            setExcludeCategories([]);
+                            setIncludeUncategorized(false);
+                          }}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
             </div>
-            <Switch
-              id="include-uncategorized"
-              checked={includeUncategorized}
-              onCheckedChange={setIncludeUncategorized}
-            />
+
+            <div className="space-y-1">
+              <Label className="text-xs text-slate-400 uppercase tracking-wide">Participants</Label>
+              <Popover
+                open={isParticipantPopoverOpen}
+                onOpenChange={(open) => {
+                  setIsParticipantPopoverOpen(open);
+                  if (!open) setParticipantSearchQuery("");
+                }}
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={isParticipantPopoverOpen}
+                    className="h-auto min-h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 justify-between w-full py-2"
+                  >
+                    <div className="flex flex-wrap gap-1 flex-1 text-left">
+                      {selectedParticipants.length === 0 && excludeParticipants.length === 0 ? (
+                        <span className="text-slate-400">All participants</span>
+                      ) : (
+                        <>
+                          {selectedParticipants.map((participant) => (
+                            <Badge
+                              key={`include-${participant}`}
+                              variant="secondary"
+                              className="mr-1 mb-0.5 bg-blue-600/20 text-blue-200 border-blue-500/50"
+                            >
+                              {participant}
+                              <X
+                                className="h-3 w-3 ml-1 cursor-pointer hover:text-blue-100"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedParticipants(selectedParticipants.filter((p) => p !== participant));
+                                }}
+                              />
+                            </Badge>
+                          ))}
+                          {excludeParticipants.map((participant) => (
+                            <Badge
+                              key={`exclude-${participant}`}
+                              variant="secondary"
+                              className="mr-1 mb-0.5 bg-red-600/20 text-red-200 border-red-500/50"
+                            >
+                              Not {participant}
+                              <X
+                                className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExcludeParticipants(excludeParticipants.filter((p) => p !== participant));
+                                }}
+                              />
+                            </Badge>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[400px] p-0 bg-slate-800 border-slate-600" align="start">
+                  <div className="flex items-center border-b border-slate-700 px-3">
+                    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 text-slate-400" />
+                    <Input
+                      placeholder="Search participants..."
+                      value={participantSearchQuery}
+                      onChange={(e) => setParticipantSearchQuery(e.target.value)}
+                      className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50 border-0 focus-visible:ring-0 text-slate-200"
+                    />
+                  </div>
+                  <div className="max-h-[300px] overflow-auto">
+                    {participantsLoading ? (
+                      <div className="py-6 text-center text-sm text-slate-400">Loading participants...</div>
+                    ) : (() => {
+                      const filteredParticipants = participants.filter((participant) =>
+                        participant.name.toLowerCase().includes(participantSearchQuery.toLowerCase())
+                      );
+                      return filteredParticipants.length === 0 ? (
+                        <div className="py-6 text-center text-sm text-slate-400">No participants found</div>
+                      ) : (
+                        <div className="p-1">
+                          {filteredParticipants.map((participant) => {
+                            const name = participant.name;
+                            const inInclude = selectedParticipants.includes(name);
+                            const inExclude = excludeParticipants.includes(name);
+                            const isActive = inInclude || inExclude;
+                            return (
+                              <div
+                                key={participant.id}
+                                className={cn(
+                                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-700 hover:text-slate-50",
+                                  isActive && "bg-slate-700/50"
+                                )}
+                                onClick={() => {
+                                  if (inInclude) {
+                                    setSelectedParticipants(selectedParticipants.filter((p) => p !== name));
+                                    setExcludeParticipants([...excludeParticipants, name]);
+                                  } else if (inExclude) {
+                                    setExcludeParticipants(excludeParticipants.filter((p) => p !== name));
+                                  } else {
+                                    setSelectedParticipants([...selectedParticipants, name]);
+                                  }
+                                }}
+                              >
+                                <div
+                                  className={cn(
+                                    "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
+                                    inInclude
+                                      ? "border-blue-500 bg-blue-500 text-white"
+                                      : inExclude
+                                        ? "border-red-500 bg-red-500 text-white"
+                                        : "border-slate-500 opacity-50 [&_svg]:invisible"
+                                  )}
+                                >
+                                  <Check className="h-4 w-4" />
+                                </div>
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                  <span className="truncate">{name}</span>
+                                  {inInclude && (
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-blue-500/50 text-blue-300">
+                                      Include
+                                    </Badge>
+                                  )}
+                                  {inExclude && (
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-red-500/50 text-red-300">
+                                      Exclude
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  {(selectedParticipants.length > 0 || excludeParticipants.length > 0) && (
+                    <div className="border-t border-slate-700 p-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-400 text-xs">
+                          {selectedParticipants.length > 0 && (
+                            <span className="text-blue-300">{selectedParticipants.length} included</span>
+                          )}
+                          {selectedParticipants.length > 0 && excludeParticipants.length > 0 && " · "}
+                          {excludeParticipants.length > 0 && (
+                            <span className="text-red-300">{excludeParticipants.length} excluded</span>
+                          )}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => {
+                            setSelectedParticipants([]);
+                            setExcludeParticipants([]);
+                          }}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-slate-400 uppercase tracking-wide">Tags</Label>
+              <Select
+                value={selectedTags[0] || "all"}
+                onValueChange={(value) => {
+                  if (value === "all") {
+                    setSelectedTags([]);
+                  } else {
+                    setSelectedTags([value]);
+                  }
+                }}
+              >
+                <SelectTrigger className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200">
+                  <SelectValue placeholder="+ Select tags" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-600">
+                  <SelectItem value="all">All tags</SelectItem>
+                  {tags.map((tag) => (
+                    <SelectItem key={tag.id} value={tag.name}>
+                      {tag.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-1 flex-1">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                <Label htmlFor="flagged-filter" className="text-sm text-slate-300 cursor-pointer">
-                  Flagged Transactions
+          {/* Additional Filter Options */}
+          <div className="mt-4 pt-4 border-t border-slate-700 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-1 flex-1">
+                <Label htmlFor="include-uncategorized" className="text-sm text-slate-300 cursor-pointer">
+                  Also Include Uncategorized
                 </Label>
+                <span className="text-xs text-slate-500">
+                  {selectedCategories.length > 0
+                    ? "Include uncategorized transactions when filtering by category"
+                    : "Show uncategorized transactions (select 'Uncategorized' in dropdown for only uncategorized)"}
+                </span>
               </div>
-              <span className="text-xs text-slate-500">
-                Filter transactions by flagged status
-              </span>
+              <Switch
+                id="include-uncategorized"
+                checked={includeUncategorized}
+                onCheckedChange={setIncludeUncategorized}
+              />
             </div>
-            <Select
-              value={flaggedFilter}
-              onValueChange={setFlaggedFilter}
-            >
-              <SelectTrigger className="h-9 w-[140px] text-sm bg-slate-800 border-slate-600 text-slate-200">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-600">
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="flagged">Flagged Only</SelectItem>
-                <SelectItem value="not_flagged">Not Flagged</SelectItem>
-              </SelectContent>
-            </Select>
+
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-1 flex-1">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                  <Label htmlFor="flagged-filter" className="text-sm text-slate-300 cursor-pointer">
+                    Flagged Transactions
+                  </Label>
+                </div>
+                <span className="text-xs text-slate-500">
+                  Filter transactions by flagged status
+                </span>
+              </div>
+              <Select
+                value={flaggedFilter}
+                onValueChange={setFlaggedFilter}
+              >
+                <SelectTrigger className="h-9 w-[140px] text-sm bg-slate-800 border-slate-600 text-slate-200">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-600">
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="flagged">Flagged Only</SelectItem>
+                  <SelectItem value="not_flagged">Not Flagged</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-1 flex-1">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-blue-400" />
+                  <Label htmlFor="hide-shared" className="text-sm text-slate-300 cursor-pointer">
+                    Hide Shared Expenses
+                  </Label>
+                </div>
+                <span className="text-xs text-slate-500">
+                  Filter out transactions where they are marked as shared (show only personal spend)
+                </span>
+              </div>
+              <Switch
+                id="hide-shared"
+                checked={hideShared}
+                onCheckedChange={(checked) => setHideShared(checked)}
+              />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-1 flex-1">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-purple-400" />
+                  <Label htmlFor="split-filter" className="text-sm text-slate-300 cursor-pointer">
+                    Split Transactions
+                  </Label>
+                </div>
+                <span className="text-xs text-slate-500">
+                  Filter transactions by split status
+                </span>
+              </div>
+              <Select
+                value={splitFilter}
+                onValueChange={setSplitFilter}
+              >
+                <SelectTrigger className="h-9 w-[160px] text-sm bg-slate-800 border-slate-600 text-slate-200">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-600">
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="exclude">Exclude Split</SelectItem>
+                  <SelectItem value="only">Split Only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-1 flex-1">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-blue-400" />
-                <Label htmlFor="hide-shared" className="text-sm text-slate-300 cursor-pointer">
-                  Hide Shared Expenses
-                </Label>
-              </div>
-              <span className="text-xs text-slate-500">
-                Filter out transactions where they are marked as shared (show only personal spend)
-              </span>
-            </div>
-            <Switch
-              id="hide-shared"
-              checked={hideShared}
-              onCheckedChange={(checked) => setHideShared(checked)}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-1 flex-1">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-purple-400" />
-                <Label htmlFor="split-filter" className="text-sm text-slate-300 cursor-pointer">
-                  Split Transactions
-                </Label>
-              </div>
-              <span className="text-xs text-slate-500">
-                Filter transactions by split status
-              </span>
-            </div>
-            <Select
-              value={splitFilter}
-              onValueChange={setSplitFilter}
-            >
-              <SelectTrigger className="h-9 w-[160px] text-sm bg-slate-800 border-slate-600 text-slate-200">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-600">
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="exclude">Exclude Split</SelectItem>
-                <SelectItem value="only">Split Only</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-          {/* Sticky Actions Footer */}
-          <div className="sticky bottom-0 mt-3 pt-3 bg-gradient-to-t from-slate-900 to-transparent flex justify-end gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={resetAllFilters}
-              className="h-8 px-3 text-xs border-slate-600 text-slate-300 hover:bg-slate-800"
-            >
-              <RotateCcw className="h-3 w-3 mr-1" />
-              Reset
-            </Button>
-            <Button
-              size="sm"
-              onClick={applyAllFilters}
-              disabled={!hasUnappliedChanges}
-              className="h-8 px-3 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Check className="h-3 w-3 mr-1" />
-              Apply
-            </Button>
-          </div>
         </div>
       </div>
     </div>

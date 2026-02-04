@@ -58,6 +58,7 @@ import { InlineTagDropdown } from "./inline-tag-dropdown";
 import { InlineCategoryDropdown } from "./inline-category-dropdown";
 import { BulkEditModal } from "./bulk-edit-modal";
 import { RelatedTransactionsDrawer } from "./related-transactions-drawer";
+import { TransactionDetailsDrawer } from "./transaction-details-drawer";
 import { SplitTransactionModal } from "./split-transaction-modal";
 import { LinkParentModal } from "./link-parent-modal";
 import { GroupTransferModal } from "./group-transfer-modal";
@@ -254,6 +255,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const [pdfViewerTransactionId, setPdfViewerTransactionId] = useState<string | null>(null);
   const [isPdfViewerOpen, setIsPdfViewerOpen] = useState(false);
 
+  // Quick View Drawer State
+  const [detailsTransaction, setDetailsTransaction] = useState<Transaction | null>(null);
+  const [isDetailsDrawerOpen, setIsDetailsDrawerOpen] = useState(false);
+
   // Keyboard navigation state
   const [focusedRowIndex, setFocusedRowIndex] = useState<number>(-1);
   const [focusedColumnId, setFocusedColumnId] = useState<string | null>(null);
@@ -271,6 +276,11 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const deleteTransaction = useDeleteTransaction();
   const { data: allTags = [] } = useTags();
   const { data: allCategories = [] } = useCategories();
+
+  const handleRowClick = useCallback((transaction: Transaction) => {
+    setDetailsTransaction(transaction);
+    setIsDetailsDrawerOpen(true);
+  }, []);
 
   const {
     data,
@@ -1072,7 +1082,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             return (
               <div
                 className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   setEditingRow(row.original.id);
                   setEditingField("description");
                 }}
@@ -1346,7 +1357,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             return (
               <div
                 className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded whitespace-nowrap"
-                onClick={() => setEditingCategoryForTransaction(transaction.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingCategoryForTransaction(transaction.id);
+                }}
                 title="Click to edit category"
               >
                 {category ? (
@@ -1508,7 +1522,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             return (
               <div
                 className="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-thumb]:bg-gray-700 dark:hover:[&::-webkit-scrollbar-thumb]:bg-gray-600 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-1 rounded max-w-[140px]"
-                onClick={() => setEditingTagsForTransaction(transaction.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingTagsForTransaction(transaction.id);
+                }}
                 title="Click to edit tags"
               >
                 {tagObjects && tagObjects.length > 0 ? (
@@ -2132,11 +2149,12 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   <tr
                     key={row.id}
                     className={cn(
-                      "group hover:bg-gray-50 dark:hover:bg-gray-800 border-b border-gray-100 dark:border-gray-800 transition-colors duration-150 h-12",
+                      "group hover:bg-gray-50 dark:hover:bg-gray-800 border-b border-gray-100 dark:border-gray-800 transition-colors duration-150 h-12 cursor-pointer",
                       editingRow === row.original.id && "bg-blue-50 dark:bg-blue-900/20",
                       highlightedTransactionIds.has(row.original.id) && "bg-blue-50 dark:bg-blue-900/10 border-l-2 border-l-blue-500",
                       isFocusedRow && "bg-blue-100 dark:bg-blue-900/30 border-l-2 border-l-blue-500"
                     )}
+                    onClick={() => handleRowClick(row.original)}
                   >
                     {row.getVisibleCells().map((cell) => {
                       const isFocusedCell = isFocusedRow && focusedColumnId === cell.column.id;
@@ -2465,6 +2483,12 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             setPdfViewerTransactionId(null);
           }
         }}
+      />
+
+      <TransactionDetailsDrawer
+        transaction={detailsTransaction}
+        isOpen={isDetailsDrawerOpen}
+        onClose={() => setIsDetailsDrawerOpen(false)}
       />
 
       <DeleteConfirmationDialog
