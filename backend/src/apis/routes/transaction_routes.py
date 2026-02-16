@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import List, Optional, Dict, Any
 import json
+import traceback
 from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
@@ -1982,7 +1983,7 @@ async def group_expense(request: GroupExpenseRequest):
             transaction_date=earliest_date,
             amount=amount_abs,
             direction=direction,
-            transaction_type="grouped_expense",
+            transaction_type="purchase",  # Use valid transaction type; is_grouped_expense=True marks it as grouped
             account=account,
             category=category,
             description=request.description,
