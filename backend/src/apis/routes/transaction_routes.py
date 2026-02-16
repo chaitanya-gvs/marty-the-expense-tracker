@@ -74,6 +74,7 @@ class TransactionCreate(BaseModel):
     is_split: bool = False
     is_transfer: bool = False
     is_flagged: bool = False
+    is_grouped_expense: bool = False
     split_breakdown: Optional[Dict[str, Any]] = None
     link_parent_id: Optional[str] = None
     transaction_group_id: Optional[str] = None
@@ -99,6 +100,7 @@ class TransactionUpdate(BaseModel):
     is_split: Optional[bool] = None
     is_transfer: Optional[bool] = None
     is_flagged: Optional[bool] = None
+    is_grouped_expense: Optional[bool] = None
     split_breakdown: Optional[Dict[str, Any]] = None
     paid_by: Optional[str] = None
     link_parent_id: Optional[str] = None
@@ -135,6 +137,7 @@ class TransactionResponse(BaseModel):
     is_split: bool
     is_transfer: bool
     is_flagged: Optional[bool] = False
+    is_grouped_expense: Optional[bool] = False
     split_breakdown: Optional[Dict[str, Any]] = None
     paid_by: Optional[str] = None
     link_parent_id: Optional[str] = None
@@ -185,6 +188,18 @@ class LinkRefundRequest(BaseModel):
 class GroupTransferRequest(BaseModel):
     """Request model for grouping transfers."""
     transaction_ids: List[str]
+
+
+class GroupExpenseRequest(BaseModel):
+    """Request model for grouping multiple transactions into a single expense."""
+    transaction_ids: List[str] = Field(..., min_items=1)
+    description: str = Field(..., description="Description for the collapsed grouped expense")
+    category: Optional[str] = Field(None, description="Optional category override for the grouped expense")
+
+
+class UngroupExpenseRequest(BaseModel):
+    """Request model for ungrouping expense transactions."""
+    transaction_group_id: str
 
 
 class SplitTransactionPart(BaseModel):
@@ -485,6 +500,10 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
     if is_deleted is None:
         is_deleted = False
     
+    is_grouped_expense = transaction.get('is_grouped_expense')
+    if is_grouped_expense is None:
+        is_grouped_expense = False
+    
     # Convert Decimal values in split_breakdown to float for JSON serialization
     split_breakdown = transaction.get('split_breakdown')
     if split_breakdown:
@@ -531,6 +550,7 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
         is_split=is_split,
         is_transfer=bool(transaction.get('transaction_group_id')),
         is_flagged=is_flagged,
+        is_grouped_expense=is_grouped_expense,
         split_breakdown=split_breakdown,
         paid_by=transaction.get('paid_by'),
         link_parent_id=str(transaction.get('link_parent_id')) if transaction.get('link_parent_id') else None,
@@ -1848,6 +1868,243 @@ async def group_transfer(request: GroupTransferRequest):
         
     except Exception as e:
         logger.error(f"Failed to group transfer: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/group-expense", response_model=ApiResponse)
+async def group_expense(request: GroupExpenseRequest):
+    """
+    Group multiple transactions into a single collapsed expense.
+    
+    Creates a new collapsed transaction with:
+    - Net amount calculated from all grouped transactions (credits - debits)
+    - All individual transactions linked via transaction_group_id
+    - Individual transactions hidden from main view
+    - Collapsed transaction can be shared/split like any other transaction
+    """
+    try:
+        import uuid
+        from decimal import Decimal
+        
+        # Validate all transactions exist
+        transactions = []
+        for transaction_id in request.transaction_ids:
+            transaction = await handle_database_operation(
+                TransactionOperations.get_transaction_by_id,
+                transaction_id
+            )
+            if not transaction:
+                raise HTTPException(status_code=404, detail=f"Transaction {transaction_id} not found")
+            
+            # Check if transaction is already in a grouped expense (but allow transfers and splits)
+            if transaction.get('transaction_group_id') and transaction.get('is_grouped_expense'):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Transaction {transaction_id} is already a grouped expense."
+                )
+            
+            # Check if transaction is part of a group but not the collapsed one
+            if transaction.get('transaction_group_id') and not transaction.get('is_split') and not transaction.get('is_grouped_expense'):
+                # It's in a transfer group or is an individual in an expense group
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Transaction {transaction_id} is already in a group. Ungroup it first."
+                )
+            
+            transactions.append(transaction)
+        
+        if not transactions:
+            raise HTTPException(status_code=400, detail="No valid transactions to group")
+        
+        # Generate a group ID
+        transaction_group_id = str(uuid.uuid4())
+        
+        # Calculate net amount
+        # Credits are positive, debits are negative (algebraic sum)
+        net_amount = Decimal('0')
+        earliest_date = None
+        
+        for transaction in transactions:
+            # For transactions with refunds, use net_amount; otherwise use amount
+            amount = transaction.get('net_amount') or transaction.get('amount', 0)
+            
+            # For shared/split transactions, use split_share_amount if available
+            if transaction.get('is_shared') and transaction.get('split_share_amount'):
+                amount = transaction.get('split_share_amount')
+            
+            # Convert to Decimal for accurate calculation
+            amount = Decimal(str(amount))
+            
+            # Credits are positive, debits are negative
+            if transaction.get('direction') == 'credit':
+                net_amount += amount
+            else:  # debit
+                net_amount -= amount
+            
+            # Track earliest date
+            tx_date = transaction.get('transaction_date')
+            if earliest_date is None or (tx_date and tx_date < earliest_date):
+                earliest_date = tx_date
+        
+        # Determine direction based on net amount
+        # Positive net = credit, Negative net = debit
+        if net_amount >= 0:
+            direction = 'credit'
+            amount_abs = net_amount
+        else:
+            direction = 'debit'
+            amount_abs = -net_amount
+        
+        # Update all individual transactions with the group ID
+        updated_transactions = []
+        for transaction in transactions:
+            success = await handle_database_operation(
+                TransactionOperations.update_transaction,
+                str(transaction.get('id')),
+                transaction_group_id=transaction_group_id
+            )
+            if success:
+                updated_tx = await handle_database_operation(
+                    TransactionOperations.get_transaction_by_id,
+                    str(transaction.get('id'))
+                )
+                updated_transactions.append(_convert_db_transaction_to_response(updated_tx))
+        
+        # Determine category
+        category = request.category if request.category else transactions[0].get('category')
+        
+        # Determine account (use first transaction's account)
+        account = transactions[0].get('account', '')
+        
+        # Create the collapsed transaction
+        collapsed_transaction_id = await handle_database_operation(
+            TransactionOperations.create_transaction,
+            transaction_date=earliest_date,
+            amount=amount_abs,
+            direction=direction,
+            transaction_type="grouped_expense",
+            account=account,
+            category=category,
+            description=request.description,
+            transaction_time=None,
+            split_share_amount=None,
+            is_partial_refund=False,
+            is_shared=False,
+            is_split=False,
+            split_breakdown=None,
+            sub_category=None,
+            tags=[],
+            notes=f"Grouped expense containing {len(transactions)} transactions",
+            reference_number=None,
+            related_mails=[],
+            source_file=None,
+            raw_data=None,
+            link_parent_id=None,
+            transaction_group_id=transaction_group_id,
+            is_grouped_expense=True
+        )
+        
+        # Fetch the created collapsed transaction
+        collapsed_transaction = await handle_database_operation(
+            TransactionOperations.get_transaction_by_id,
+            collapsed_transaction_id
+        )
+        
+        return ApiResponse(
+            data={
+                "collapsed_transaction": _convert_db_transaction_to_response(collapsed_transaction),
+                "grouped_transactions": updated_transactions,
+                "net_amount": float(net_amount),
+                "transaction_group_id": transaction_group_id
+            },
+            message=f"Successfully grouped {len(transactions)} transactions into a single expense"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to group expense: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/ungroup-expense", response_model=ApiResponse)
+async def ungroup_expense(request: UngroupExpenseRequest):
+    """
+    Ungroup expense transactions.
+    
+    - Deletes the collapsed transaction (where is_grouped_expense = True)
+    - Removes transaction_group_id from all individual transactions
+    - Individual transactions become visible again in the main view
+    """
+    try:
+        session_factory = get_session_factory()
+        session = session_factory()
+        
+        try:
+            # Get all transactions in the group
+            result = await session.execute(
+                text("""
+                    SELECT id, is_grouped_expense
+                    FROM transactions
+                    WHERE transaction_group_id = :group_id
+                    AND is_deleted = false
+                """),
+                {"group_id": request.transaction_group_id}
+            )
+            transactions = result.fetchall()
+            
+            if not transactions:
+                raise HTTPException(status_code=404, detail="Grouped expense not found")
+            
+            # Find the collapsed transaction and individual transactions
+            collapsed_transaction_id = None
+            individual_transaction_ids = []
+            
+            for t in transactions:
+                if t.is_grouped_expense:
+                    collapsed_transaction_id = str(t.id)
+                else:
+                    individual_transaction_ids.append(str(t.id))
+            
+            # Delete the collapsed transaction if it exists
+            if collapsed_transaction_id:
+                await handle_database_operation(
+                    TransactionOperations.delete_transaction,
+                    collapsed_transaction_id
+                )
+            
+            # Remove group_id from all individual transactions
+            restored_transactions = []
+            for transaction_id in individual_transaction_ids:
+                success = await handle_database_operation(
+                    TransactionOperations.update_transaction,
+                    transaction_id,
+                    transaction_group_id=None
+                )
+                if success:
+                    restored = await handle_database_operation(
+                        TransactionOperations.get_transaction_by_id,
+                        transaction_id
+                    )
+                    restored_transactions.append(_convert_db_transaction_to_response(restored))
+            
+            return ApiResponse(
+                data={
+                    "restored_transactions": restored_transactions,
+                    "deleted_collapsed": collapsed_transaction_id is not None
+                },
+                message=f"Ungrouped expense. {len(restored_transactions)} transactions restored."
+            )
+            
+        finally:
+            await session.close()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to ungroup expense: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 

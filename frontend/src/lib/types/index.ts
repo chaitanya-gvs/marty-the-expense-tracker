@@ -16,6 +16,7 @@ export interface Transaction {
   is_split: boolean;
   is_transfer: boolean;
   is_flagged?: boolean;
+  is_grouped_expense?: boolean;
   split_breakdown?: SplitBreakdown;
   paid_by?: string;
   link_parent_id?: string | null;

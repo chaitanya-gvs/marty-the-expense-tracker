@@ -10,6 +10,7 @@ import { Transaction } from "@/lib/types";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Layers } from "lucide-react";
 
 interface TransactionDetailsDrawerProps {
     transaction: Transaction | null;
@@ -67,15 +68,45 @@ export function TransactionDetailsDrawer({
                         )}
                         <div>
                             <p className="text-sm font-medium text-slate-500">Status</p>
-                            <div className="flex gap-1 mt-1">
+                            <div className="flex gap-1 mt-1 flex-wrap">
                                 {transaction.is_flagged && <Badge variant="destructive">Flagged</Badge>}
                                 {transaction.is_shared && <Badge variant="secondary">Shared</Badge>}
                                 {transaction.is_split && <Badge variant="secondary">Split</Badge>}
+                                {transaction.is_grouped_expense && (
+                                    <Badge variant="outline" className="bg-purple-50 dark:bg-purple-950/20 border-purple-300 dark:border-purple-700">
+                                        <Layers className="h-3 w-3 mr-1" />
+                                        Grouped
+                                    </Badge>
+                                )}
                             </div>
                         </div>
                     </div>
 
                     <Separator />
+
+                    {/* Grouped Expense Info */}
+                    {transaction.is_grouped_expense && (
+                        <div className="rounded-lg bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 p-4">
+                            <div className="flex items-start gap-2">
+                                <Layers className="h-5 w-5 text-purple-600 dark:text-purple-400 flex-shrink-0 mt-0.5" />
+                                <div>
+                                    <h3 className="text-sm font-semibold text-purple-900 dark:text-purple-100 mb-1">
+                                        Grouped Expense
+                                    </h3>
+                                    <p className="text-xs text-purple-800 dark:text-purple-200">
+                                        This transaction represents multiple transactions combined into a single net amount.
+                                        The amount shown is the algebraic sum of all credits (positive) and debits (negative)
+                                        in the group.
+                                    </p>
+                                    {transaction.transaction_group_id && (
+                                        <p className="text-xs text-purple-700 dark:text-purple-300 mt-2 font-mono">
+                                            Group ID: {transaction.transaction_group_id.slice(0, 8)}...
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Notes */}
                     {transaction.notes && (

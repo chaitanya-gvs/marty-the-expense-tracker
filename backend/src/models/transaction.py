@@ -31,6 +31,10 @@ class Transaction(Base):
     is_partial_refund: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
     is_shared: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
     is_split: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
+    is_flagged: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default='false')
+    is_grouped_expense: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     split_breakdown: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     paid_by: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Who actually paid for this transaction
     account: Mapped[str] = mapped_column(Text, nullable=False)

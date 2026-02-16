@@ -295,7 +295,8 @@ class TransactionOperations:
         raw_data: Optional[Dict[str, Any]] = None,
         link_parent_id: Optional[str] = None,
         transaction_group_id: Optional[str] = None,
-        is_split: Optional[bool] = None
+        is_split: Optional[bool] = None,
+        is_grouped_expense: Optional[bool] = None
     ) -> str:
         """Create a new transaction and return its ID"""
         session_factory = get_session_factory()
@@ -312,12 +313,12 @@ class TransactionOperations:
                 text("""
                     INSERT INTO transactions (
                         transaction_date, transaction_time, amount, split_share_amount,
-                        direction, transaction_type, is_partial_refund, is_shared, is_split, split_breakdown, paid_by,
+                        direction, transaction_type, is_partial_refund, is_shared, is_split, is_grouped_expense, split_breakdown, paid_by,
                         account, category_id, sub_category, tags, description, notes, reference_number,
                         related_mails, source_file, raw_data, link_parent_id, transaction_group_id
                     ) VALUES (
                         :transaction_date, :transaction_time, :amount, :split_share_amount,
-                        :direction, :transaction_type, :is_partial_refund, :is_shared, :is_split, :split_breakdown, :paid_by,
+                        :direction, :transaction_type, :is_partial_refund, :is_shared, :is_split, :is_grouped_expense, :split_breakdown, :paid_by,
                         :account, :category_id, :sub_category, :tags, :description, :notes, :reference_number,
                         :related_mails, :source_file, :raw_data, :link_parent_id, :transaction_group_id
                     ) RETURNING id
@@ -344,7 +345,8 @@ class TransactionOperations:
                     "raw_data": raw_data,
                     "link_parent_id": link_parent_id,
                     "transaction_group_id": transaction_group_id,
-                    "is_split": is_split
+                    "is_split": is_split,
+                    "is_grouped_expense": is_grouped_expense
                 }
             )
             transaction_id = result.fetchone()[0]
@@ -415,6 +417,9 @@ class TransactionOperations:
                     LEFT JOIN tags tag ON tt.tag_id = tag.id AND tag.is_active = true
                     WHERE t.is_deleted = false
                       AND (t.link_parent_id IS NULL OR t.direction != 'credit')
+                      AND (t.transaction_group_id IS NULL 
+                           OR t.is_grouped_expense = TRUE 
+                           OR t.is_split = TRUE)
                     GROUP BY t.id, c.name
                     ORDER BY t.transaction_date {order_by}, t.created_at {order_by}
                     LIMIT :limit OFFSET :offset
@@ -491,6 +496,9 @@ class TransactionOperations:
                     WHERE t.transaction_date BETWEEN :start_date AND :end_date
                       AND t.is_deleted = false
                       AND (t.link_parent_id IS NULL OR t.direction != 'credit')
+                      AND (t.transaction_group_id IS NULL 
+                           OR t.is_grouped_expense = TRUE 
+                           OR t.is_split = TRUE)
                     GROUP BY t.id, c.name
                     ORDER BY t.transaction_date {order_by}, t.created_at {order_by}
                     LIMIT :limit OFFSET :offset
@@ -789,6 +797,9 @@ class TransactionOperations:
                     FROM transactions t
                     LEFT JOIN categories c ON t.category_id = c.id
                     WHERE t.is_deleted = false
+                      AND (t.transaction_group_id IS NULL 
+                           OR t.is_grouped_expense = TRUE 
+                           OR t.is_split = TRUE)
                       AND (
                         LOWER(t.description) LIKE :search_term
                         OR LOWER(COALESCE(t.user_description, '')) LIKE :search_term
@@ -1931,7 +1942,8 @@ class TransactionOperations:
                 "t.direction = 'debit'",  # Only consider debit transactions
                 "t.link_parent_id IS NULL",  # Exclude child transactions (refunds)
                 # Exclude parent transactions in split groups - only count the split parts (is_split = True)
-                "(t.transaction_group_id IS NULL OR t.is_split = true)"
+                # Include collapsed grouped expenses (is_grouped_expense = True)
+                "(t.transaction_group_id IS NULL OR t.is_split = true OR t.is_grouped_expense = true)"
             ]
             params = {}
             

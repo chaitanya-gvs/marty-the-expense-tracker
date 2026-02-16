@@ -48,7 +48,8 @@ import {
   RefreshCcw,
   AlertCircle,
   Trash2,
-  FileText
+  FileText,
+  Layers
 } from "lucide-react";
 import { format } from "date-fns";
 import { TransactionEditModal } from "./transaction-edit-modal";
@@ -63,6 +64,7 @@ import { TransactionDetailsDrawer } from "./transaction-details-drawer";
 import { SplitTransactionModal } from "./split-transaction-modal";
 import { LinkParentModal } from "./link-parent-modal";
 import { GroupTransferModal } from "./group-transfer-modal";
+import { GroupExpenseModal } from "./group-expense-modal";
 import { EmailLinksDrawer } from "./email-links-drawer";
 import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
 import { PdfViewer } from "./pdf-viewer";
@@ -252,6 +254,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [linkParentModalTransaction, setLinkParentModalTransaction] = useState<Transaction | null>(null);
   const [groupTransferModalTransaction, setGroupTransferModalTransaction] = useState<Transaction | null>(null);
+  const [isGroupExpenseModalOpen, setIsGroupExpenseModalOpen] = useState(false);
+  const [expandedGroupedExpenses, setExpandedGroupedExpenses] = useState<Set<string>>(new Set());
   const [emailLinksTransaction, setEmailLinksTransaction] = useState<Transaction | null>(null);
   const [isEmailLinksDrawerOpen, setIsEmailLinksDrawerOpen] = useState(false);
   const [isDeleteConfirmationOpen, setIsDeleteConfirmationOpen] = useState(false);
@@ -372,6 +376,20 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     return hasDebit && hasCredit;
   }, [selectedTransactions]);
 
+  const canBulkGroupExpense = useMemo(() => {
+    // Can group any number of transactions (1 or more)
+    if (selectedTransactions.length < 1) return false;
+    // Check if any are already in a grouped expense (but allow splits and transfers)
+    const alreadyGroupedExpense = selectedTransactions.some(t => 
+      t.transaction_group_id && !t.is_split && t.is_grouped_expense
+    );
+    // Check if any are individuals in a group (not split, not grouped_expense, but has group_id)
+    const individualsInGroup = selectedTransactions.some(t =>
+      t.transaction_group_id && !t.is_split && !t.is_grouped_expense
+    );
+    return !alreadyGroupedExpense && !individualsInGroup;
+  }, [selectedTransactions]);
+
   const canBulkUnlink = useMemo(() => {
     return selectedTransactions.some(t =>
       t.link_parent_id || t.transaction_group_id
@@ -451,6 +469,16 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       toast.error("Failed to group transfer");
       console.error("Bulk group transfer error:", error);
     }
+  };
+
+  const handleBulkGroupExpense = () => {
+    if (!canBulkGroupExpense) return;
+    setIsGroupExpenseModalOpen(true);
+  };
+
+  const handleGroupExpenseSuccess = () => {
+    setSelectedTransactionIds(new Set());
+    setIsGroupExpenseModalOpen(false);
   };
 
   const handleBulkUnlink = async () => {
@@ -2033,6 +2061,17 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={handleBulkGroupExpense}
+                  className="flex items-center gap-2"
+                  disabled={!canBulkGroupExpense}
+                  title={canBulkGroupExpense ? "Group as expense" : "Cannot group transactions already in a grouped expense"}
+                >
+                  <Layers className="h-4 w-4" />
+                  Group expense
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={handleBulkSwapDirection}
                   className="flex items-center gap-2"
                   disabled={selectedTransactionIds.size === 0}
@@ -2384,6 +2423,14 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           }}
         />
       )}
+
+      {/* Group Expense Modal */}
+      <GroupExpenseModal
+        selectedTransactions={selectedTransactions}
+        isOpen={isGroupExpenseModalOpen}
+        onClose={() => setIsGroupExpenseModalOpen(false)}
+        onGroupSuccess={handleGroupExpenseSuccess}
+      />
 
       {/* Related Transactions Drawer - Rendered at table level to persist across re-renders */}
       {drawerTransaction && (

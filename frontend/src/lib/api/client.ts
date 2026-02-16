@@ -253,6 +253,46 @@ class ApiClient {
     );
   }
 
+  async groupExpense(
+    transactionIds: string[],
+    description: string,
+    category?: string
+  ): Promise<ApiResponse<{
+    collapsed_transaction: Transaction;
+    grouped_transactions: Transaction[];
+    net_amount: number;
+    transaction_group_id: string;
+  }>> {
+    return this.request<{
+      collapsed_transaction: Transaction;
+      grouped_transactions: Transaction[];
+      net_amount: number;
+      transaction_group_id: string;
+    }>("/transactions/group-expense", {
+      method: "POST",
+      body: JSON.stringify({
+        transaction_ids: transactionIds,
+        description,
+        category,
+      }),
+    });
+  }
+
+  async ungroupExpense(
+    transactionGroupId: string
+  ): Promise<ApiResponse<{
+    restored_transactions: Transaction[];
+    deleted_collapsed: boolean;
+  }>> {
+    return this.request<{
+      restored_transactions: Transaction[];
+      deleted_collapsed: boolean;
+    }>("/transactions/ungroup-expense", {
+      method: "POST",
+      body: JSON.stringify({ transaction_group_id: transactionGroupId }),
+    });
+  }
+
   async bulkUpdateTransactions(
     transactionIds: string[],
     updates: Partial<Transaction>
