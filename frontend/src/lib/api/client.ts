@@ -139,10 +139,6 @@ class ApiClient {
     }>(`/transactions/${id}/related`);
   }
 
-  async getParentTransaction(id: string): Promise<ApiResponse<Transaction>> {
-    return this.request<Transaction>(`/transactions/${id}/parent`);
-  }
-
   async getChildTransactions(id: string): Promise<ApiResponse<Transaction[]>> {
     return this.request<Transaction[]>(`/transactions/${id}/children`);
   }
@@ -194,16 +190,6 @@ class ApiClient {
         split_share_amount: null,
         is_shared: false
       }),
-    });
-  }
-
-  async linkRefund(
-    childId: string,
-    parentId: string
-  ): Promise<ApiResponse<Transaction>> {
-    return this.request<Transaction>("/transactions/link-refund", {
-      method: "POST",
-      body: JSON.stringify({ child_id: childId, parent_id: parentId }),
     });
   }
 
