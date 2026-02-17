@@ -170,13 +170,6 @@ async def _get_settlement_transactions(
             id, transaction_date, 
             COALESCE(user_description, description) as description,
             amount, split_share_amount,
-            (amount - COALESCE((
-                SELECT SUM(child.amount)
-                FROM transactions child
-                WHERE child.link_parent_id = transactions.id
-                  AND child.direction = 'credit'
-                  AND child.is_deleted = false
-            ), 0)) as net_amount,
             split_breakdown, paid_by, account, direction, transaction_type
         FROM transactions 
         WHERE is_shared = true 
@@ -214,7 +207,6 @@ async def _get_settlement_transactions(
             "date": row.transaction_date.isoformat(),
             "description": row.description,
             "amount": float(row.amount),
-            "net_amount": float(row.net_amount) if hasattr(row, 'net_amount') and row.net_amount is not None else float(row.amount),
             "split_share_amount": float(row.split_share_amount) if row.split_share_amount else 0.0,
             "split_breakdown": row.split_breakdown if row.split_breakdown else {},
             "paid_by": row.paid_by,  # Who actually paid for this transaction
@@ -246,7 +238,7 @@ def _calculate_settlements(transactions: List[Dict[str, Any]]) -> SettlementSumm
         if not split_breakdown:
             continue
         
-        total_amount = transaction.get("net_amount", transaction["amount"])
+        total_amount = transaction["amount"]
         # Get normalized participants (excludes current user)
         participants = _get_participants_from_split_breakdown(split_breakdown, normalize=True)
         
@@ -382,7 +374,7 @@ async def get_participant_settlement(
             if not split_breakdown:
                 continue
             
-            total_amount = transaction.get("net_amount", transaction["amount"])
+            total_amount = transaction["amount"]
             # Normalize participant name for comparison
             normalized_participant = _normalize_participant_name(participant)
             participant_share = _calculate_participant_share(split_breakdown, normalized_participant, total_amount)
