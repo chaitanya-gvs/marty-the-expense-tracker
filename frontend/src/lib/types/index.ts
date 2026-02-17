@@ -7,7 +7,6 @@ export interface Transaction {
   subcategory?: string;
   direction: "debit" | "credit";
   amount: number;
-  net_amount?: number;
   split_share_amount: number;
   tags: string[];
   notes?: string;
@@ -19,7 +18,6 @@ export interface Transaction {
   is_grouped_expense?: boolean;
   split_breakdown?: SplitBreakdown;
   paid_by?: string;
-  link_parent_id?: string | null;
   transaction_group_id?: string | null;
   related_mails?: string[]; // Array of Gmail message IDs
   source_file?: string;
@@ -166,12 +164,6 @@ export interface TransactionFilters {
    * When undefined, all transactions are shown.
    */
   is_split?: boolean;
-  /**
-   * Show linked refund transactions (credit transactions with link_parent_id).
-   * When set to true, linked refunds are shown in the table.
-   * When set to false or undefined, linked refunds are hidden (default behavior).
-   */
-  show_linked_refunds?: boolean;
 }
 
 export interface TransactionSort {
