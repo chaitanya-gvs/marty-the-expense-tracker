@@ -498,8 +498,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       // Expand - fetch members if not already fetched
       if (!groupMembers.has(groupId)) {
         try {
-          const response = await apiClient.getRelatedTransactions(transaction.id);
-          const members = response.data?.group_members || [];
+          const response = await apiClient.getGroupTransactions(transaction.id);
+          const members = response.data || [];
           setGroupMembers(new Map(groupMembers).set(groupId, members));
         } catch (error) {
           toast.error("Failed to fetch group members");

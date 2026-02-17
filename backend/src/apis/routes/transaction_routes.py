@@ -1492,7 +1492,7 @@ async def get_group_transactions(transaction_id: str):
         # If this is a grouped expense, filter to only return individual transactions (not the collapsed one)
         if transaction.get('is_grouped_expense'):
             response_transactions = [t for t in response_transactions if not t.is_grouped_expense]
-            return ApiResponse(data={"group_members": response_transactions})
+            return ApiResponse(data=response_transactions)
         
         return ApiResponse(data=response_transactions)
         
@@ -2062,7 +2062,11 @@ async def ungroup_expense(request: UngroupExpenseRequest):
             transactions = result.fetchall()
             
             if not transactions:
-                raise HTTPException(status_code=404, detail="Grouped expense not found")
+                # Make this idempotent: if already ungrouped (or never existed), don't error.
+                return ApiResponse(
+                    data={"restored_transactions": [], "deleted_collapsed": False},
+                    message="Grouped expense already ungrouped"
+                )
             
             # Find the collapsed transaction and individual transactions
             collapsed_transaction_id = None
