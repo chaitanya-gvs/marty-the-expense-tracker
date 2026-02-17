@@ -270,7 +270,29 @@ class TransactionOperations:
     def _process_transactions(transactions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Process a list of transactions to use user_description if available"""
         return [TransactionOperations._process_transaction_description(t) for t in transactions]
-    
+
+    @staticmethod
+    def _deduplicate_grouped_expense_collapsed(transactions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Ensure at most one collapsed row per transaction_group_id (fixes duplicate display from migration)."""
+        # For each group_id, keep only the collapsed row with the smallest id (original)
+        group_collapsed: Dict[Any, str] = {}  # group_id -> id to keep
+        for t in transactions:
+            if t.get("is_grouped_expense") is not True:
+                continue
+            group_id = t.get("transaction_group_id")
+            if not group_id:
+                continue
+            t_id = str(t.get("id", ""))
+            if group_id not in group_collapsed or t_id < group_collapsed[group_id]:
+                group_collapsed[group_id] = t_id
+        keep_ids = set(group_collapsed.values()) if group_collapsed else set()
+        # Include non-collapsed rows; for collapsed, include only the one we're keeping per group
+        return [
+            t for t in transactions
+            if not (t.get("transaction_group_id") and t.get("is_grouped_expense") is True)
+            or str(t.get("id", "")) in keep_ids
+        ]
+
     @staticmethod
     async def create_transaction(
         transaction_date: date,
@@ -282,7 +304,6 @@ class TransactionOperations:
         description: str,
         transaction_time: Optional[time] = None,
         split_share_amount: Optional[Decimal] = None,
-        is_partial_refund: bool = False,
         is_shared: bool = False,
         split_breakdown: Optional[Dict[str, Any]] = None,
         paid_by: Optional[str] = None,
@@ -293,7 +314,6 @@ class TransactionOperations:
         related_mails: Optional[List[str]] = None,
         source_file: Optional[str] = None,
         raw_data: Optional[Dict[str, Any]] = None,
-        link_parent_id: Optional[str] = None,
         transaction_group_id: Optional[str] = None,
         is_split: Optional[bool] = None,
         is_grouped_expense: Optional[bool] = None
@@ -313,14 +333,14 @@ class TransactionOperations:
                 text("""
                     INSERT INTO transactions (
                         transaction_date, transaction_time, amount, split_share_amount,
-                        direction, transaction_type, is_partial_refund, is_shared, is_split, is_grouped_expense, split_breakdown, paid_by,
+                        direction, transaction_type, is_shared, is_split, is_grouped_expense, split_breakdown, paid_by,
                         account, category_id, sub_category, tags, description, notes, reference_number,
-                        related_mails, source_file, raw_data, link_parent_id, transaction_group_id
+                        related_mails, source_file, raw_data, transaction_group_id
                     ) VALUES (
                         :transaction_date, :transaction_time, :amount, :split_share_amount,
-                        :direction, :transaction_type, :is_partial_refund, :is_shared, :is_split, :is_grouped_expense, :split_breakdown, :paid_by,
+                        :direction, :transaction_type, :is_shared, :is_split, :is_grouped_expense, :split_breakdown, :paid_by,
                         :account, :category_id, :sub_category, :tags, :description, :notes, :reference_number,
-                        :related_mails, :source_file, :raw_data, :link_parent_id, :transaction_group_id
+                        :related_mails, :source_file, :raw_data, :transaction_group_id
                     ) RETURNING id
                 """), {
                     "transaction_date": transaction_date,
@@ -329,7 +349,6 @@ class TransactionOperations:
                     "split_share_amount": split_share_amount,
                     "direction": direction,
                     "transaction_type": transaction_type,
-                    "is_partial_refund": is_partial_refund,
                     "is_shared": is_shared,
                     "split_breakdown": json.dumps(split_breakdown) if split_breakdown else None,
                     "paid_by": paid_by,
@@ -343,7 +362,6 @@ class TransactionOperations:
                     "related_mails": related_mails,
                     "source_file": source_file,
                     "raw_data": raw_data,
-                    "link_parent_id": link_parent_id,
                     "transaction_group_id": transaction_group_id,
                     "is_split": is_split,
                     "is_grouped_expense": is_grouped_expense
@@ -364,14 +382,7 @@ class TransactionOperations:
             result = await session.execute(
                 text("""
                     SELECT t.*, 
-                           c.name as category,
-                           (t.amount - COALESCE((
-                               SELECT SUM(child.amount)
-                               FROM transactions child
-                               WHERE child.link_parent_id = t.id
-                                 AND child.direction = 'credit'
-                                 AND child.is_deleted = false
-                           ), 0)) as net_amount
+                           c.name as category
                     FROM transactions t
                     LEFT JOIN categories c ON t.category_id = c.id
                     WHERE t.id = :transaction_id
@@ -400,13 +411,6 @@ class TransactionOperations:
                 text(f"""
                     SELECT t.*, 
                            c.name as category,
-                           (t.amount - COALESCE((
-                               SELECT SUM(child.amount)
-                               FROM transactions child
-                               WHERE child.link_parent_id = t.id
-                                 AND child.direction = 'credit'
-                                 AND child.is_deleted = false
-                           ), 0)) as net_amount,
                            COALESCE(
                                STRING_AGG(tag.name, ',' ORDER BY tag.name), 
                                ''
@@ -416,10 +420,18 @@ class TransactionOperations:
                     LEFT JOIN transaction_tags tt ON t.id = tt.transaction_id
                     LEFT JOIN tags tag ON tt.tag_id = tag.id AND tag.is_active = true
                     WHERE t.is_deleted = false
-                      AND (t.link_parent_id IS NULL OR t.direction != 'credit')
                       AND (t.transaction_group_id IS NULL 
                            OR t.is_grouped_expense = TRUE 
-                           OR t.is_split = TRUE)
+                           OR t.is_split = TRUE
+                           OR (t.transaction_group_id IS NOT NULL 
+                               AND COALESCE(t.is_grouped_expense, false) = false 
+                               AND COALESCE(t.is_split, false) = false
+                               AND NOT EXISTS (
+                                 SELECT 1 FROM transactions t2
+                                 WHERE t2.transaction_group_id = t.transaction_group_id
+                                   AND t2.is_grouped_expense = true
+                                   AND t2.is_deleted = false
+                               )))
                     GROUP BY t.id, c.name
                     ORDER BY t.transaction_date {order_by}, t.created_at {order_by}
                     LIMIT :limit OFFSET :offset
@@ -438,7 +450,8 @@ class TransactionOperations:
                 else:
                     transaction_dict['tags'] = []
                 transactions.append(transaction_dict)
-            return TransactionOperations._process_transactions(transactions)
+            processed = TransactionOperations._process_transactions(transactions)
+            return TransactionOperations._deduplicate_grouped_expense_collapsed(processed)
         finally:
             await session.close()
     
@@ -478,13 +491,6 @@ class TransactionOperations:
                 text(f"""
                     SELECT t.*, 
                            c.name as category,
-                           (t.amount - COALESCE((
-                               SELECT SUM(child.amount)
-                               FROM transactions child
-                               WHERE child.link_parent_id = t.id
-                                 AND child.direction = 'credit'
-                                 AND child.is_deleted = false
-                           ), 0)) as net_amount,
                            COALESCE(
                                STRING_AGG(tag.name, ',' ORDER BY tag.name), 
                                ''
@@ -495,10 +501,18 @@ class TransactionOperations:
                     LEFT JOIN tags tag ON tt.tag_id = tag.id AND tag.is_active = true
                     WHERE t.transaction_date BETWEEN :start_date AND :end_date
                       AND t.is_deleted = false
-                      AND (t.link_parent_id IS NULL OR t.direction != 'credit')
                       AND (t.transaction_group_id IS NULL 
                            OR t.is_grouped_expense = TRUE 
-                           OR t.is_split = TRUE)
+                           OR t.is_split = TRUE
+                           OR (t.transaction_group_id IS NOT NULL 
+                               AND COALESCE(t.is_grouped_expense, false) = false 
+                               AND COALESCE(t.is_split, false) = false
+                               AND NOT EXISTS (
+                                 SELECT 1 FROM transactions t2
+                                 WHERE t2.transaction_group_id = t.transaction_group_id
+                                   AND t2.is_grouped_expense = true
+                                   AND t2.is_deleted = false
+                               )))
                     GROUP BY t.id, c.name
                     ORDER BY t.transaction_date {order_by}, t.created_at {order_by}
                     LIMIT :limit OFFSET :offset
@@ -519,7 +533,8 @@ class TransactionOperations:
                 else:
                     transaction_dict['tags'] = []
                 transactions.append(transaction_dict)
-            return TransactionOperations._process_transactions(transactions)
+            processed = TransactionOperations._process_transactions(transactions)
+            return TransactionOperations._deduplicate_grouped_expense_collapsed(processed)
         finally:
             await session.close()
     
@@ -653,44 +668,6 @@ class TransactionOperations:
             await session.close()
     
     @staticmethod
-    async def get_child_transactions(parent_id: str) -> List[Dict[str, Any]]:
-        """Get all child transactions (refunds/adjustments) for a parent transaction"""
-        session_factory = get_session_factory()
-        session = session_factory()
-        try:
-            result = await session.execute(
-                text("""
-                    SELECT t.*, 
-                           c.name as category,
-                           COALESCE(
-                               STRING_AGG(tag.name, ',' ORDER BY tag.name), 
-                               ''
-                           ) as tags
-                    FROM transactions t
-                    LEFT JOIN categories c ON t.category_id = c.id
-                    LEFT JOIN transaction_tags tt ON t.id = tt.transaction_id
-                    LEFT JOIN tags tag ON tt.tag_id = tag.id AND tag.is_active = true
-                    WHERE t.link_parent_id = :parent_id
-                      AND t.is_deleted = false
-                    GROUP BY t.id, c.name
-                    ORDER BY t.created_at
-                """), {"parent_id": parent_id}
-            )
-            rows = result.fetchall()
-            transactions = []
-            for row in rows:
-                transaction_dict = dict(row._mapping)
-                # Convert tags string to array
-                if transaction_dict.get('tags'):
-                    transaction_dict['tags'] = transaction_dict['tags'].split(',')
-                else:
-                    transaction_dict['tags'] = []
-                transactions.append(transaction_dict)
-            return TransactionOperations._process_transactions(transactions)
-        finally:
-            await session.close()
-    
-    @staticmethod
     async def update_transaction(
         transaction_id: str,
         **updates: Any
@@ -730,10 +707,10 @@ class TransactionOperations:
             for field, value in updates.items():
                 if field in [
                     'transaction_date', 'transaction_time', 'amount', 'split_share_amount',
-                    'direction', 'transaction_type', 'is_partial_refund', 'is_shared', 'is_flagged', 'split_breakdown',
+                    'direction', 'transaction_type', 'is_shared', 'is_flagged', 'split_breakdown',
                     'account', 'category_id', 'sub_category', 'tags', 'user_description', 'notes', 
                     'reference_number', 'related_mails', 'source_file', 'raw_data',
-                    'link_parent_id', 'transaction_group_id', 'is_deleted', 'deleted_at'
+                    'transaction_group_id', 'is_deleted', 'deleted_at'
                 ]:
                     set_clauses.append(f"{field} = :{field}")
                     # Handle JSON fields that need to be encoded
@@ -799,7 +776,16 @@ class TransactionOperations:
                     WHERE t.is_deleted = false
                       AND (t.transaction_group_id IS NULL 
                            OR t.is_grouped_expense = TRUE 
-                           OR t.is_split = TRUE)
+                           OR t.is_split = TRUE
+                           OR (t.transaction_group_id IS NOT NULL 
+                               AND COALESCE(t.is_grouped_expense, false) = false 
+                               AND COALESCE(t.is_split, false) = false
+                               AND NOT EXISTS (
+                                 SELECT 1 FROM transactions t2
+                                 WHERE t2.transaction_group_id = t.transaction_group_id
+                                   AND t2.is_grouped_expense = true
+                                   AND t2.is_deleted = false
+                               )))
                       AND (
                         LOWER(t.description) LIKE :search_term
                         OR LOWER(COALESCE(t.user_description, '')) LIKE :search_term
@@ -816,7 +802,8 @@ class TransactionOperations:
             )
             rows = result.fetchall()
             transactions = [dict(row._mapping) for row in rows]
-            return TransactionOperations._process_transactions(transactions)
+            processed = TransactionOperations._process_transactions(transactions)
+            return TransactionOperations._deduplicate_grouped_expense_collapsed(processed)
         finally:
             await session.close()
             
@@ -1121,14 +1108,14 @@ class TransactionOperations:
             insert_query = text("""
                 INSERT INTO transactions (
                     transaction_date, transaction_time, amount, split_share_amount,
-                    direction, transaction_type, is_partial_refund, is_shared, split_breakdown,
+                    direction, transaction_type, is_shared, split_breakdown,
                     account, sub_category, tags, description, notes, reference_number,
-                    related_mails, source_file, raw_data, link_parent_id, transaction_group_id
+                    related_mails, source_file, raw_data, transaction_group_id
                 ) VALUES (
                     :transaction_date, :transaction_time, :amount, :split_share_amount,
-                    :direction, :transaction_type, :is_partial_refund, :is_shared, :split_breakdown,
+                    :direction, :transaction_type, :is_shared, :split_breakdown,
                     :account, :sub_category, :tags, :description, :notes, :reference_number,
-                    :related_mails, :source_file, :raw_data, :link_parent_id, :transaction_group_id
+                    :related_mails, :source_file, :raw_data, :transaction_group_id
                 )
             """)
             
@@ -1878,7 +1865,6 @@ class TransactionOperations:
             "split_share_amount": Decimal(str(my_share)) if (is_shared and my_share) else None,  # My share of the split
             "direction": transaction.get('transaction_type', 'debit'),  # Map transaction_type to direction (debit/credit)
             "transaction_type": "purchase",  # Default to purchase for Splitwise transactions
-            "is_partial_refund": False,
             "is_shared": is_shared,
             "split_breakdown": split_breakdown,
             "paid_by": paid_by,  # Who actually paid for this transaction
@@ -1891,7 +1877,6 @@ class TransactionOperations:
             "related_mails": [],
             "source_file": transaction.get('source_file', ''),
             "raw_data": TransactionOperations._prepare_raw_data_for_json(transaction.get('raw_data')),
-            "link_parent_id": None,
             "transaction_group_id": None
         }
 
@@ -1913,10 +1898,8 @@ class TransactionOperations:
         Get expense analytics aggregated by various dimensions.
         
         Important: Only considers debit transactions. Excludes:
-        - Child transactions (transactions with link_parent_id)
+        - Individual transactions in groups (only collapsed transactions counted)
         - Split transactions (uses split_share_amount to avoid double counting)
-        - Categories like 'Credit Card Payment', 'Self Transfer', 'Transfer'
-        - For parent transactions with refunds, calculates net amount (parent - refunds)
         
         Args:
             start_date: Start date for filtering
@@ -1940,24 +1923,14 @@ class TransactionOperations:
             where_conditions = [
                 "t.is_deleted = false",
                 "t.direction = 'debit'",  # Only consider debit transactions
-                "t.link_parent_id IS NULL",  # Exclude child transactions (refunds)
                 # Exclude parent transactions in split groups - only count the split parts (is_split = True)
                 # Include collapsed grouped expenses (is_grouped_expense = True)
                 "(t.transaction_group_id IS NULL OR t.is_split = true OR t.is_grouped_expense = true)"
             ]
             params = {}
             
-            # Default exclude categories that shouldn't be counted as expenses
-            default_exclude_categories = [
-                "Credit Card Payment",
-                "Self Transfer",
-                "Transfer",
-                "Card Payment",
-                "Account Transfer"
-            ]
-            
-            # Combine user exclude_categories with default excludes
-            all_exclude_categories = set(default_exclude_categories)
+            # Use user-provided exclude_categories
+            all_exclude_categories = set()
             if exclude_categories:
                 all_exclude_categories.update(exclude_categories)
             
@@ -1983,19 +1956,9 @@ class TransactionOperations:
             where_clause = " AND ".join(where_conditions)
             
             # Build GROUP BY and SELECT based on group_by parameter
-            # Calculate net amount: transaction amount minus refunds (children)
             # For split transactions, use split_share_amount; otherwise use amount
-            # Net amount = COALESCE(split_share_amount, amount) - COALESCE((sum of refund children), 0)
-            # This ensures we don't count split transactions twice and account for refunds
-            net_amount_expr = """
-                COALESCE(t.split_share_amount, t.amount) - COALESCE((
-                    SELECT SUM(child.amount)
-                    FROM transactions child
-                    WHERE child.link_parent_id = t.id
-                      AND child.direction = 'credit'
-                      AND child.is_deleted = false
-                ), 0)
-            """
+            # This ensures we don't count split transactions twice
+            net_amount_expr = "COALESCE(t.split_share_amount, t.amount)"
             
             join_tags = ""
             if group_by == "category":
