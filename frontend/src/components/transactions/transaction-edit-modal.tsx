@@ -31,7 +31,6 @@ import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
 import { CategorySelector } from "./category-selector";
 import { MultiTagSelector } from "./multi-tag-selector";
-import { RefundAdjustmentSection } from "./refund-adjustment-section";
 import { TransferGroupSection } from "./transfer-group-section";
 import { FieldAutocomplete } from "./field-autocomplete";
 
@@ -339,46 +338,6 @@ export function TransactionEditModal({
           </Card>
 
           {/* Refunds & Adjustments */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">Refunds & Adjustments</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 pt-0">
-              <RefundAdjustmentSection
-                transaction={transaction}
-                allTransactions={[]} // This would need to be passed from parent
-                onLinkRefund={async (childId: string, parentId: string) => {
-                  try {
-                    await updateTransaction.mutateAsync({
-                      id: childId,
-                      updates: {
-                        link_parent_id: parentId,
-                        is_refund: true,
-                      },
-                    });
-                    toast.success("Refund linked successfully");
-                  } catch (error) {
-                    toast.error("Failed to link refund");
-                  }
-                }}
-                onUnlinkRefund={async (childId: string) => {
-                  try {
-                    await updateTransaction.mutateAsync({
-                      id: childId,
-                      updates: {
-                        link_parent_id: undefined,
-                        is_refund: false,
-                      },
-                    });
-                    toast.success("Refund unlinked successfully");
-                  } catch (error) {
-                    toast.error("Failed to unlink refund");
-                  }
-                }}
-              />
-            </CardContent>
-          </Card>
-
           {/* Transfer Group */}
           <Card>
             <CardHeader className="pb-3">

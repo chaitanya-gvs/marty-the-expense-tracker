@@ -27,6 +27,7 @@ interface CategoryAutocompleteProps {
   placeholder?: string;
   className?: string;
   transactionDirection?: "debit" | "credit"; // Transaction direction to filter categories
+  autoFocus?: boolean;
 }
 
 export function CategoryAutocomplete({
@@ -37,6 +38,7 @@ export function CategoryAutocomplete({
   placeholder = "Type category...",
   className,
   transactionDirection,
+  autoFocus = true,
 }: CategoryAutocompleteProps) {
   // console.log("CategoryAutocomplete rendered with value:", value);
   const [inputValue, setInputValue] = useState(value);
@@ -94,9 +96,8 @@ export function CategoryAutocomplete({
     }
   }, [value]);
 
-  useEffect(() => {
-    setShowSuggestions(true);
-  }, [inputValue]);
+  // Only show suggestions on user interaction (focus/click/type), not when value is set from parent (e.g. modal open)
+  // Removed: useEffect that set showSuggestions(true) on every inputValue change — it caused dropdown to open when modal opened
 
   // Debug: Log when categories change
   // useEffect(() => {
@@ -108,6 +109,7 @@ export function CategoryAutocomplete({
     setInputValue(newValue);
     onValueChange(newValue);
     setHoveredIndex(-1);
+    setShowSuggestions(true);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -336,7 +338,7 @@ export function CategoryAutocomplete({
           onBlur={handleBlur}
           placeholder={placeholder}
           className={cn("flex-1 h-8 text-xs", className)}
-          autoFocus
+          autoFocus={autoFocus}
         />
         
         {/* Hover actions */}

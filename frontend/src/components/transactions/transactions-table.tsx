@@ -12,6 +12,7 @@ import {
   ColumnDef,
   Row,
 } from "@tanstack/react-table";
+import { useQueryClient } from "@tanstack/react-query";
 // Using native HTML table elements for better sticky header support
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -63,7 +64,6 @@ import { BulkEditModal } from "./bulk-edit-modal";
 import { RelatedTransactionsDrawer } from "./related-transactions-drawer";
 import { TransactionDetailsDrawer } from "./transaction-details-drawer";
 import { SplitTransactionModal } from "./split-transaction-modal";
-import { LinkParentModal } from "./link-parent-modal";
 import { GroupTransferModal } from "./group-transfer-modal";
 import { GroupExpenseModal } from "./group-expense-modal";
 import { EmailLinksDrawer } from "./email-links-drawer";
@@ -125,16 +125,8 @@ function RelatedTransactionsDrawerWithFetch({
   onUngroup: () => void;
   onRemoveFromGroup: (transactionId: string) => void;
 }) {
-  const [fetchedParent, setFetchedParent] = useState<Transaction | undefined>(undefined);
-  const [fetchedChildren, setFetchedChildren] = useState<Transaction[]>([]);
   const [fetchedGroup, setFetchedGroup] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-
-  // Find parent transaction in loaded data
-  const parentInLoaded = transaction.link_parent_id
-    ? (allTransactions.find(t => t.id === transaction.link_parent_id) ||
-      allTransactionsUnfiltered.find(t => t.id === transaction.link_parent_id))
-    : undefined;
 
   // Find group in loaded data
   const groupInLoaded = transaction.transaction_group_id
@@ -144,9 +136,6 @@ function RelatedTransactionsDrawerWithFetch({
   // Fetch missing related transactions when drawer opens
   useEffect(() => {
     if (!isOpen) {
-      // Reset when drawer closes
-      setFetchedParent(undefined);
-      setFetchedChildren([]);
       setFetchedGroup([]);
       return;
     }
@@ -154,71 +143,37 @@ function RelatedTransactionsDrawerWithFetch({
     const fetchRelatedTransactions = async () => {
       setIsLoading(true);
       try {
-        // Use the combined endpoint to get all related transactions at once
-        try {
-          const relatedResponse = await apiClient.getRelatedTransactions(transaction.id);
-          if (relatedResponse.data) {
-            // Set parent if it exists and wasn't in loaded data
-            if (relatedResponse.data.parent && !parentInLoaded) {
-              setFetchedParent(relatedResponse.data.parent);
+        const relatedResponse = await apiClient.getRelatedTransactions(transaction.id);
+        if (relatedResponse.data?.group && relatedResponse.data.group.length > 0) {
+          setFetchedGroup(relatedResponse.data.group);
+        } else if (transaction.transaction_group_id) {
+          try {
+            const groupResponse = await apiClient.getGroupTransactions(transaction.id);
+            if (groupResponse.data && groupResponse.data.length > 0) {
+              setFetchedGroup(groupResponse.data);
             }
-
-            // Set children if they exist (for debit transactions with refunds)
-            if (relatedResponse.data.children && relatedResponse.data.children.length > 0) {
-              setFetchedChildren(relatedResponse.data.children);
-            }
-
-            // Set group members if they exist and weren't in loaded data
-            if (relatedResponse.data.group && relatedResponse.data.group.length > groupInLoaded.length) {
-              setFetchedGroup(relatedResponse.data.group);
-            }
-          }
-        } catch (error) {
-          console.error("Failed to fetch related transactions:", error);
-          // Fallback: try individual endpoints if combined endpoint fails
-
-          // Fetch parent if missing
-          if (transaction.link_parent_id && !parentInLoaded) {
-            try {
-              const parentResponse = await apiClient.getParentTransaction(transaction.id);
-              if (parentResponse.data) {
-                setFetchedParent(parentResponse.data);
-              }
-            } catch (parentError) {
-              console.error("Failed to fetch parent transaction:", parentError);
-            }
-          }
-
-          // Fetch group members if missing
-          if (transaction.transaction_group_id && groupInLoaded.length <= 1) {
-            try {
-              const groupResponse = await apiClient.getGroupTransactions(transaction.id);
-              if (groupResponse.data && groupResponse.data.length > groupInLoaded.length) {
-                setFetchedGroup(groupResponse.data);
-              }
-            } catch (groupError) {
-              console.error("Failed to fetch group transactions:", groupError);
-            }
+          } catch (groupError) {
+            console.error("Failed to fetch group transactions:", groupError);
           }
         }
+      } catch (error) {
+        console.error("Failed to fetch related transactions:", error);
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchRelatedTransactions();
-  }, [isOpen, transaction.id, transaction.link_parent_id, transaction.transaction_group_id, parentInLoaded, groupInLoaded]);
+  }, [isOpen, transaction.id, transaction.transaction_group_id, groupInLoaded.length]);
 
-  // Use fetched data if available, otherwise use loaded data
-  const parentTransaction = parentInLoaded || fetchedParent;
-  const childTransactions = fetchedChildren;
-  const transferGroup = groupInLoaded.length > 0 ? groupInLoaded : fetchedGroup;
+  // Prefer fetched group (from API) so split parent and all members are included; fall back to loaded only when fetch hasn't returned yet
+  const transferGroup = fetchedGroup.length > 0 ? fetchedGroup : groupInLoaded;
 
   return (
     <RelatedTransactionsDrawer
       transaction={transaction}
-      parentTransaction={parentTransaction}
-      childTransactions={childTransactions}
+      parentTransaction={undefined}
+      childTransactions={[]}
       transferGroup={transferGroup}
       isOpen={isOpen}
       onClose={onClose}
@@ -253,7 +208,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const [highlightedTransactionIds, setHighlightedTransactionIds] = useState<Set<string>>(new Set());
   const [drawerTransaction, setDrawerTransaction] = useState<Transaction | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [linkParentModalTransaction, setLinkParentModalTransaction] = useState<Transaction | null>(null);
   const [groupTransferModalTransaction, setGroupTransferModalTransaction] = useState<Transaction | null>(null);
   const [isGroupExpenseModalOpen, setIsGroupExpenseModalOpen] = useState(false);
   const [expandedGroupedExpenses, setExpandedGroupedExpenses] = useState<Set<string>>(new Set());
@@ -279,6 +233,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
 
+  const queryClient = useQueryClient();
   const updateTransactionSplit = useUpdateTransactionSplit();
   const clearTransactionSplit = useClearTransactionSplit();
   const updateTransaction = useUpdateTransaction();
@@ -312,12 +267,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   // Transfer groups should NOT be excluded (they all have is_split=false but no split children)
   const allTransactions = useMemo(() => {
     return allTransactionsUnfiltered.filter(t => {
-      // Filter out linked credit transactions (refunds) - they should only appear in the refund sidebar
-      // This hides credit transactions that are linked as refunds to a parent debit transaction
-      if (t.link_parent_id && t.direction === 'credit') {
-        return false;
-      }
-
       // Only exclude if this is a split parent (has transaction_group_id, is_split=false, AND has split children)
       if (t.transaction_group_id && t.is_split === false) {
         // Check if there are any split children in the same group
@@ -364,12 +313,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   };
 
   // Enhanced bulk action logic
-  const canBulkLinkRefund = useMemo(() => {
-    if (selectedTransactions.length !== 2) return false;
-    const directions = selectedTransactions.map(t => t.direction);
-    return directions.includes("debit") && directions.includes("credit");
-  }, [selectedTransactions]);
-
   const canBulkGroupTransfer = useMemo(() => {
     if (selectedTransactions.length < 2) return false;
     const directions = selectedTransactions.map(t => t.direction);
@@ -381,21 +324,16 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const canBulkGroupExpense = useMemo(() => {
     // Can group any number of transactions (1 or more)
     if (selectedTransactions.length < 1) return false;
-    // Check if any are already in a grouped expense (but allow splits and transfers)
-    const alreadyGroupedExpense = selectedTransactions.some(t => 
+    // Disable only if one of the selected rows is the collapsed grouped-expense row (the summary).
+    // Individuals in a group (including orphaned groups with no collapsed row) are allowed — backend will assign a new group.
+    const hasCollapsedGroupRow = selectedTransactions.some(t =>
       t.transaction_group_id && !t.is_split && t.is_grouped_expense
     );
-    // Check if any are individuals in a group (not split, not grouped_expense, but has group_id)
-    const individualsInGroup = selectedTransactions.some(t =>
-      t.transaction_group_id && !t.is_split && !t.is_grouped_expense
-    );
-    return !alreadyGroupedExpense && !individualsInGroup;
+    return !hasCollapsedGroupRow;
   }, [selectedTransactions]);
 
   const canBulkUnlink = useMemo(() => {
-    return selectedTransactions.some(t =>
-      t.link_parent_id || t.transaction_group_id
-    );
+    return selectedTransactions.some(t => t.transaction_group_id);
   }, [selectedTransactions]);
 
   // Selection summary for enhanced toolbar
@@ -420,34 +358,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const handleClearHighlight = useCallback(() => {
     setHighlightedTransactionIds(new Set());
   }, []);
-
-  const handleBulkLinkRefund = async () => {
-    if (!canBulkLinkRefund) return;
-
-    const debitTransaction = selectedTransactions.find(t => t.direction === "debit");
-    const creditTransaction = selectedTransactions.find(t => t.direction === "credit");
-
-    if (!debitTransaction || !creditTransaction) return;
-
-    try {
-      await apiClient.linkRefund(creditTransaction.id, debitTransaction.id);
-      toast.success("Refund linked successfully", {
-        action: {
-          label: "Undo",
-          onClick: async () => {
-            await apiClient.updateTransaction(creditTransaction.id, {
-              link_parent_id: undefined,
-              is_refund: false,
-            });
-          },
-        },
-      });
-      setSelectedTransactionIds(new Set());
-    } catch (error) {
-      toast.error("Failed to link refund");
-      console.error("Bulk link refund error:", error);
-    }
-  };
 
   const handleBulkGroupTransfer = async () => {
     if (!canBulkGroupTransfer) return;
@@ -481,6 +391,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const handleGroupExpenseSuccess = () => {
     setSelectedTransactionIds(new Set());
     setIsGroupExpenseModalOpen(false);
+    queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    queryClient.invalidateQueries({ queryKey: ["transactions-infinite"] });
   };
 
   const toggleGroupExpense = async (transaction: Transaction) => {
@@ -529,8 +441,9 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       newGroupMembers.delete(transaction.transaction_group_id);
       setGroupMembers(newGroupMembers);
       
-      // Refresh transactions
+      // Refresh transactions (infinite query is what the table uses)
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions-infinite"] });
     } catch (error) {
       toast.error("Failed to ungroup expense");
       console.error("Ungroup error:", error);
@@ -540,12 +453,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const handleBulkUnlink = async () => {
     try {
       const updatePromises = selectedTransactions
-        .filter(t => t.link_parent_id || t.transaction_group_id)
+        .filter(t => t.transaction_group_id)
         .map(t =>
           apiClient.updateTransaction(t.id, {
-            link_parent_id: undefined,
             transaction_group_id: undefined,
-            is_refund: false,
           })
         );
 
@@ -630,18 +541,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     fetchMoreOnBottomReached(tableContainerRef.current);
   }, [fetchMoreOnBottomReached]);
 
-  // Helper functions for aggregate refunds
-  const getLinkedChildren = useCallback((transactionId: string) => {
-    // Use allTransactionsUnfiltered to find linked children, since we filter out
-    // credit transactions with link_parent_id from allTransactions
-    return allTransactionsUnfiltered.filter(t => t.link_parent_id === transactionId);
-  }, [allTransactionsUnfiltered]);
-
-  const getAggregateRefund = useCallback((transactionId: string) => {
-    const children = getLinkedChildren(transactionId);
-    return children.reduce((sum, t) => sum + Math.abs(t.amount), 0);
-  }, [getLinkedChildren]);
-
   // Handle action button clicks from keyboard navigation
   const handleActionButtonClick = useCallback((transaction: Transaction, buttonIndex: number) => {
     switch (buttonIndex) {
@@ -649,26 +548,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         setSelectedTransactionForSplit(transaction);
         setIsSplitEditorOpen(true);
         break;
-      case 1: // Transfer button
-        const isTransferGroup = !!transaction.transaction_group_id && !transaction.is_split;
-        if (isTransferGroup) {
-          setDrawerTransaction(transaction);
-          setIsDrawerOpen(true);
-        } else {
-          setGroupTransferModalTransaction(transaction);
-        }
-        break;
-      case 2: // Parent/Refund button
-        const isRefundLinked = !!transaction.link_parent_id ||
-          allTransactions.some(t => t.link_parent_id === transaction.id);
-        if (isRefundLinked) {
-          setDrawerTransaction(transaction);
-          setIsDrawerOpen(true);
-        } else if (transaction.direction === "credit") {
-          setLinkParentModalTransaction(transaction);
-        }
-        break;
-      case 3: // Split button
+      case 1: // Split button
         const isSplitGroup = !!transaction.transaction_group_id && transaction.is_split;
         if (isSplitGroup) {
           setDrawerTransaction(transaction);
@@ -678,11 +558,11 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           setIsSplitTransactionModalOpen(true);
         }
         break;
-      case 4: // Links button
+      case 2: // Links button
         setEmailLinksTransaction(transaction);
         setIsEmailLinksDrawerOpen(true);
         break;
-      case 5: // Flag button
+      case 3: // Flag button
         updateTransaction.mutate({
           id: transaction.id,
           updates: {
@@ -690,7 +570,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           },
         });
         break;
-      case 6: { // Toggle direction button
+      case 4: { // Toggle direction button
         const nextDirection = transaction.direction === "debit" ? "credit" : "debit";
         void updateTransaction
           .mutateAsync({
@@ -708,16 +588,21 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           });
         break;
       }
-      case 7: // Delete button
+      case 5: // Delete button
         setTransactionToDelete(transaction);
         setIsDeleteConfirmationOpen(true);
         break;
-      case 8: // PDF viewer button
+      case 6: // Ungroup button (when visible)
+        if (transaction.is_grouped_expense) {
+          handleUngroupExpense(transaction);
+        }
+        break;
+      case 7: // PDF viewer button (when visible)
         setPdfViewerTransactionId(transaction.id);
         setIsPdfViewerOpen(true);
         break;
     }
-  }, [allTransactions, updateTransaction]);
+  }, [allTransactions, updateTransaction, handleUngroupExpense]);
 
   // Keyboard navigation helpers
   const editableColumns = useMemo(() => {
@@ -873,7 +758,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
       case 'ArrowRight':
         e.preventDefault();
-        if (focusedColumnId === 'actions' && focusedActionButton < 8) { // 9 action buttons (0-8)
+        if (focusedColumnId === 'actions' && focusedActionButton < 7) { // 8 action buttons (0-7)
           // Navigate between action buttons
           setFocusedActionButton(focusedActionButton + 1);
         } else if (focusedColumnId) {
@@ -1163,9 +1048,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
             const description = getValue();
             const fullText = row.original.notes ? `${description} - ${row.original.notes}` : description;
-            const linkedChildren = getLinkedChildren(row.original.id);
-            const hasLinkedChildren = linkedChildren.length > 0;
-            const aggregateRefund = hasLinkedChildren ? getAggregateRefund(row.original.id) : 0;
             const isGroupedExpense = row.original.is_grouped_expense;
             const isExpanded = row.original.transaction_group_id 
               ? expandedGroupedExpenses.has(row.original.transaction_group_id)
@@ -1683,77 +1565,13 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           cell: ({ row }) => {
             const transaction = row.original;
 
-            // Find parent transaction for refunds (if this transaction is a child/refund)
-            // Look in both filtered and unfiltered transactions to find parent even if filtered out
-            const parentTransaction = transaction.link_parent_id
-              ? (allTransactions.find(t => t.id === transaction.link_parent_id) ||
-                allTransactionsUnfiltered.find(t => t.id === transaction.link_parent_id))
-              : undefined;
-
-            // Find children transactions (if this transaction is a parent)
-            // NOTE: We use net_amount to detect if this transaction has refunds, rather than counting
-            // children from allTransactionsUnfiltered, because allTransactionsUnfiltered is actually
-            // filtered by the search query and may not include child transactions that don't match the search.
-            // The backend computes net_amount which is always accurate regardless of frontend filters.
-            // IMPORTANT: Only debit transactions can have refund children. Credit transactions with
-            // link_parent_id are the refunds themselves, not parents.
-            // CRITICAL: net_amount can be null (not undefined) for transactions without refunds.
-            // The backend only sends net_amount when refunds actually exist (net < original), so we
-            // just need to check if it's a number. We don't compare it to amount because for shared
-            // transactions, amount is the user's share, not the original total.
-            const hasRefunds = transaction.direction === 'debit' &&
-              typeof transaction.net_amount === 'number';
-
-            // Calculate childTransactions for hover highlighting (even though we use hasRefunds for detection)
-            // We need this to highlight the actual child transactions when hovering
-            const childTransactions = allTransactionsUnfiltered.filter(t => t.link_parent_id === transaction.id);
-
-            // Find transaction group for transfers or splits (use unfiltered to include parent)
+            // Find transaction group for transfers, splits, or grouped expenses
             const transactionGroup = transaction.transaction_group_id
               ? allTransactionsUnfiltered.filter(t => t.transaction_group_id === transaction.transaction_group_id)
               : [];
 
-            // Determine if this is a transfer group or split group
-            // Split group: has transaction_group_id and is_split=true (child) OR has transaction_group_id with children
-            // Check transaction.is_split first, then check if any in group have is_split=true
-            // NOTE: We check transaction.is_split directly because if it's true, this transaction is part of a split group
-            // even if other group members aren't loaded due to filtering
             const isSplitGroup = !!transaction.transaction_group_id &&
               (transaction.is_split === true || transactionGroup.some(t => t.is_split === true));
-            // Transfer group: has transaction_group_id, is not a split, and has at least one other member in loaded data
-            // OR if it has transaction_group_id and is not split, it's potentially a transfer (even if other members filtered out)
-            const isTransferGroup = !!transaction.transaction_group_id && !isSplitGroup &&
-              (transactionGroup.length > 1 || transactionGroup.length === 1);
-
-            // This transaction is part of a refund link if it has a parent ID OR has refunds (net_amount < amount)
-            // Use net_amount instead of counting children to avoid issues with search-filtered data
-            const isRefundLinked = !!transaction.link_parent_id || hasRefunds;
-            const isCredit = transaction.direction === "credit";
-
-            const handleRefundClick = () => {
-              if (isRefundLinked) {
-                // Active: open drawer to view relationship
-                setDrawerTransaction(transaction);
-                setIsDrawerOpen(true);
-              } else if (isCredit) {
-                // Inactive: open modal to link (only for credits)
-                setLinkParentModalTransaction(transaction);
-              }
-            };
-
-            const handleTransferClick = (e: React.MouseEvent) => {
-              e.stopPropagation();
-              e.preventDefault();
-
-              if (isTransferGroup) {
-                // Active: open drawer to view group
-                setDrawerTransaction(transaction);
-                setIsDrawerOpen(true);
-              } else if (!isSplitGroup) {
-                // Inactive: open modal to group (only if not already in a split group)
-                setGroupTransferModalTransaction(transaction);
-              }
-            };
 
             const handleSplitClick = (e: React.MouseEvent) => {
               e.stopPropagation();
@@ -1763,23 +1581,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 // Active: open drawer to view split group
                 setDrawerTransaction(transaction);
                 setIsDrawerOpen(true);
-              }
-            };
-
-            const handleRefundHover = () => {
-              if (isRefundLinked) {
-                // Highlight parent + current, OR current + all children
-                if (parentTransaction) {
-                  handleHighlightTransactions([parentTransaction.id, transaction.id]);
-                } else if (childTransactions.length > 0) {
-                  handleHighlightTransactions([transaction.id, ...childTransactions.map(c => c.id)]);
-                }
-              }
-            };
-
-            const handleTransferHover = () => {
-              if (isTransferGroup) {
-                handleHighlightTransactions(transactionGroup.map(t => t.id));
               }
             };
 
@@ -1814,54 +1615,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   <Users className="h-3.5 w-3.5" />
                 </Button>
 
-                {/* 2. Transfer button */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    "h-7 w-7 p-0 rounded-full transition-all duration-200",
-                    isTransferGroup
-                      ? "bg-sky-100 text-sky-600 hover:bg-sky-200 dark:bg-sky-900 dark:text-sky-400 dark:hover:bg-sky-800"
-                      : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
-                    isSplitGroup && "opacity-50 cursor-not-allowed",
-                    isFocusedActionsColumn && focusedActionButton === 1 && "ring-2 ring-blue-500 ring-inset"
-                  )}
-                  onClick={handleTransferClick}
-                  onMouseEnter={handleTransferHover}
-                  onMouseLeave={handleClearHighlight}
-                  title={isTransferGroup ? "View transfer group" : isSplitGroup ? "Cannot group (part of split)" : "Group as transfer"}
-                  disabled={isSplitGroup}
-                >
-                  <span className="text-sm">⇄</span>
-                </Button>
-
-                {/* 3. Parent/Refund button - show for credits (to link) or any with children (to view) */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    "h-7 w-7 p-0 rounded-full transition-all duration-200",
-                    isRefundLinked
-                      ? cn(
-                        "bg-emerald-100 text-emerald-600 hover:bg-emerald-200 dark:bg-emerald-900 dark:text-emerald-400 dark:hover:bg-emerald-800",
-                        hasRefunds && "shadow-[0_0_15px_rgba(34,197,94,0.6)] dark:shadow-[0_0_15px_rgba(34,197,94,0.4)]"
-                      )
-                      : isCredit
-                        ? "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700"
-                        : "bg-gray-50 text-gray-300 dark:bg-gray-900 dark:text-gray-600 cursor-not-allowed",
-                    !isCredit && !isRefundLinked && "opacity-30",
-                    isFocusedActionsColumn && focusedActionButton === 2 && "ring-2 ring-blue-500 ring-inset"
-                  )}
-                  onClick={handleRefundClick}
-                  onMouseEnter={handleRefundHover}
-                  onMouseLeave={handleClearHighlight}
-                  title={isRefundLinked ? "View refund relationship" : isCredit ? "Link to parent purchase" : "Not applicable for debits"}
-                  disabled={!isCredit && !isRefundLinked}
-                >
-                  <span className="text-sm">↩︎</span>
-                </Button>
-
-                {/* 4. Split button */}
+                {/* 2. Split button */}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1870,7 +1624,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     isSplitGroup
                       ? "bg-purple-100 text-purple-600 hover:bg-purple-200 dark:bg-purple-900 dark:text-purple-400 dark:hover:bg-purple-800"
                       : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
-                    isFocusedActionsColumn && focusedActionButton === 3 && "ring-2 ring-blue-500 ring-inset"
+                    isFocusedActionsColumn && focusedActionButton === 1 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1890,7 +1644,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   <Split className="h-3.5 w-3.5" />
                 </Button>
 
-                {/* 5. Links button */}
+                {/* 3. Links button */}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1899,7 +1653,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     transaction.related_mails && transaction.related_mails.length > 0
                       ? "bg-amber-100 text-amber-600 hover:bg-amber-200 dark:bg-amber-900 dark:text-amber-400 dark:hover:bg-amber-800"
                       : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
-                    isFocusedActionsColumn && focusedActionButton === 4 && "ring-2 ring-blue-500 ring-inset"
+                    isFocusedActionsColumn && focusedActionButton === 2 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1915,7 +1669,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   <Link2 className="h-3.5 w-3.5" />
                 </Button>
 
-                {/* 6. Warning/Flag button */}
+                {/* 4. Warning/Flag button */}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1924,7 +1678,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     transaction.is_flagged === true
                       ? "border-orange-500 text-orange-600 hover:border-orange-600 hover:text-orange-700 dark:border-orange-400 dark:text-orange-400 dark:hover:border-orange-300 dark:hover:text-orange-300 bg-orange-50 dark:bg-orange-950"
                       : "border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500 dark:border-gray-600 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-400 bg-transparent",
-                    isFocusedActionsColumn && focusedActionButton === 5 && "ring-2 ring-blue-500 ring-inset"
+                    isFocusedActionsColumn && focusedActionButton === 3 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={async (e) => {
                     e.stopPropagation();
@@ -1946,13 +1700,13 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   <AlertCircle className="h-3.5 w-3.5" />
                 </Button>
 
-                {/* 7. Toggle direction button */}
+                {/* 5. Toggle direction button */}
                 <Button
                   variant="ghost"
                   size="sm"
                   className={cn(
                     "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:text-gray-300 bg-transparent",
-                    isFocusedActionsColumn && focusedActionButton === 6 && "ring-2 ring-blue-500 ring-inset"
+                    isFocusedActionsColumn && focusedActionButton === 4 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={async (e) => {
                     e.stopPropagation();
@@ -1975,13 +1729,13 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   <RefreshCcw className="h-3.5 w-3.5" />
                 </Button>
 
-                {/* 8. Delete button */}
+                {/* 6. Delete button */}
                 <Button
                   variant="ghost"
                   size="sm"
                   className={cn(
                     "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500 dark:border-gray-600 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-400 bg-transparent",
-                    isFocusedActionsColumn && focusedActionButton === 7 && "ring-2 ring-blue-500 ring-inset"
+                    isFocusedActionsColumn && focusedActionButton === 5 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1993,14 +1747,14 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
 
-                {/* 9. Ungroup button - only show for grouped expenses */}
+                {/* 7. Ungroup button - only show for grouped expenses */}
                 {transaction.is_grouped_expense && (
                   <Button
                     variant="ghost"
                     size="sm"
                     className={cn(
                       "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-purple-300 text-purple-600 hover:border-purple-400 hover:text-purple-700 dark:border-purple-600 dark:text-purple-400 dark:hover:border-purple-500 dark:hover:text-purple-300 bg-purple-50 dark:bg-purple-950",
-                      isFocusedActionsColumn && focusedActionButton === 8 && "ring-2 ring-blue-500 ring-inset"
+                      isFocusedActionsColumn && focusedActionButton === 6 && "ring-2 ring-blue-500 ring-inset"
                     )}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -2012,14 +1766,14 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   </Button>
                 )}
 
-                {/* 10. PDF viewer button - only show if transaction has source_file */}
+                {/* 8. PDF viewer button - only show if transaction has source_file */}
                 {transaction.source_file && (
                   <Button
                     variant="ghost"
                     size="sm"
                     className={cn(
                       "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500 dark:border-gray-600 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-400 bg-transparent",
-                      isFocusedActionsColumn && focusedActionButton === 9 && "ring-2 ring-blue-500 ring-inset"
+                      isFocusedActionsColumn && focusedActionButton === 7 && "ring-2 ring-blue-500 ring-inset"
                     )}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -2139,17 +1893,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={handleBulkLinkRefund}
-                  className="flex items-center gap-2"
-                  disabled={!canBulkLinkRefund}
-                  title={canBulkLinkRefund ? "Link refund" : "Select exactly 2 transactions (1 debit + 1 credit)"}
-                >
-                  <Link2 className="h-4 w-4" />
-                  Link refund
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
                   onClick={handleBulkGroupTransfer}
                   className="flex items-center gap-2"
                   disabled={!canBulkGroupTransfer}
@@ -2164,7 +1907,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   onClick={handleBulkGroupExpense}
                   className="flex items-center gap-2"
                   disabled={!canBulkGroupExpense}
-                  title={canBulkGroupExpense ? "Group as expense" : "Cannot group transactions already in a grouped expense"}
+                  title={canBulkGroupExpense ? "Group as expense" : "Cannot group: selection includes the summary row of a grouped expense"}
                 >
                   <Layers className="h-4 w-4" />
                   Group expense
@@ -2452,53 +2195,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         />
       )}
 
-      {/* Link Parent Modal */}
-      {linkParentModalTransaction && (
-        <LinkParentModal
-          transaction={linkParentModalTransaction}
-          parentTransaction={
-            linkParentModalTransaction.link_parent_id
-              ? allTransactions.find(t => t.id === linkParentModalTransaction.link_parent_id)
-              : undefined
-          }
-          allTransactions={allTransactions}
-          isOpen={!!linkParentModalTransaction}
-          onClose={() => setLinkParentModalTransaction(null)}
-          onLink={async (parentId) => {
-            try {
-              await updateTransaction.mutateAsync({
-                id: linkParentModalTransaction.id,
-                updates: {
-                  link_parent_id: parentId,
-                  is_refund: true,
-                },
-              });
-              toast.success("Refund linked successfully");
-              setLinkParentModalTransaction(null);
-            } catch (error) {
-              toast.error("Failed to link refund");
-              console.error("Link refund error:", error);
-            }
-          }}
-          onUnlink={async () => {
-            try {
-              await updateTransaction.mutateAsync({
-                id: linkParentModalTransaction.id,
-                updates: {
-                  link_parent_id: undefined,
-                  is_refund: false,
-                },
-              });
-              toast.success("Refund unlinked successfully");
-              setLinkParentModalTransaction(null);
-            } catch (error) {
-              toast.error("Failed to unlink refund");
-              console.error("Unlink refund error:", error);
-            }
-          }}
-        />
-      )}
-
       {/* Group Transfer Modal */}
       {groupTransferModalTransaction && (
         <GroupTransferModal
@@ -2589,42 +2285,12 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             setDrawerTransaction(null);
           }}
           onUnlink={async () => {
-            await updateTransaction.mutateAsync({
-              id: drawerTransaction.id,
-              updates: {
-                link_parent_id: undefined,
-                is_refund: false,
-              },
-            });
+            // No-op: parent-child refund linking removed; use ungroup for groups
             setIsDrawerOpen(false);
             setDrawerTransaction(null);
           }}
-          onUnlinkChild={async (childId: string) => {
-            try {
-              // Note: Must use null instead of undefined, as JSON.stringify removes undefined values
-              await updateTransaction.mutateAsync({
-                id: childId,
-                updates: {
-                  link_parent_id: null,
-                  is_refund: false,
-                },
-              });
-
-              // Close and reopen the drawer to refresh the data
-              const currentTransaction = drawerTransaction;
-              setIsDrawerOpen(false);
-              setDrawerTransaction(null);
-
-              // Wait a bit for the cache to update
-              await new Promise(resolve => setTimeout(resolve, 300));
-
-              // Reopen the drawer with the same transaction
-              setDrawerTransaction(currentTransaction);
-              setIsDrawerOpen(true);
-            } catch (error) {
-              console.error("Failed to unlink child refund:", error);
-              toast.error("Failed to unlink refund");
-            }
+          onUnlinkChild={async () => {
+            // No-op: parent-child refund linking removed
           }}
           onUngroup={async () => {
             try {

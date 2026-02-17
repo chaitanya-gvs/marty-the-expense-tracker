@@ -176,6 +176,7 @@ export function GroupExpenseModal({
             transactionDirection={netAmount >= 0 ? "credit" : "debit"}
             onSave={async (val) => setCategory(val)}
             onCancel={() => {}}
+            autoFocus={false}
           />
           {selectedTransactions[0]?.category && !category && (
             <p className="text-xs text-muted-foreground">
