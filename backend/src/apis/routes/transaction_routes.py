@@ -77,7 +77,6 @@ class TransactionCreate(BaseModel):
     is_flagged: bool = False
     is_grouped_expense: bool = False
     split_breakdown: Optional[Dict[str, Any]] = None
-    link_parent_id: Optional[str] = None
     transaction_group_id: Optional[str] = None
     related_mails: List[str] = []
     source_file: Optional[str] = None
@@ -104,7 +103,6 @@ class TransactionUpdate(BaseModel):
     is_grouped_expense: Optional[bool] = None
     split_breakdown: Optional[Dict[str, Any]] = None
     paid_by: Optional[str] = None
-    link_parent_id: Optional[str] = None
     transaction_group_id: Optional[str] = None
     related_mails: Optional[List[str]] = None
     source_file: Optional[str] = None
@@ -129,7 +127,6 @@ class TransactionResponse(BaseModel):
     subcategory: Optional[str] = None
     direction: str
     amount: float
-    net_amount: Optional[float] = None
     split_share_amount: Optional[float] = None
     tags: List[str]
     notes: Optional[str] = None
@@ -141,7 +138,6 @@ class TransactionResponse(BaseModel):
     is_grouped_expense: Optional[bool] = False
     split_breakdown: Optional[Dict[str, Any]] = None
     paid_by: Optional[str] = None
-    link_parent_id: Optional[str] = None
     transaction_group_id: Optional[str] = None
     related_mails: List[str] = []
     source_file: Optional[str] = None
@@ -178,12 +174,6 @@ class PaginationParams(BaseModel):
     """Request model for pagination."""
     page: int = Field(1, ge=1)
     limit: int = Field(50, ge=1, le=500)
-
-
-class LinkRefundRequest(BaseModel):
-    """Request model for linking refunds."""
-    child_id: str
-    parent_id: str
 
 
 class GroupTransferRequest(BaseModel):
@@ -489,9 +479,7 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
     if is_shared is None:
         is_shared = False
     
-    is_refund = transaction.get('is_partial_refund')
-    if is_refund is None:
-        is_refund = False
+    is_refund = False  # Legacy field, always False now
     
     is_split = transaction.get('is_split')
     if is_split is None:
@@ -510,25 +498,12 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
     if split_breakdown:
         split_breakdown = _convert_decimal_to_float(split_breakdown)
     
-    # Calculate net amount (original amount minus refunds)
     original_amount = float(transaction.get('amount', 0))
-    net_amount_raw = transaction.get('net_amount')
-    if net_amount_raw is not None:
-        net_amount = float(net_amount_raw)
-    else:
-        net_amount = original_amount
     
-    # Only include net_amount in response if refunds actually exist (net < original)
-    # This ensures we don't send net_amount when it equals original_amount
-    net_amount_for_response = None
-    if net_amount < original_amount:
-        net_amount_for_response = net_amount
-    
-    # Recalculate split_share_amount based on net_amount for shared transactions
+    # Calculate split_share_amount for shared transactions
     split_share_amount = None
     if is_shared and split_breakdown:
-        # Recalculate split_share_amount based on net_amount instead of original amount
-        split_share_amount = _calculate_split_share_amount(split_breakdown, net_amount)
+        split_share_amount = _calculate_split_share_amount(split_breakdown, original_amount)
     else:
         # Use stored split_share_amount if not shared or no split_breakdown
         split_share_amount = float(transaction.get('split_share_amount')) if transaction.get('split_share_amount') else None
@@ -542,7 +517,6 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
         subcategory=transaction.get('sub_category'),
         direction=transaction.get('direction', 'debit'),
         amount=original_amount,
-        net_amount=net_amount_for_response,  # Only include if refunds exist (net < original)
         split_share_amount=split_share_amount,
         tags=transaction.get('tags', []) or [],
         notes=transaction.get('notes'),
@@ -554,7 +528,6 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
         is_grouped_expense=is_grouped_expense,
         split_breakdown=split_breakdown,
         paid_by=transaction.get('paid_by'),
-        link_parent_id=str(transaction.get('link_parent_id')) if transaction.get('link_parent_id') else None,
         transaction_group_id=str(transaction.get('transaction_group_id')) if transaction.get('transaction_group_id') else None,
         related_mails=transaction.get('related_mails', []) or [],
         source_file=transaction.get('source_file'),
@@ -1357,7 +1330,7 @@ async def get_transaction(transaction_id: str):
 
 @router.get("/{transaction_id}/related", response_model=ApiResponse)
 async def get_related_transactions(transaction_id: str):
-    """Get all related transactions for a transaction (parent, children, and group members)."""
+    """Get all related transactions for a transaction (group members)."""
     try:
         # Get the transaction first
         transaction = await handle_database_operation(
@@ -1369,31 +1342,8 @@ async def get_related_transactions(transaction_id: str):
         
         related_data = {
             "transaction": _convert_db_transaction_to_response(transaction),
-            "parent": None,
-            "children": [],
             "group": []
         }
-        
-        # Get parent transaction if this is a child (refund)
-        if transaction.get('link_parent_id'):
-            parent = await handle_database_operation(
-                TransactionOperations.get_transaction_by_id,
-                str(transaction.get('link_parent_id'))
-            )
-            if parent:
-                # Get tags for parent
-                parent_tags = await TagOperations.get_tags_for_transaction(str(parent.get('id')))
-                parent['tags'] = [tag['name'] for tag in parent_tags]
-                related_data["parent"] = _convert_db_transaction_to_response(parent)
-        
-        # Get child transactions if this is a parent
-        children = await handle_database_operation(
-            TransactionOperations.get_child_transactions,
-            transaction_id
-        )
-        if children:
-            # Tags are already included in get_child_transactions
-            related_data["children"] = [_convert_db_transaction_to_response(t) for t in children]
         
         # Get group members if this transaction is in a group
         if transaction.get('transaction_group_id'):
@@ -1411,41 +1361,6 @@ async def get_related_transactions(transaction_id: str):
         raise
     except Exception as e:
         logger.error(f"Failed to get related transactions for {transaction_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/{transaction_id}/parent", response_model=ApiResponse)
-async def get_parent_transaction(transaction_id: str):
-    """Get the parent transaction for a refund/child transaction."""
-    try:
-        transaction = await handle_database_operation(
-            TransactionOperations.get_transaction_by_id,
-            transaction_id
-        )
-        if not transaction:
-            raise HTTPException(status_code=404, detail="Transaction not found")
-        
-        if not transaction.get('link_parent_id'):
-            raise HTTPException(status_code=404, detail="This transaction does not have a parent")
-        
-        parent = await handle_database_operation(
-            TransactionOperations.get_transaction_by_id,
-            str(transaction.get('link_parent_id'))
-        )
-        if not parent:
-            raise HTTPException(status_code=404, detail="Parent transaction not found")
-        
-        # Get tags for parent
-        parent_tags = await TagOperations.get_tags_for_transaction(str(parent.get('id')))
-        parent['tags'] = [tag['name'] for tag in parent_tags]
-        
-        response_transaction = _convert_db_transaction_to_response(parent)
-        return ApiResponse(data=response_transaction)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get parent transaction for {transaction_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1518,7 +1433,6 @@ async def create_transaction(transaction_data: TransactionCreate):
             description=transaction_data.description,
             transaction_time=None,  # Could be extracted from date if needed
             split_share_amount=transaction_data.split_share_amount,
-            is_partial_refund=transaction_data.is_refund,
             is_shared=transaction_data.is_shared,
             split_breakdown=transaction_data.split_breakdown,
             sub_category=transaction_data.subcategory,
@@ -1528,7 +1442,6 @@ async def create_transaction(transaction_data: TransactionCreate):
             related_mails=transaction_data.related_mails,
             source_file=transaction_data.source_file,
             raw_data=transaction_data.raw_data,
-            link_parent_id=transaction_data.link_parent_id,
             transaction_group_id=transaction_data.transaction_group_id
         )
         
@@ -1563,7 +1476,8 @@ async def bulk_update_transactions(request: BulkTransactionUpdate):
                     elif field == "subcategory":
                         update_data["sub_category"] = value
                     elif field == "is_refund":
-                        update_data["is_partial_refund"] = value
+                        # Legacy; is_partial_refund removed with unified grouping
+                        continue
                     elif field == "is_transfer":
                         # This would need special handling for transfer groups
                         continue
@@ -1723,7 +1637,8 @@ async def update_transaction(transaction_id: str, updates: TransactionUpdate):
             elif field == "subcategory":
                 update_data["sub_category"] = value
             elif field == "is_refund":
-                update_data["is_partial_refund"] = value
+                # Legacy; is_partial_refund removed with unified grouping
+                continue
             elif field == "is_transfer":
                 # This would need special handling for transfer groups
                 continue
@@ -1824,33 +1739,6 @@ async def delete_transaction(transaction_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/link-refund", response_model=ApiResponse)
-async def link_refund(request: LinkRefundRequest):
-    """Link a refund transaction to its parent transaction."""
-    try:
-        # Update the child transaction to link to parent
-        success = await TransactionOperations.update_transaction(
-            request.child_id,
-            link_parent_id=request.parent_id,
-            is_partial_refund=True
-        )
-        
-        if not success:
-            raise HTTPException(status_code=404, detail="Child transaction not found or update failed")
-        
-        # Fetch the updated transaction
-        updated_transaction = await TransactionOperations.get_transaction_by_id(request.child_id)
-        response_transaction = _convert_db_transaction_to_response(updated_transaction)
-        
-        return ApiResponse(data=response_transaction, message="Refund linked successfully")
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to link refund: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.post("/group-transfer", response_model=ApiResponse)
 async def group_transfer(request: GroupTransferRequest):
     """Group transactions as a transfer."""
@@ -1903,21 +1791,13 @@ async def group_expense(request: GroupExpenseRequest):
             if not transaction:
                 raise HTTPException(status_code=404, detail=f"Transaction {transaction_id} not found")
             
-            # Check if transaction is already in a grouped expense (but allow transfers and splits)
+            # Reject only if this row is the collapsed summary of a grouped expense (cannot group that with others)
             if transaction.get('transaction_group_id') and transaction.get('is_grouped_expense'):
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Transaction {transaction_id} is already a grouped expense."
+                    detail=f"Transaction {transaction_id} is the summary row of a grouped expense. Ungroup first or select only the individual transactions."
                 )
-            
-            # Check if transaction is part of a group but not the collapsed one
-            if transaction.get('transaction_group_id') and not transaction.get('is_split') and not transaction.get('is_grouped_expense'):
-                # It's in a transfer group or is an individual in an expense group
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Transaction {transaction_id} is already in a group. Ungroup it first."
-                )
-            
+            # Individuals in a group (or orphaned group) are allowed: we will assign them to the new group
             transactions.append(transaction)
         
         if not transactions:
@@ -1995,7 +1875,6 @@ async def group_expense(request: GroupExpenseRequest):
             description=request.description,
             transaction_time=None,
             split_share_amount=None,
-            is_partial_refund=False,
             is_shared=False,
             is_split=False,
             split_breakdown=None,
@@ -2006,7 +1885,6 @@ async def group_expense(request: GroupExpenseRequest):
             related_mails=[],
             source_file=None,
             raw_data=None,
-            link_parent_id=None,
             transaction_group_id=transaction_group_id,
             is_grouped_expense=True
         )
@@ -2098,7 +1976,8 @@ async def ungroup_expense(request: UngroupExpenseRequest):
                         TransactionOperations.get_transaction_by_id,
                         transaction_id
                     )
-                    restored_transactions.append(_convert_db_transaction_to_response(restored))
+                    if restored is not None:
+                        restored_transactions.append(_convert_db_transaction_to_response(restored))
             
             return ApiResponse(
                 data={
@@ -2296,7 +2175,6 @@ async def split_transaction(request: SplitTransactionRequest):
                     description=part.description,
                     transaction_time=original_transaction.get('transaction_time'),
                     split_share_amount=part_split_share_amount,
-                    is_partial_refund=False,
                     is_shared=part_is_shared,
                     is_split=True,  # Mark as a split transaction
                     split_breakdown=part_split_breakdown,
@@ -2308,7 +2186,6 @@ async def split_transaction(request: SplitTransactionRequest):
                     related_mails=original_transaction.get('related_mails', []),
                     source_file=original_transaction.get('source_file'),
                     raw_data=None,  # Don't copy raw_data to split transactions to avoid serialization issues
-                    link_parent_id=None,
                     transaction_group_id=split_group_id
                 )
                 
