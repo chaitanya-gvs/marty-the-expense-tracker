@@ -49,7 +49,8 @@ import {
   AlertCircle,
   Trash2,
   FileText,
-  Layers
+  Layers,
+  ChevronDown
 } from "lucide-react";
 import { format } from "date-fns";
 import { TransactionEditModal } from "./transaction-edit-modal";
@@ -256,6 +257,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const [groupTransferModalTransaction, setGroupTransferModalTransaction] = useState<Transaction | null>(null);
   const [isGroupExpenseModalOpen, setIsGroupExpenseModalOpen] = useState(false);
   const [expandedGroupedExpenses, setExpandedGroupedExpenses] = useState<Set<string>>(new Set());
+  const [groupMembers, setGroupMembers] = useState<Map<string, Transaction[]>>(new Map());
   const [emailLinksTransaction, setEmailLinksTransaction] = useState<Transaction | null>(null);
   const [isEmailLinksDrawerOpen, setIsEmailLinksDrawerOpen] = useState(false);
   const [isDeleteConfirmationOpen, setIsDeleteConfirmationOpen] = useState(false);
@@ -479,6 +481,60 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const handleGroupExpenseSuccess = () => {
     setSelectedTransactionIds(new Set());
     setIsGroupExpenseModalOpen(false);
+  };
+
+  const toggleGroupExpense = async (transaction: Transaction) => {
+    const groupId = transaction.transaction_group_id;
+    if (!groupId) return;
+
+    const isExpanded = expandedGroupedExpenses.has(groupId);
+
+    if (isExpanded) {
+      // Collapse
+      const newExpanded = new Set(expandedGroupedExpenses);
+      newExpanded.delete(groupId);
+      setExpandedGroupedExpenses(newExpanded);
+    } else {
+      // Expand - fetch members if not already fetched
+      if (!groupMembers.has(groupId)) {
+        try {
+          const response = await apiClient.getRelatedTransactions(transaction.id);
+          const members = response.data?.group_members || [];
+          setGroupMembers(new Map(groupMembers).set(groupId, members));
+        } catch (error) {
+          toast.error("Failed to fetch group members");
+          return;
+        }
+      }
+      
+      const newExpanded = new Set(expandedGroupedExpenses);
+      newExpanded.add(groupId);
+      setExpandedGroupedExpenses(newExpanded);
+    }
+  };
+
+  const handleUngroupExpense = async (transaction: Transaction) => {
+    if (!transaction.transaction_group_id) return;
+
+    try {
+      await apiClient.ungroupExpense(transaction.transaction_group_id);
+      toast.success("Expense ungrouped successfully");
+      
+      // Clear from expanded state and group members cache
+      const newExpanded = new Set(expandedGroupedExpenses);
+      newExpanded.delete(transaction.transaction_group_id);
+      setExpandedGroupedExpenses(newExpanded);
+      
+      const newGroupMembers = new Map(groupMembers);
+      newGroupMembers.delete(transaction.transaction_group_id);
+      setGroupMembers(newGroupMembers);
+      
+      // Refresh transactions
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    } catch (error) {
+      toast.error("Failed to ungroup expense");
+      console.error("Ungroup error:", error);
+    }
   };
 
   const handleBulkUnlink = async () => {
@@ -1110,6 +1166,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             const linkedChildren = getLinkedChildren(row.original.id);
             const hasLinkedChildren = linkedChildren.length > 0;
             const aggregateRefund = hasLinkedChildren ? getAggregateRefund(row.original.id) : 0;
+            const isGroupedExpense = row.original.is_grouped_expense;
+            const isExpanded = row.original.transaction_group_id 
+              ? expandedGroupedExpenses.has(row.original.transaction_group_id)
+              : false;
 
             return (
               <div
@@ -1121,9 +1181,30 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 }}
               >
                 <div className="flex items-center gap-2">
+                  {isGroupedExpense && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleGroupExpense(row.original);
+                      }}
+                      className="p-1 hover:bg-accent rounded flex-shrink-0"
+                    >
+                      <ChevronDown
+                        className={cn(
+                          "h-4 w-4 transition-transform",
+                          isExpanded && "rotate-180"
+                        )}
+                      />
+                    </button>
+                  )}
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate max-w-[280px] md:max-w-[260px]" title={fullText}>
-                      {description}
+                    <div className="flex items-center gap-1">
+                      <div className="font-medium text-sm truncate max-w-[280px] md:max-w-[260px]" title={fullText}>
+                        {description}
+                      </div>
+                      {isGroupedExpense && (
+                        <Layers className="h-3 w-3 text-purple-600 dark:text-purple-400 flex-shrink-0" />
+                      )}
                     </div>
                     {row.original.notes && (
                       <div className="text-xs text-gray-500 truncate max-w-[280px] md:max-w-[260px]" title={row.original.notes}>
@@ -1912,14 +1993,33 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
 
-                {/* 9. PDF viewer button - only show if transaction has source_file */}
+                {/* 9. Ungroup button - only show for grouped expenses */}
+                {transaction.is_grouped_expense && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-purple-300 text-purple-600 hover:border-purple-400 hover:text-purple-700 dark:border-purple-600 dark:text-purple-400 dark:hover:border-purple-500 dark:hover:text-purple-300 bg-purple-50 dark:bg-purple-950",
+                      isFocusedActionsColumn && focusedActionButton === 8 && "ring-2 ring-blue-500 ring-inset"
+                    )}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleUngroupExpense(transaction);
+                    }}
+                    title="Ungroup expense"
+                  >
+                    <Layers className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+
+                {/* 10. PDF viewer button - only show if transaction has source_file */}
                 {transaction.source_file && (
                   <Button
                     variant="ghost"
                     size="sm"
                     className={cn(
                       "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500 dark:border-gray-600 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-400 bg-transparent",
-                      isFocusedActionsColumn && focusedActionButton === 8 && "ring-2 ring-blue-500 ring-inset"
+                      isFocusedActionsColumn && focusedActionButton === 9 && "ring-2 ring-blue-500 ring-inset"
                     )}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -2188,37 +2288,82 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             <tbody className="[&_tr:last-child]:border-0">
               {rows.map((row, rowIndex) => {
                 const isFocusedRow = isKeyboardNavigationMode && focusedRowIndex === rowIndex;
+                const isGroupedExpense = row.original.is_grouped_expense;
+                const isExpanded = row.original.transaction_group_id 
+                  ? expandedGroupedExpenses.has(row.original.transaction_group_id)
+                  : false;
+                const members = row.original.transaction_group_id 
+                  ? groupMembers.get(row.original.transaction_group_id) || []
+                  : [];
+                
                 return (
-                  <tr
-                    key={row.id}
-                    className={cn(
-                      "group hover:bg-gray-50 dark:hover:bg-gray-800 border-b border-gray-100 dark:border-gray-800 transition-colors duration-150 h-12 cursor-pointer",
-                      editingRow === row.original.id && "bg-blue-50 dark:bg-blue-900/20",
-                      highlightedTransactionIds.has(row.original.id) && "bg-blue-50 dark:bg-blue-900/10 border-l-2 border-l-blue-500",
-                      isFocusedRow && "bg-blue-100 dark:bg-blue-900/30 border-l-2 border-l-blue-500"
-                    )}
-                  // onClick={() => handleRowClick(row.original)}
-                  >
-                    {row.getVisibleCells().map((cell) => {
-                      const isFocusedCell = isFocusedRow && focusedColumnId === cell.column.id;
-                      return (
-                        <td
-                          key={cell.id}
-                          className={cn(
-                            "px-3 py-2 text-sm align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
-                            editingTagsForTransaction === row.original.id && cell.column.id === "tags" && "relative",
-                            editingCategoryForTransaction === row.original.id && cell.column.id === "category" && "relative",
-                            isFocusedCell && "ring-2 ring-blue-500 ring-inset bg-blue-50 dark:bg-blue-900/20"
-                          )}
-                        >
-                          {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext()
+                  <React.Fragment key={row.id}>
+                    <tr
+                      className={cn(
+                        "group hover:bg-gray-50 dark:hover:bg-gray-800 border-b border-gray-100 dark:border-gray-800 transition-colors duration-150 h-12 cursor-pointer",
+                        editingRow === row.original.id && "bg-blue-50 dark:bg-blue-900/20",
+                        highlightedTransactionIds.has(row.original.id) && "bg-blue-50 dark:bg-blue-900/10 border-l-2 border-l-blue-500",
+                        isFocusedRow && "bg-blue-100 dark:bg-blue-900/30 border-l-2 border-l-blue-500"
+                      )}
+                    // onClick={() => handleRowClick(row.original)}
+                    >
+                      {row.getVisibleCells().map((cell) => {
+                        const isFocusedCell = isFocusedRow && focusedColumnId === cell.column.id;
+                        return (
+                          <td
+                            key={cell.id}
+                            className={cn(
+                              "px-3 py-2 text-sm align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+                              editingTagsForTransaction === row.original.id && cell.column.id === "tags" && "relative",
+                              editingCategoryForTransaction === row.original.id && cell.column.id === "category" && "relative",
+                              isFocusedCell && "ring-2 ring-blue-500 ring-inset bg-blue-50 dark:bg-blue-900/20"
+                            )}
+                          >
+                            {flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext()
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                    
+                    {/* Render individual transactions for expanded grouped expenses */}
+                    {isGroupedExpense && isExpanded && members.length > 0 && members.map((member) => (
+                      <tr
+                        key={`member-${member.id}`}
+                        className="bg-purple-50/50 dark:bg-purple-950/10 border-l-2 border-purple-300 dark:border-purple-700 hover:bg-purple-100/50 dark:hover:bg-purple-900/20"
+                      >
+                        {isMultiSelectMode && <td className="px-3 py-2"></td>}
+                        <td className="px-3 py-2 text-xs text-gray-600 dark:text-gray-400 pl-8">
+                          {format(new Date(member.date), "dd MMM yy")}
+                        </td>
+                        <td className="px-3 py-2 pl-12">
+                          <div className="text-sm truncate max-w-[280px]">{member.description}</div>
+                          {member.notes && (
+                            <div className="text-xs text-gray-500 truncate">{member.notes}</div>
                           )}
                         </td>
-                      );
-                    })}
-                  </tr>
+                        <td className="px-3 py-2 text-sm">
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-xs",
+                              member.direction === "debit"
+                                ? "border-red-500 text-red-600 dark:text-red-400"
+                                : "border-green-500 text-green-600 dark:text-green-400"
+                            )}
+                          >
+                            {formatCurrency(member.amount)}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-2 text-xs">{member.account.split(" ").slice(0, -2).join(" ")}</td>
+                        <td className="px-3 py-2 text-xs">{member.category || "Uncategorized"}</td>
+                        <td className="px-3 py-2"></td>
+                        <td className="px-3 py-2"></td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
                 );
               })}
             </tbody>

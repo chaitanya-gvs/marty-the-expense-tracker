@@ -16,12 +16,14 @@ interface TransactionDetailsDrawerProps {
     transaction: Transaction | null;
     isOpen: boolean;
     onClose: () => void;
+    onUngroupExpense?: (transaction: Transaction) => Promise<void>;
 }
 
 export function TransactionDetailsDrawer({
     transaction,
     isOpen,
     onClose,
+    onUngroupExpense,
 }: TransactionDetailsDrawerProps) {
     if (!transaction) return null;
 
@@ -89,7 +91,7 @@ export function TransactionDetailsDrawer({
                         <div className="rounded-lg bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 p-4">
                             <div className="flex items-start gap-2">
                                 <Layers className="h-5 w-5 text-purple-600 dark:text-purple-400 flex-shrink-0 mt-0.5" />
-                                <div>
+                                <div className="flex-1">
                                     <h3 className="text-sm font-semibold text-purple-900 dark:text-purple-100 mb-1">
                                         Grouped Expense
                                     </h3>
@@ -102,6 +104,20 @@ export function TransactionDetailsDrawer({
                                         <p className="text-xs text-purple-700 dark:text-purple-300 mt-2 font-mono">
                                             Group ID: {transaction.transaction_group_id.slice(0, 8)}...
                                         </p>
+                                    )}
+                                    
+                                    {/* Ungroup button */}
+                                    {onUngroupExpense && (
+                                        <button
+                                            onClick={async () => {
+                                                await onUngroupExpense(transaction);
+                                                onClose();
+                                            }}
+                                            className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-purple-700 dark:text-purple-300 bg-white dark:bg-purple-900/30 border border-purple-300 dark:border-purple-700 rounded-md hover:bg-purple-50 dark:hover:bg-purple-900/50 transition-colors"
+                                        >
+                                            <Layers className="h-4 w-4" />
+                                            Ungroup Expense
+                                        </button>
                                     )}
                                 </div>
                             </div>

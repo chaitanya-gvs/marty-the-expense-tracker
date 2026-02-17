@@ -1469,7 +1469,7 @@ async def get_child_transactions(transaction_id: str):
 
 @router.get("/{transaction_id}/group", response_model=ApiResponse)
 async def get_group_transactions(transaction_id: str):
-    """Get all transactions in the same group (transfer or split group)."""
+    """Get all transactions in the same group (transfer, split, or grouped expense)."""
     try:
         transaction = await handle_database_operation(
             TransactionOperations.get_transaction_by_id,
@@ -1488,6 +1488,12 @@ async def get_group_transactions(transaction_id: str):
         
         # Tags are already included in get_transfer_group_transactions
         response_transactions = [_convert_db_transaction_to_response(t) for t in group_members]
+        
+        # If this is a grouped expense, filter to only return individual transactions (not the collapsed one)
+        if transaction.get('is_grouped_expense'):
+            response_transactions = [t for t in response_transactions if not t.is_grouped_expense]
+            return ApiResponse(data={"group_members": response_transactions})
+        
         return ApiResponse(data=response_transactions)
         
     except HTTPException:

@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import { Modal } from "@/components/ui/modal";
 import { ResultItem } from "@/components/ui/modal/primitives";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
@@ -13,6 +12,8 @@ import { apiClient } from "@/lib/api/client";
 import { toast } from "sonner";
 import { Loader2, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FieldAutocomplete } from "./field-autocomplete";
+import { CategoryAutocomplete } from "./category-autocomplete";
 
 interface GroupExpenseModalProps {
   selectedTransactions: Transaction[];
@@ -142,11 +143,12 @@ export function GroupExpenseModal({
                   "text-lg font-bold",
                   netAmount >= 0 ? "text-green-600" : "text-red-600"
                 )}>
+                  {netAmount >= 0 ? "+" : ""}
                   {formatCurrency(Math.abs(netAmount))}
                 </span>
               </div>
               <div className="text-xs text-muted-foreground mt-1">
-                Direction: {netAmount >= 0 ? "Credit" : "Debit"}
+                Direction: {netAmount >= 0 ? "Credit ↑" : "Debit ↓"}
               </div>
             </div>
           </div>
@@ -155,24 +157,25 @@ export function GroupExpenseModal({
         {/* Description Input */}
         <div className="space-y-2">
           <Label htmlFor="description">Description</Label>
-          <Input
-            id="description"
+          <FieldAutocomplete
+            fieldName="description"
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onValueChange={setDescription}
             placeholder="Enter a description for the grouped expense"
-            className="w-full"
+            onSave={async (val) => setDescription(val)}
           />
         </div>
 
         {/* Category Input (optional) */}
         <div className="space-y-2">
           <Label htmlFor="category">Category (optional)</Label>
-          <Input
-            id="category"
+          <CategoryAutocomplete
             value={category}
-            onChange={(e) => setCategory(e.target.value)}
+            onValueChange={setCategory}
             placeholder="Leave empty to use first transaction's category"
-            className="w-full"
+            transactionDirection={netAmount >= 0 ? "credit" : "debit"}
+            onSave={async (val) => setCategory(val)}
+            onCancel={() => {}}
           />
           {selectedTransactions[0]?.category && !category && (
             <p className="text-xs text-muted-foreground">
