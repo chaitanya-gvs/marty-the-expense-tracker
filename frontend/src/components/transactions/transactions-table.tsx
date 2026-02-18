@@ -41,11 +41,9 @@ import {
   Building2,
   MoreVertical,
   Link2,
-  GitBranch,
   CheckSquare,
   Square,
   Edit,
-  Unlink,
   Split,
   RefreshCcw,
   AlertCircle,
@@ -67,6 +65,7 @@ import { TransactionDetailsDrawer } from "./transaction-details-drawer";
 import { SplitTransactionModal } from "./split-transaction-modal";
 import { GroupTransferModal } from "./group-transfer-modal";
 import { GroupExpenseModal } from "./group-expense-modal";
+import { GroupExpenseSearchModal } from "./group-expense-search-modal";
 import { EmailLinksDrawer } from "./email-links-drawer";
 import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
 import { PdfViewer } from "./pdf-viewer";
@@ -115,6 +114,7 @@ function RelatedTransactionsDrawerWithFetch({
   onUnlinkChild,
   onUngroup,
   onRemoveFromGroup,
+  drawerVariant = null,
 }: {
   transaction: Transaction;
   allTransactions: Transaction[];
@@ -125,6 +125,7 @@ function RelatedTransactionsDrawerWithFetch({
   onUnlinkChild?: (childId: string) => void;
   onUngroup: () => void;
   onRemoveFromGroup: (transactionId: string) => void;
+  drawerVariant?: "split" | "transfer" | "groupedExpense" | null;
 }) {
   const [fetchedGroup, setFetchedGroup] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -182,6 +183,7 @@ function RelatedTransactionsDrawerWithFetch({
       onUnlinkChild={onUnlinkChild}
       onUngroup={onUngroup}
       onRemoveFromGroup={onRemoveFromGroup}
+      modeOverride={drawerVariant ?? undefined}
     />
   );
 }
@@ -209,8 +211,12 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const [highlightedTransactionIds, setHighlightedTransactionIds] = useState<Set<string>>(new Set());
   const [drawerTransaction, setDrawerTransaction] = useState<Transaction | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [drawerVariant, setDrawerVariant] = useState<"split" | "transfer" | "groupedExpense" | null>(null);
   const [groupTransferModalTransaction, setGroupTransferModalTransaction] = useState<Transaction | null>(null);
   const [isGroupExpenseModalOpen, setIsGroupExpenseModalOpen] = useState(false);
+  const [groupExpensePreselectedTransactions, setGroupExpensePreselectedTransactions] = useState<Transaction[] | null>(null);
+  const [isGroupExpenseSearchModalOpen, setIsGroupExpenseSearchModalOpen] = useState(false);
+  const [groupExpenseFromTransaction, setGroupExpenseFromTransaction] = useState<Transaction | null>(null);
   const [expandedGroupedExpenses, setExpandedGroupedExpenses] = useState<Set<string>>(new Set());
   const [groupMembers, setGroupMembers] = useState<Map<string, Transaction[]>>(new Map());
   const [emailLinksTransaction, setEmailLinksTransaction] = useState<Transaction | null>(null);
@@ -347,14 +353,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   };
 
   // Enhanced bulk action logic
-  const canBulkGroupTransfer = useMemo(() => {
-    if (selectedTransactions.length < 2) return false;
-    const directions = selectedTransactions.map(t => t.direction);
-    const hasDebit = directions.includes("debit");
-    const hasCredit = directions.includes("credit");
-    return hasDebit && hasCredit;
-  }, [selectedTransactions]);
-
   const canBulkGroupExpense = useMemo(() => {
     // Can group any number of transactions (1 or more)
     if (selectedTransactions.length < 1) return false;
@@ -364,10 +362,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       t.transaction_group_id && !t.is_split && t.is_grouped_expense
     );
     return !hasCollapsedGroupRow;
-  }, [selectedTransactions]);
-
-  const canBulkUnlink = useMemo(() => {
-    return selectedTransactions.some(t => t.transaction_group_id);
   }, [selectedTransactions]);
 
   // Selection summary for enhanced toolbar
@@ -393,30 +387,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     setHighlightedTransactionIds(new Set());
   }, []);
 
-  const handleBulkGroupTransfer = async () => {
-    if (!canBulkGroupTransfer) return;
-
-    try {
-      const transactionIds = selectedTransactions.map(t => t.id);
-      await apiClient.groupTransfer(transactionIds);
-      toast.success(`Grouped ${transactionIds.length} transactions as a transfer`, {
-        action: {
-          label: "Undo",
-          onClick: async () => {
-            const updatePromises = transactionIds.map(id =>
-              apiClient.updateTransaction(id, { transaction_group_id: undefined })
-            );
-            await Promise.all(updatePromises);
-          },
-        },
-      });
-      setSelectedTransactionIds(new Set());
-    } catch (error) {
-      toast.error("Failed to group transfer");
-      console.error("Bulk group transfer error:", error);
-    }
-  };
-
   const handleBulkGroupExpense = () => {
     if (!canBulkGroupExpense) return;
     setIsGroupExpenseModalOpen(true);
@@ -425,6 +395,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const handleGroupExpenseSuccess = () => {
     setSelectedTransactionIds(new Set());
     setIsGroupExpenseModalOpen(false);
+    setGroupExpensePreselectedTransactions(null);
     queryClient.invalidateQueries({ queryKey: ["transactions"] });
     queryClient.invalidateQueries({ queryKey: ["transactions-infinite"] });
   };
@@ -481,35 +452,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     } catch (error) {
       toast.error("Failed to ungroup expense");
       console.error("Ungroup error:", error);
-    }
-  };
-
-  const handleBulkUnlink = async () => {
-    try {
-      const updatePromises = selectedTransactions
-        .filter(t => t.transaction_group_id)
-        .map(t =>
-          apiClient.updateTransaction(t.id, {
-            transaction_group_id: undefined,
-          })
-        );
-
-      await Promise.all(updatePromises);
-
-      const unlinkedCount = updatePromises.length;
-      toast.success(`Unlinked ${unlinkedCount} transactions`, {
-        action: {
-          label: "Undo",
-          onClick: () => {
-            // Note: Full undo would require storing previous state
-            toast.info("Undo not available for bulk operations");
-          },
-        },
-      });
-      setSelectedTransactionIds(new Set());
-    } catch (error) {
-      toast.error("Failed to unlink transactions");
-      console.error("Bulk unlink error:", error);
     }
   };
 
@@ -582,7 +524,17 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         setSelectedTransactionForSplit(transaction);
         setIsSplitEditorOpen(true);
         break;
-      case 1: // Split button
+      case 1: // Group expense - sidebar if already grouped, else modal
+        if (transaction.transaction_group_id && !transaction.is_split) {
+          setDrawerTransaction(transaction);
+          setDrawerVariant("groupedExpense");
+          setIsDrawerOpen(true);
+        } else {
+          setGroupExpenseFromTransaction(transaction);
+          setIsGroupExpenseSearchModalOpen(true);
+        }
+        break;
+      case 2: // Split button
         const isSplitGroup = !!transaction.transaction_group_id && transaction.is_split;
         if (isSplitGroup) {
           setDrawerTransaction(transaction);
@@ -592,11 +544,11 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           setIsSplitTransactionModalOpen(true);
         }
         break;
-      case 2: // Links button
+      case 3: // Links button
         setEmailLinksTransaction(transaction);
         setIsEmailLinksDrawerOpen(true);
         break;
-      case 3: // Flag button
+      case 4: // Flag button
         updateTransaction.mutate({
           id: transaction.id,
           updates: {
@@ -604,7 +556,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           },
         });
         break;
-      case 4: { // Toggle direction button
+      case 5: { // Toggle direction button
         const nextDirection = transaction.direction === "debit" ? "credit" : "debit";
         void updateTransaction
           .mutateAsync({
@@ -622,21 +574,16 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           });
         break;
       }
-      case 5: // Delete button
+      case 6: // Delete button
         setTransactionToDelete(transaction);
         setIsDeleteConfirmationOpen(true);
-        break;
-      case 6: // Ungroup button (when visible)
-        if (transaction.is_grouped_expense) {
-          handleUngroupExpense(transaction);
-        }
         break;
       case 7: // PDF viewer button (when visible)
         setPdfViewerTransactionId(transaction.id);
         setIsPdfViewerOpen(true);
         break;
     }
-  }, [allTransactions, updateTransaction, handleUngroupExpense]);
+  }, [allTransactions, updateTransaction]);
 
   // Keyboard navigation helpers
   const editableColumns = useMemo(() => {
@@ -792,7 +739,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
       case 'ArrowRight':
         e.preventDefault();
-        if (focusedColumnId === 'actions' && focusedActionButton < 7) { // 8 action buttons (0-7)
+        if (focusedColumnId === 'actions' && focusedActionButton < 7) { // 8 action buttons (0-7); PDF is conditional
           // Navigate between action buttons
           setFocusedActionButton(focusedActionButton + 1);
         } else if (focusedColumnId) {
@@ -1615,7 +1562,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               e.preventDefault();
 
               if (isSplitGroup) {
-                // Active: open drawer to view split group
+                setDrawerVariant(null);
                 setDrawerTransaction(transaction);
                 setIsDrawerOpen(true);
               }
@@ -1652,7 +1599,34 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   <Users className="h-3.5 w-3.5" />
                 </Button>
 
-                {/* 2. Split button */}
+                {/* 2. Group expense - before Split; glows when in a group; always opens modal (no ungroup) */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    "h-7 w-7 p-0 rounded-full transition-all duration-200",
+                    transaction.transaction_group_id && !transaction.is_split
+                      ? "bg-purple-100 text-purple-600 hover:bg-purple-200 dark:bg-purple-900 dark:text-purple-400 dark:hover:bg-purple-800 shadow-[0_0_12px_rgba(147,51,234,0.5)] dark:shadow-[0_0_12px_rgba(147,51,234,0.4)]"
+                      : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
+                    isFocusedActionsColumn && focusedActionButton === 1 && "ring-2 ring-blue-500 ring-inset"
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (transaction.transaction_group_id && !transaction.is_split) {
+                      setDrawerTransaction(transaction);
+                      setDrawerVariant("groupedExpense");
+                      setIsDrawerOpen(true);
+                    } else {
+                      setGroupExpenseFromTransaction(transaction);
+                      setIsGroupExpenseSearchModalOpen(true);
+                    }
+                  }}
+                  title={transaction.transaction_group_id ? "View group in sidebar" : "Group this transaction with others (search to add more)"}
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                </Button>
+
+                {/* 3. Split button */}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1661,12 +1635,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     isSplitGroup
                       ? "bg-purple-100 text-purple-600 hover:bg-purple-200 dark:bg-purple-900 dark:text-purple-400 dark:hover:bg-purple-800"
                       : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
-                    isFocusedActionsColumn && focusedActionButton === 1 && "ring-2 ring-blue-500 ring-inset"
+                    isFocusedActionsColumn && focusedActionButton === 2 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
-                    // If transaction is already split (has transaction_group_id and is_split=true), show drawer
-                    // Otherwise, open modal to split it
                     if (isSplitGroup) {
                       handleSplitClick(e);
                     } else {
@@ -1681,7 +1653,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   <Split className="h-3.5 w-3.5" />
                 </Button>
 
-                {/* 3. Links button */}
+                {/* 4. Links button */}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1690,7 +1662,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     transaction.related_mails && transaction.related_mails.length > 0
                       ? "bg-amber-100 text-amber-600 hover:bg-amber-200 dark:bg-amber-900 dark:text-amber-400 dark:hover:bg-amber-800"
                       : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
-                    isFocusedActionsColumn && focusedActionButton === 2 && "ring-2 ring-blue-500 ring-inset"
+                    isFocusedActionsColumn && focusedActionButton === 3 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1706,7 +1678,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   <Link2 className="h-3.5 w-3.5" />
                 </Button>
 
-                {/* 4. Warning/Flag button */}
+                {/* 5. Warning/Flag button */}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1715,7 +1687,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     transaction.is_flagged === true
                       ? "border-orange-500 text-orange-600 hover:border-orange-600 hover:text-orange-700 dark:border-orange-400 dark:text-orange-400 dark:hover:border-orange-300 dark:hover:text-orange-300 bg-orange-50 dark:bg-orange-950"
                       : "border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500 dark:border-gray-600 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-400 bg-transparent",
-                    isFocusedActionsColumn && focusedActionButton === 3 && "ring-2 ring-blue-500 ring-inset"
+                    isFocusedActionsColumn && focusedActionButton === 4 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={async (e) => {
                     e.stopPropagation();
@@ -1737,13 +1709,13 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   <AlertCircle className="h-3.5 w-3.5" />
                 </Button>
 
-                {/* 5. Toggle direction button */}
+                {/* 6. Toggle direction button */}
                 <Button
                   variant="ghost"
                   size="sm"
                   className={cn(
                     "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:text-gray-300 bg-transparent",
-                    isFocusedActionsColumn && focusedActionButton === 4 && "ring-2 ring-blue-500 ring-inset"
+                    isFocusedActionsColumn && focusedActionButton === 5 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={async (e) => {
                     e.stopPropagation();
@@ -1766,13 +1738,13 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   <RefreshCcw className="h-3.5 w-3.5" />
                 </Button>
 
-                {/* 6. Delete button */}
+                {/* 7. Delete button */}
                 <Button
                   variant="ghost"
                   size="sm"
                   className={cn(
                     "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500 dark:border-gray-600 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-400 bg-transparent",
-                    isFocusedActionsColumn && focusedActionButton === 5 && "ring-2 ring-blue-500 ring-inset"
+                    isFocusedActionsColumn && focusedActionButton === 6 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1783,25 +1755,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
-
-                {/* 7. Ungroup button - only show for grouped expenses */}
-                {transaction.is_grouped_expense && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className={cn(
-                      "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-purple-300 text-purple-600 hover:border-purple-400 hover:text-purple-700 dark:border-purple-600 dark:text-purple-400 dark:hover:border-purple-500 dark:hover:text-purple-300 bg-purple-50 dark:bg-purple-950",
-                      isFocusedActionsColumn && focusedActionButton === 6 && "ring-2 ring-blue-500 ring-inset"
-                    )}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleUngroupExpense(transaction);
-                    }}
-                    title="Ungroup expense"
-                  >
-                    <Layers className="h-3.5 w-3.5" />
-                  </Button>
-                )}
 
                 {/* 8. PDF viewer button - only show if transaction has source_file */}
                 {transaction.source_file && (
@@ -1876,8 +1829,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   return (
     <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="text-lg font-medium text-gray-900 dark:text-white">
                 Transactions ({allTransactions.length} loaded{data?.pages?.[0]?.pagination?.total ? ` of ${data.pages[0].pagination.total}` : ''})
@@ -1893,25 +1846,28 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 </div>
               )}
             </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
             {!isMultiSelectMode && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setIsMultiSelectMode(true);
-                  // Initialize focused row index when entering multi-select mode
-                  if (allTransactions.length > 0) {
-                    setFocusedRowIndex(0);
-                  }
-                }}
-                className="flex items-center gap-2"
-              >
-                <CheckSquare className="h-4 w-4" />
-                Multi-Select
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setIsMultiSelectMode(true);
+                    // Initialize focused row index when entering multi-select mode
+                    if (allTransactions.length > 0) {
+                      setFocusedRowIndex(0);
+                    }
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <CheckSquare className="h-4 w-4" />
+                  Multi-Select
+                </Button>
+              </>
             )}
             {isMultiSelectMode && (
-              <div className="flex items-center gap-2">
+              <>
                 <Badge variant="secondary" className="text-sm">
                   {selectionSummary.total} selected
                   {selectionSummary.total > 0 && (
@@ -1929,17 +1885,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 >
                   <Edit className="h-4 w-4" />
                   Bulk Edit
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleBulkGroupTransfer}
-                  className="flex items-center gap-2"
-                  disabled={!canBulkGroupTransfer}
-                  title={canBulkGroupTransfer ? "Group as transfer" : "Select 2+ transactions with opposite directions"}
-                >
-                  <GitBranch className="h-4 w-4" />
-                  Group transfer
                 </Button>
                 <Button
                   variant="outline"
@@ -1964,17 +1909,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   Swap direction
                 </Button>
                 <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleBulkUnlink}
-                  className="flex items-center gap-2"
-                  disabled={!canBulkUnlink}
-                  title={canBulkUnlink ? "Unlink/ungroup selected transactions" : "No linked/grouped transactions selected"}
-                >
-                  <Unlink className="h-4 w-4" />
-                  Unlink/Ungroup
-                </Button>
-                <Button
                   variant="destructive"
                   size="sm"
                   onClick={() => setIsDeleteConfirmationOpen(true)}
@@ -1995,8 +1929,9 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 >
                   Done
                 </Button>
-              </div>
+              </>
             )}
+            </div>
           </div>
           {isFetchingNextPage && (
             <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -2330,10 +2265,37 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       )}
 
       {/* Group Expense Modal */}
+      <GroupExpenseSearchModal
+        isOpen={isGroupExpenseSearchModalOpen}
+        onClose={() => {
+          setIsGroupExpenseSearchModalOpen(false);
+          setGroupExpenseFromTransaction(null);
+        }}
+        onSelectTransactions={(txs) => {
+          setGroupExpensePreselectedTransactions(txs);
+          setIsGroupExpenseSearchModalOpen(false);
+          setGroupExpenseFromTransaction(null);
+          setIsGroupExpenseModalOpen(true);
+        }}
+        initialTransaction={groupExpenseFromTransaction}
+        existingGroupMembers={
+          groupExpenseFromTransaction?.transaction_group_id
+            ? (groupMembers.get(groupExpenseFromTransaction.transaction_group_id) ?? undefined)
+            : undefined
+        }
+        onUngroup={async (transactionGroupId) => {
+          await handleUngroupExpense({ transaction_group_id: transactionGroupId } as Transaction);
+          setIsGroupExpenseSearchModalOpen(false);
+          setGroupExpenseFromTransaction(null);
+        }}
+      />
       <GroupExpenseModal
-        selectedTransactions={selectedTransactions}
+        selectedTransactions={groupExpensePreselectedTransactions ?? selectedTransactions}
         isOpen={isGroupExpenseModalOpen}
-        onClose={() => setIsGroupExpenseModalOpen(false)}
+        onClose={() => {
+          setIsGroupExpenseModalOpen(false);
+          setGroupExpensePreselectedTransactions(null);
+        }}
         onGroupSuccess={handleGroupExpenseSuccess}
       />
 
@@ -2347,6 +2309,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           onClose={() => {
             setIsDrawerOpen(false);
             setDrawerTransaction(null);
+            setDrawerVariant(null);
           }}
           onUnlink={async () => {
             // No-op: parent-child refund linking removed; use ungroup for groups
@@ -2358,14 +2321,16 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           }}
           onUngroup={async () => {
             try {
-              // Ungroup all transactions in the group
+              if (drawerVariant === "groupedExpense" && drawerTransaction?.transaction_group_id) {
+                await handleUngroupExpense(drawerTransaction);
+                setIsDrawerOpen(false);
+                setDrawerTransaction(null);
+                setDrawerVariant(null);
+                return;
+              }
               const transferGroupId = drawerTransaction.transaction_group_id;
-
               if (transferGroupId) {
                 const groupTransactions = allTransactions.filter(t => t.transaction_group_id === transferGroupId);
-
-                // Update all transactions in the group
-                // Note: Must use null instead of undefined, as JSON.stringify removes undefined values
                 await Promise.all(
                   groupTransactions.map(t =>
                     updateTransaction.mutateAsync({
@@ -2374,33 +2339,30 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     })
                   )
                 );
-
                 toast.success("Transfer group removed successfully");
-
-                // Wait a bit for cache to update before closing drawer
                 await new Promise(resolve => setTimeout(resolve, 300));
               }
               setIsDrawerOpen(false);
               setDrawerTransaction(null);
+              setDrawerVariant(null);
             } catch (error) {
-              console.error("Failed to ungroup transfer:", error);
-              toast.error("Failed to ungroup transfer");
+              console.error("Failed to ungroup:", error);
+              toast.error(drawerVariant === "groupedExpense" ? "Failed to ungroup expense" : "Failed to ungroup transfer");
             }
           }}
           onRemoveFromGroup={async (transactionId) => {
             try {
-              // Note: Must use null instead of undefined, as JSON.stringify removes undefined values
               await updateTransaction.mutateAsync({
                 id: transactionId,
                 updates: { transaction_group_id: null },
               });
               toast.success("Transaction removed from group");
-              // Keep drawer open to show updated group
             } catch (error) {
               console.error("Failed to remove from group:", error);
               toast.error("Failed to remove transaction from group");
             }
           }}
+          drawerVariant={drawerVariant}
         />
       )}
 
