@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
 import { Transaction } from "@/lib/types";
 import { toast } from "sonner";
-import { X, ArrowDown, ArrowRight, ArrowLeft, Unlink, Trash2, ExternalLink } from "lucide-react";
+import { X, ArrowDown, ArrowRight, ArrowLeft, Unlink, Trash2, ExternalLink, Layers } from "lucide-react";
 import { apiClient } from "@/lib/api/client";
 
 interface RelatedTransactionsDrawerProps {
@@ -20,9 +20,11 @@ interface RelatedTransactionsDrawerProps {
   onUnlinkChild?: (childId: string) => void;
   onUngroup: () => void;
   onRemoveFromGroup: (transactionId: string) => void;
+  /** When set, overrides inferred mode (e.g. "groupedExpense" when opened from group expense icon). */
+  modeOverride?: "split" | "transfer" | "groupedExpense";
 }
 
-type DrawerMode = "refund" | "transfer" | "split";
+type DrawerMode = "refund" | "transfer" | "split" | "groupedExpense";
 
 export function RelatedTransactionsDrawer({
   transaction,
@@ -35,22 +37,21 @@ export function RelatedTransactionsDrawer({
   onUnlinkChild,
   onUngroup,
   onRemoveFromGroup,
+  modeOverride,
 }: RelatedTransactionsDrawerProps) {
   // Early return - don't render anything if closed
   if (!isOpen) {
     return null;
   }
 
-  // Determine mode: refund, split, or transfer
-  // If this transaction has a parent, it's a refund child (credit)
-  // If this transaction has children, it's a refund parent (debit)
-  const mode: DrawerMode = !!parentTransaction
+  // Determine mode: refund, split, groupedExpense, or transfer
+  const mode: DrawerMode = modeOverride ?? (!!parentTransaction
     ? "refund"
     : childTransactions.length > 0
       ? "refund"
       : transaction.is_split
         ? "split"
-        : "transfer";
+        : "transfer");
   const netAmount = transferGroup.reduce((sum, t) => sum + t.amount, 0);
   const totalSplitAmount = transferGroup.reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
@@ -68,22 +69,22 @@ export function RelatedTransactionsDrawer({
   const handleUngroup = async () => {
     try {
       if (mode === "split") {
-        // For split transactions, use the special ungroup-split endpoint
         if (transaction.transaction_group_id) {
           await apiClient.ungroupSplit(transaction.transaction_group_id);
           toast.success("Split removed. Original transaction restored.");
           onClose();
-          // Trigger a page refresh or callback to refresh the transaction list
           window.location.reload();
         }
+      } else if (mode === "groupedExpense") {
+        onUngroup();
+        onClose();
       } else {
-        // For transfer groups, use the normal ungroup
         onUngroup();
         onClose();
       }
     } catch (error) {
       console.error("Failed to ungroup:", error);
-      toast.error(mode === "split" ? "Failed to remove split" : "Failed to ungroup transfer");
+      toast.error(mode === "split" ? "Failed to remove split" : mode === "groupedExpense" ? "Failed to ungroup expense" : "Failed to ungroup transfer");
     }
   };
 
@@ -334,6 +335,75 @@ export function RelatedTransactionsDrawer({
     return null;
   };
 
+  const renderGroupedExpenseMode = () => {
+    // Exclude the collapsed summary row (is_grouped_expense) so we only show member transactions
+    const members = transferGroup.filter(t => !t.is_grouped_expense);
+    if (members.length === 0) return null;
+
+    const netAmount = members.reduce((sum, t) => sum + t.amount, 0);
+
+    return (
+      <div className="space-y-6">
+        <div className="text-center">
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
+            Grouped expense ({members.length} transactions)
+          </div>
+          <div className="flex items-center justify-center gap-2 text-gray-500">
+            <Layers className="h-4 w-4" />
+            <span className="text-xs">Combined into a single expense row</span>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {members.map((t) => (
+            <div
+              key={t.id}
+              className={`p-4 rounded-lg border ${t.direction === "debit"
+                ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+                : "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm truncate">{t.description}</div>
+                  <div className={`text-xs ${t.direction === "debit" ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
+                    {formatDate(t.date)} · {formatCurrency(Math.abs(t.amount))}
+                    {t.account && ` · ${t.account.split(" ").slice(0, -2).join(" ") || t.account}`}
+                  </div>
+                  {t.category && (
+                    <Badge variant="secondary" className="text-xs mt-1">
+                      {t.category}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="text-center space-y-1">
+            <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Net amount</div>
+            <div className={`text-lg font-bold ${netAmount >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+              {netAmount >= 0 ? "+" : "−"}{formatCurrency(Math.abs(netAmount))}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Button
+            variant="outline"
+            onClick={handleUngroup}
+            className="w-full border-purple-500 text-purple-600 hover:bg-purple-50 dark:border-purple-400 dark:text-purple-400 dark:hover:bg-purple-900/20"
+          >
+            <Unlink className="h-4 w-4 mr-2" />
+            Ungroup expense
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
   const renderTransferMode = () => {
     if (transferGroup.length === 0) return null;
 
@@ -465,7 +535,28 @@ export function RelatedTransactionsDrawer({
               <div className="space-y-2">
                 <div className="font-medium text-sm">{parentTransaction.description}</div>
                 <div className="text-xs text-purple-700 dark:text-purple-300">
-                  {formatDate(parentTransaction.date)} · {formatCurrency(Math.abs(parentTransaction.amount))} · {parentTransaction.account.split(' ').slice(0, -2).join(' ')}
+                  {formatDate(parentTransaction.date)}
+                </div>
+                <div className="text-xs text-purple-700 dark:text-purple-300">
+                  <span className="font-medium">Account:</span> {parentTransaction.account ? parentTransaction.account.split(' ').slice(0, -2).join(' ') || parentTransaction.account : '—'}
+                </div>
+                {parentTransaction.paid_by && (
+                  <div className="text-xs text-purple-700 dark:text-purple-300">
+                    <span className="font-medium">Paid by:</span> {parentTransaction.paid_by}
+                  </div>
+                )}
+                <div className="text-xs text-purple-700 dark:text-purple-300 pt-1">
+                  {parentTransaction.is_shared && parentTransaction.split_share_amount != null ? (
+                    <>
+                      <span className="font-medium">Your share:</span> {formatCurrency(Math.abs(parentTransaction.split_share_amount))}
+                      {" · "}
+                      <span className="font-medium">Total:</span> {formatCurrency(parentAmount)}
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-medium">Amount:</span> {formatCurrency(parentAmount)}
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 mt-2">
                   {parentTransaction.category && (
@@ -517,7 +608,21 @@ export function RelatedTransactionsDrawer({
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm truncate">{t.description}</div>
                         <div className="text-xs text-purple-600 dark:text-purple-400">
-                          {formatDate(t.date)} · {formatCurrency(Math.abs(t.amount))} · {t.account.split(' ').slice(0, -2).join(' ')}
+                          {formatDate(t.date)}
+                          {t.account && ` · ${t.account.split(' ').slice(0, -2).join(' ') || t.account}`}
+                        </div>
+                        <div className="text-xs text-purple-600 dark:text-purple-400 mt-0.5">
+                          {t.is_shared && t.split_share_amount != null ? (
+                            <>
+                              <span className="font-medium">Your share:</span> {formatCurrency(Math.abs(t.split_share_amount))}
+                              {" · "}
+                              <span className="font-medium">Total:</span> {formatCurrency(Math.abs(t.amount))}
+                            </>
+                          ) : (
+                            <>
+                              <span className="font-medium">Amount:</span> {formatCurrency(Math.abs(t.amount))}
+                            </>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 mt-2">
                           {t.category && (
@@ -611,10 +716,10 @@ export function RelatedTransactionsDrawer({
           <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-2">
               <span className="text-base">
-                {mode === "refund" ? "↩︎" : mode === "split" ? "⚡" : "⇄"}
+                {mode === "refund" ? "↩︎" : mode === "split" ? "⚡" : mode === "groupedExpense" ? <Layers className="h-4 w-4" /> : "⇄"}
               </span>
               <span className="font-medium text-sm">
-                {mode === "refund" ? "Refund Details" : mode === "split" ? "Split Transaction" : "Transfer Group"}
+                {mode === "refund" ? "Refund Details" : mode === "split" ? "Split Transaction" : mode === "groupedExpense" ? "Grouped expense" : "Transfer Group"}
               </span>
             </div>
             <Button
@@ -629,7 +734,13 @@ export function RelatedTransactionsDrawer({
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-4">
-            {mode === "refund" ? renderRefundMode() : mode === "split" ? renderSplitMode() : renderTransferMode()}
+            {mode === "refund"
+              ? renderRefundMode()
+              : mode === "split"
+                ? renderSplitMode()
+                : mode === "groupedExpense"
+                  ? renderGroupedExpenseMode()
+                  : renderTransferMode()}
           </div>
 
           {/* Footer */}
