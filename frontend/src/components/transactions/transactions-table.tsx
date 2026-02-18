@@ -11,6 +11,7 @@ import {
   SortingState,
   ColumnDef,
   Row,
+  ColumnSizingState,
 } from "@tanstack/react-table";
 import { useQueryClient } from "@tanstack/react-query";
 // Using native HTML table elements for better sticky header support
@@ -222,6 +223,39 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   // Quick View Drawer State
   const [detailsTransaction, setDetailsTransaction] = useState<Transaction | null>(null);
   const [isDetailsDrawerOpen, setIsDetailsDrawerOpen] = useState(false);
+
+  // Column resizing state (persists description width in localStorage)
+  const COLUMN_SIZING_KEY = "transactions-table-column-sizing";
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(() => {
+    if (typeof window === "undefined") return { description: 420 };
+    try {
+      const stored = localStorage.getItem(COLUMN_SIZING_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as ColumnSizingState;
+        if (typeof parsed.description === "number" && parsed.description >= 180 && parsed.description <= 900) {
+          return parsed;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return { description: 420 };
+  });
+
+  const handleColumnSizingChange = useCallback(
+    (updater: (old: ColumnSizingState) => ColumnSizingState) => {
+      setColumnSizing((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        try {
+          localStorage.setItem(COLUMN_SIZING_KEY, JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+    },
+    []
+  );
 
   // Keyboard navigation state
   const [focusedRowIndex, setFocusedRowIndex] = useState<number>(-1);
@@ -926,7 +960,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           size: 100,
         }),
 
-        // Description column
+        // Description column (resizable)
         columnHelper.accessor("description", {
           header: () => (
             <div className="flex items-center gap-1 text-sm font-medium">
@@ -934,6 +968,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               Description
             </div>
           ),
+          enableResizing: true,
+          minSize: 180,
+          maxSize: 900,
+          size: 420,
           cell: ({ getValue, row }) => {
             const isEditing = editingRow === row.original.id && editingField === "description";
 
@@ -1079,9 +1117,9 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                       />
                     </button>
                   )}
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 overflow-hidden">
                     <div className="flex items-center gap-1">
-                      <div className="font-medium text-sm truncate max-w-[280px] md:max-w-[260px]" title={fullText}>
+                      <div className="font-medium text-sm truncate" title={fullText}>
                         {description}
                       </div>
                       {isGroupedExpense && (
@@ -1089,7 +1127,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                       )}
                     </div>
                     {row.original.notes && (
-                      <div className="text-xs text-gray-500 truncate max-w-[280px] md:max-w-[260px]" title={row.original.notes}>
+                      <div className="text-xs text-gray-500 truncate" title={row.original.notes}>
                         {row.original.notes}
                       </div>
                     )}
@@ -1098,7 +1136,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               </div>
             );
           },
-          size: 350,
         }),
 
         // Amount column with color coding
@@ -1802,10 +1839,13 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onSortingChange: setSorting,
+    onColumnSizingChange: handleColumnSizingChange,
     state: {
       sorting,
+      columnSizing,
     },
     columnResizeMode: "onChange",
+    enableColumnResizing: true,
   });
 
   const { rows } = table.getRowModel();
@@ -1974,16 +2014,21 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           className="flex-shrink-0 w-full overflow-x-auto bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-md z-50"
           onScroll={handleHeaderScroll}
         >
-          <table className={`w-full ${isMultiSelectMode ? 'min-w-[1180px]' : 'min-w-[1140px]'} table-auto md:table-fixed`}>
+          <table
+            className="w-full table-fixed"
+            style={{ minWidth: table.getCenterTotalSize() }}
+          >
             <colgroup>
-              {isMultiSelectMode && <col className="w-[40px]" />}
-              <col className="w-[100px]" />
-              <col className="w-[350px] md:w-[320px]" />
-              <col className="w-[120px]" />
-              <col className="w-[110px]" />
-              <col className="w-[110px]" />
-              <col className="w-[120px]" />
-              <col className="w-[220px]" />
+              {table.getHeaderGroups()[0].headers.map((header) => (
+                <col
+                  key={header.id}
+                  style={{
+                    width: header.getSize(),
+                    ...(header.column.columnDef.minSize != null && { minWidth: header.column.columnDef.minSize }),
+                    ...(header.column.columnDef.maxSize != null && { maxWidth: header.column.columnDef.maxSize }),
+                  }}
+                />
+              ))}
             </colgroup>
             <thead>
               {table.getHeaderGroups().map((headerGroup) => (
@@ -1991,7 +2036,12 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   {headerGroup.headers.map((header) => (
                     <th
                       key={header.id}
-                      className="px-3 py-2 text-left font-semibold text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-800 h-12 align-middle text-foreground whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]"
+                      className="relative px-3 py-2 text-left font-semibold text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-800 h-12 align-middle text-foreground whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]"
+                      style={{
+                        width: header.getSize(),
+                        ...(header.column.columnDef.minSize != null && { minWidth: header.column.columnDef.minSize }),
+                        ...(header.column.columnDef.maxSize != null && { maxWidth: header.column.columnDef.maxSize }),
+                      }}
                     >
                       {header.isPlaceholder
                         ? null
@@ -1999,6 +2049,15 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                           header.column.columnDef.header,
                           header.getContext()
                         )}
+                      {header.column.getCanResize() && (
+                        <div
+                          onMouseDown={header.getResizeHandler()}
+                          onTouchStart={header.getResizeHandler()}
+                          className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none touch-none hover:bg-blue-400 active:bg-blue-500 rounded transition-colors"
+                          style={{ touchAction: "none" }}
+                          title="Drag to resize column"
+                        />
+                      )}
                     </th>
                   ))}
                 </tr>
@@ -2017,16 +2076,21 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           className="flex-1 overflow-auto relative w-full"
           onScroll={handleBodyScroll}
         >
-          <table className={`w-full ${isMultiSelectMode ? 'min-w-[1180px]' : 'min-w-[1140px]'} table-auto md:table-fixed`}>
+          <table
+            className="w-full table-fixed"
+            style={{ minWidth: table.getCenterTotalSize() }}
+          >
             <colgroup>
-              {isMultiSelectMode && <col className="w-[40px]" />}
-              <col className="w-[100px]" />
-              <col className="w-[350px] md:w-[320px]" />
-              <col className="w-[120px]" />
-              <col className="w-[110px]" />
-              <col className="w-[110px]" />
-              <col className="w-[120px]" />
-              <col className="w-[220px]" />
+              {table.getHeaderGroups()[0].headers.map((header) => (
+                <col
+                  key={header.id}
+                  style={{
+                    width: header.getSize(),
+                    ...(header.column.columnDef.minSize != null && { minWidth: header.column.columnDef.minSize }),
+                    ...(header.column.columnDef.maxSize != null && { maxWidth: header.column.columnDef.maxSize }),
+                  }}
+                />
+              ))}
             </colgroup>
             <tbody className="[&_tr:last-child]:border-0">
               {rows.map((row, rowIndex) => {
@@ -2081,8 +2145,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                         <td className="px-3 py-2 text-xs text-gray-600 dark:text-gray-400 pl-8">
                           {format(new Date(member.date), "dd MMM yy")}
                         </td>
-                        <td className="px-3 py-2 pl-12">
-                          <div className="text-sm truncate max-w-[280px]">{member.description}</div>
+                        <td className="px-3 py-2 pl-12 min-w-0">
+                          <div className="text-sm truncate">{member.description}</div>
                           {member.notes && (
                             <div className="text-xs text-gray-500 truncate">{member.notes}</div>
                           )}
