@@ -81,6 +81,7 @@ class TransactionCreate(BaseModel):
     related_mails: List[str] = []
     source_file: Optional[str] = None
     raw_data: Optional[Dict[str, Any]] = None
+    transaction_source: Optional[str] = None  # manual_entry (default) or email_ingestion when creating from email
 
 
 class TransactionUpdate(BaseModel):
@@ -1442,7 +1443,8 @@ async def create_transaction(transaction_data: TransactionCreate):
             related_mails=transaction_data.related_mails,
             source_file=transaction_data.source_file,
             raw_data=transaction_data.raw_data,
-            transaction_group_id=transaction_data.transaction_group_id
+            transaction_group_id=transaction_data.transaction_group_id,
+            transaction_source=transaction_data.transaction_source or "manual_entry",
         )
         
         # Fetch the created transaction
@@ -1886,7 +1888,8 @@ async def group_expense(request: GroupExpenseRequest):
             source_file=None,
             raw_data=None,
             transaction_group_id=transaction_group_id,
-            is_grouped_expense=True
+            is_grouped_expense=True,
+            transaction_source="manual_entry",
         )
         
         # Fetch the created collapsed transaction
@@ -2186,7 +2189,8 @@ async def split_transaction(request: SplitTransactionRequest):
                     related_mails=original_transaction.get('related_mails', []),
                     source_file=original_transaction.get('source_file'),
                     raw_data=None,  # Don't copy raw_data to split transactions to avoid serialization issues
-                    transaction_group_id=split_group_id
+                    transaction_group_id=split_group_id,
+                    transaction_source="manual_entry",
                 )
                 
                 # Fetch the created transaction

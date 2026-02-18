@@ -316,7 +316,8 @@ class TransactionOperations:
         raw_data: Optional[Dict[str, Any]] = None,
         transaction_group_id: Optional[str] = None,
         is_split: Optional[bool] = None,
-        is_grouped_expense: Optional[bool] = None
+        is_grouped_expense: Optional[bool] = None,
+        transaction_source: Optional[str] = "manual_entry",
     ) -> str:
         """Create a new transaction and return its ID"""
         session_factory = get_session_factory()
@@ -335,12 +336,12 @@ class TransactionOperations:
                         transaction_date, transaction_time, amount, split_share_amount,
                         direction, transaction_type, is_shared, is_split, is_grouped_expense, split_breakdown, paid_by,
                         account, category_id, sub_category, tags, description, notes, reference_number,
-                        related_mails, source_file, raw_data, transaction_group_id
+                        related_mails, source_file, raw_data, transaction_group_id, transaction_source
                     ) VALUES (
                         :transaction_date, :transaction_time, :amount, :split_share_amount,
                         :direction, :transaction_type, :is_shared, :is_split, :is_grouped_expense, :split_breakdown, :paid_by,
                         :account, :category_id, :sub_category, :tags, :description, :notes, :reference_number,
-                        :related_mails, :source_file, :raw_data, :transaction_group_id
+                        :related_mails, :source_file, :raw_data, :transaction_group_id, :transaction_source
                     ) RETURNING id
                 """), {
                     "transaction_date": transaction_date,
@@ -364,7 +365,8 @@ class TransactionOperations:
                     "raw_data": raw_data,
                     "transaction_group_id": transaction_group_id,
                     "is_split": is_split,
-                    "is_grouped_expense": is_grouped_expense
+                    "is_grouped_expense": is_grouped_expense,
+                    "transaction_source": transaction_source,
                 }
             )
             transaction_id = result.fetchone()[0]
@@ -1000,7 +1002,8 @@ class TransactionOperations:
     async def bulk_insert_transactions(
         transactions: List[Dict[str, Any]],
         check_duplicates: bool = True,
-        upsert_splitwise: bool = False
+        upsert_splitwise: bool = False,
+        transaction_source: str = "statement_extraction",
     ) -> Dict[str, Any]:
         """
         Bulk insert transactions with optional duplicate checking and Splitwise upsert support
@@ -1089,7 +1092,9 @@ class TransactionOperations:
             for transaction in transactions_to_insert:
                 try:
                     # Convert transaction data to database format
-                    insert_row = TransactionOperations._prepare_transaction_for_insert(transaction)
+                    insert_row = TransactionOperations._prepare_transaction_for_insert(
+                        transaction, default_source=transaction_source
+                    )
                     insert_data.append(insert_row)
                 except Exception as e:
                     result["error_count"] += 1
@@ -1110,12 +1115,12 @@ class TransactionOperations:
                     transaction_date, transaction_time, amount, split_share_amount,
                     direction, transaction_type, is_shared, split_breakdown,
                     account, sub_category, tags, description, notes, reference_number,
-                    related_mails, source_file, raw_data, transaction_group_id
+                    related_mails, source_file, raw_data, transaction_group_id, transaction_source
                 ) VALUES (
                     :transaction_date, :transaction_time, :amount, :split_share_amount,
                     :direction, :transaction_type, :is_shared, :split_breakdown,
                     :account, :sub_category, :tags, :description, :notes, :reference_number,
-                    :related_mails, :source_file, :raw_data, :transaction_group_id
+                    :related_mails, :source_file, :raw_data, :transaction_group_id, :transaction_source
                 )
             """)
             
@@ -1397,14 +1402,16 @@ class TransactionOperations:
                     transaction_id = existing_transaction_ids[splitwise_id]
                     try:
                         # Prepare update data
-                        prepared_data = TransactionOperations._prepare_transaction_for_insert(transaction)
+                        prepared_data = TransactionOperations._prepare_transaction_for_insert(
+                            transaction, default_source="statement_extraction"
+                        )
                         
                         # Build update query with named parameters
                         update_fields = [
                             'transaction_date', 'transaction_time', 'amount', 'split_share_amount',
                             'direction', 'transaction_type', 'is_shared', 'split_breakdown', 'paid_by',
                             'account', 'description', 'reference_number', 'source_file', 'raw_data',
-                            'updated_at'
+                            'transaction_source', 'updated_at'
                         ]
                         
                         set_clauses = []
@@ -1772,7 +1779,9 @@ class TransactionOperations:
             return transactions
     
     @staticmethod
-    def _prepare_transaction_for_insert(transaction: Dict[str, Any]) -> Dict[str, Any]:
+    def _prepare_transaction_for_insert(
+        transaction: Dict[str, Any], default_source: str = "statement_extraction"
+    ) -> Dict[str, Any]:
         """Prepare transaction data for database insert"""
         # Convert date string to date object
         transaction_date = transaction.get('transaction_date')
@@ -1877,7 +1886,8 @@ class TransactionOperations:
             "related_mails": [],
             "source_file": transaction.get('source_file', ''),
             "raw_data": TransactionOperations._prepare_raw_data_for_json(transaction.get('raw_data')),
-            "transaction_group_id": None
+            "transaction_group_id": None,
+            "transaction_source": transaction.get("transaction_source") or default_source,
         }
 
 

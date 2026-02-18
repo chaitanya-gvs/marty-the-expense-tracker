@@ -43,6 +43,7 @@ class Transaction(Base):
     related_mails: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text), nullable=True)
     source_file: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     raw_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    transaction_source: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # statement_extraction, email_ingestion, manual_entry
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, server_default=func.current_timestamp())
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, server_default=func.current_timestamp())
     tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text), nullable=True, server_default="{}")
