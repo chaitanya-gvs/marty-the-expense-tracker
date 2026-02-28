@@ -446,9 +446,9 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       newGroupMembers.delete(transaction.transaction_group_id);
       setGroupMembers(newGroupMembers);
       
-      // Refresh transactions (infinite query is what the table uses)
+      // Clear infinite query cache so the deleted collapsed row cannot stay in a cached page
+      queryClient.removeQueries({ queryKey: ["transactions-infinite"] });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["transactions-infinite"] });
     } catch (error) {
       toast.error("Failed to ungroup expense");
       console.error("Ungroup error:", error);

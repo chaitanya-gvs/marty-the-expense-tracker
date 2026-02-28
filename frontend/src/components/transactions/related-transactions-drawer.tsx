@@ -338,7 +338,24 @@ export function RelatedTransactionsDrawer({
   const renderGroupedExpenseMode = () => {
     // Exclude the collapsed summary row (is_grouped_expense) so we only show member transactions
     const members = transferGroup.filter(t => !t.is_grouped_expense);
-    if (members.length === 0) return null;
+
+    if (members.length === 0) {
+      return (
+        <div className="space-y-6">
+          <p className="text-sm text-muted-foreground text-center">
+            No transactions in this group. You can ungroup to remove the group.
+          </p>
+          <Button
+            variant="outline"
+            onClick={handleUngroup}
+            className="w-full border-purple-500 text-purple-600 hover:bg-purple-50 dark:border-purple-400 dark:text-purple-400 dark:hover:bg-purple-900/20"
+          >
+            <Unlink className="h-4 w-4 mr-2" />
+            Ungroup expense
+          </Button>
+        </div>
+      );
+    }
 
     const netAmount = members.reduce((sum, t) => sum + t.amount, 0);
 
