@@ -578,7 +578,7 @@ async def _update_splitwise(
     
     try:
         # Step 1: Fetch Splitwise data
-        console.print("[bold]Step 1/3:[/bold] Fetching Splitwise transactions...")
+        console.print("[bold]Step 1/4:[/bold] Fetching Splitwise transactions...")
         splitwise_service = SplitwiseService()
         
         splitwise_transactions = splitwise_service.get_transactions_for_past_month(
@@ -596,7 +596,7 @@ async def _update_splitwise(
         console.print()
         
         # Step 2: Convert to DataFrame and standardize
-        console.print("[bold]Step 2/3:[/bold] Standardizing transaction data...")
+        console.print("[bold]Step 2/4:[/bold] Standardizing transaction data...")
         
         splitwise_data = []
         for transaction in splitwise_transactions:
@@ -634,8 +634,44 @@ async def _update_splitwise(
         console.print(f"[green]✓ Standardized {len(standardized_data)} transactions[/green]")
         console.print()
         
-        # Step 3: Insert into database
-        console.print("[bold]Step 3/3:[/bold] Inserting into database...")
+        # Step 3: Upload extracted CSV to GCS (same path convention as statement workflow)
+        console.print("[bold]Step 3/4:[/bold] Uploading extracted CSV to GCS...")
+        import tempfile
+        from pathlib import Path
+        from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
+
+        cloud_storage = GoogleCloudStorageService()
+        end_date_str = end_date.strftime("%Y%m%d")
+        csv_filename = f"splitwise_{end_date_str}_extracted.csv"
+        cloud_month = start_date.strftime("%Y-%m")
+        cloud_path = f"{cloud_month}/extracted_data/{csv_filename}"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as tmp:
+            temp_path = tmp.name
+        df.to_csv(temp_path, index=False)
+        try:
+            upload_result = cloud_storage.upload_file(
+                local_file_path=temp_path,
+                cloud_path=cloud_path,
+                content_type="text/csv",
+                metadata={
+                    "source": "splitwise",
+                    "date_range_start": start_date.isoformat(),
+                    "date_range_end": end_date.isoformat(),
+                    "transaction_count": len(splitwise_transactions),
+                    "upload_timestamp": datetime.now().isoformat(),
+                },
+            )
+            if upload_result.get("success"):
+                console.print(f"[green]✓ Uploaded to GCS: {cloud_path}[/green]")
+            else:
+                console.print(f"[yellow]⚠️  GCS upload failed: {upload_result.get('error', 'Unknown error')}[/yellow]")
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
+        console.print()
+
+        # Step 4: Insert into database
+        console.print("[bold]Step 4/4:[/bold] Inserting into database...")
         
         if clear_before:
             # Clear only Splitwise transactions
