@@ -50,11 +50,11 @@ def get_engine() -> AsyncEngine:
 
 
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
-    """Get the session factory for creating database sessions"""
+    """Get the session factory for creating database sessions."""
     if _session_factory is None:
         get_engine()
-    
-    assert _session_factory is not None
+    if _session_factory is None:
+        raise RuntimeError("Session factory could not be initialized")
     return _session_factory
 
 
@@ -82,10 +82,10 @@ async def refresh_connection_pool():
         get_engine()
 
 
-# Context manager for database sessions
-async def get_db_session() -> AsyncSession:
-    """Get a database session"""
+async def get_db_session():
+    """FastAPI dependency that yields a managed database session."""
     session_factory = get_session_factory()
-    return session_factory()
+    async with session_factory() as session:
+        yield session
 
 

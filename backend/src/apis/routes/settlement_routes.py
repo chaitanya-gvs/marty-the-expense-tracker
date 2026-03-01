@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import json
 from datetime import date
-from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.apis.routes.transaction_routes import ApiResponse
+from src.schemas.api.common import ApiResponse
 from src.schemas.api.settlements import (
     SettlementDetail,
     SettlementEntry,
@@ -19,13 +17,14 @@ from src.schemas.api.settlements import (
 )
 from src.services.database_manager.connection import get_db_session
 from src.utils.logger import get_logger
+from src.utils.settings import get_settings
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/settlements", tags=["settlements"])
 
-# Current user name variations to exclude from settlements
-CURRENT_USER_NAMES = {"me", "chaitanya gvs", "chaitanya"}
+_settings = get_settings()
+CURRENT_USER_NAMES = {name.strip() for name in _settings.CURRENT_USER_NAMES.split(",")}
 
 
 def _normalize_participant_name(name: str) -> str:
@@ -334,7 +333,6 @@ async def get_settlement_summary(
         settlement_summary = _calculate_settlements(transactions)
         
         return ApiResponse(
-            success=True,
             data=settlement_summary.model_dump(),
             message="Settlement summary retrieved successfully"
         )
@@ -432,7 +430,6 @@ async def get_participant_settlement(
         )
         
         return ApiResponse(
-            success=True,
             data=settlement_detail.model_dump(),
             message=f"Settlement details for {participant} retrieved successfully"
         )
@@ -472,7 +469,6 @@ async def get_all_participants(
         participants_list = sorted(list(all_participants))
         
         return ApiResponse(
-            success=True,
             data={"participants": participants_list},
             message="Participants list retrieved successfully"
         )

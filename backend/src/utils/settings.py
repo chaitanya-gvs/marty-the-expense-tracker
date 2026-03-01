@@ -34,9 +34,6 @@ class Settings(BaseSettings):
     DB_USER: str = "chaitanya"
     DB_PASSWORD: str = ""
 
-    # Redis
-    REDIS_URL: str = "redis://localhost:6379/0"
-
     # Gmail API - Primary Account
     GOOGLE_CLIENT_ID: str | None = None
     GOOGLE_CLIENT_SECRET: str | None = None
@@ -55,6 +52,9 @@ class Settings(BaseSettings):
     GOOGLE_CLOUD_PROJECT_ID: str | None = None
     GOOGLE_CLOUD_BUCKET_NAME: str | None = None
     GOOGLE_APPLICATION_CREDENTIALS: str | None = None
+
+    # Settlements
+    CURRENT_USER_NAMES: str = "me,chaitanya gvs,chaitanya"
 
     # Sentry
     SENTRY_DSN: str | None = None

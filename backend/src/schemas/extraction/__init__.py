@@ -13,15 +13,19 @@ from .statement_extraction import (
     AxisBankSavingsAccount,
     SBISavingsAccount,
     BANK_STATEMENT_MODELS,
+    PageFilterConfig,
+    PAGE_FILTER_CONFIGS,
 )
 
 __all__ = [
     "AxisAtlasCreditCard",
-    "SwiggyHDFCCreditCard", 
+    "SwiggyHDFCCreditCard",
     "AmazonPayICICICreditCard",
     "CashbackSBICreditCard",
     "YesBankSavingsAccount",
     "AxisBankSavingsAccount",
     "SBISavingsAccount",
     "BANK_STATEMENT_MODELS",
+    "PageFilterConfig",
+    "PAGE_FILTER_CONFIGS",
 ]
