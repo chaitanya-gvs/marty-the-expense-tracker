@@ -4,6 +4,6 @@ API Schemas Package
 This package contains Pydantic models for API requests and responses.
 """
 
-# TODO: Add API schemas here
+from src.schemas.api.common import ApiResponse
 
-__all__ = []
+__all__ = ["ApiResponse"]

@@ -1,18 +1,41 @@
 from __future__ import annotations
 
-from typing import List, Optional, Dict, Any, Tuple
-from datetime import date, time, datetime
-from decimal import Decimal
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+import ast
 import hashlib
 import json
+from datetime import date, time, datetime, timedelta
+from decimal import Decimal
+from typing import List, Optional, Dict, Any, Tuple
+from uuid import UUID
+
 import pandas as pd
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .connection import get_session_factory
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# SQL fragment for filtering transactions to only those visible in the UI:
+# - ungrouped transactions
+# - the representative row in a group (is_grouped_expense = TRUE)
+# - split parts of a transaction (is_split = TRUE)
+# - grouped rows where no representative row exists yet
+_TRANSACTION_VISIBILITY_FILTER = """
+  AND (t.transaction_group_id IS NULL
+       OR t.is_grouped_expense = TRUE
+       OR t.is_split = TRUE
+       OR (t.transaction_group_id IS NOT NULL
+           AND COALESCE(t.is_grouped_expense, false) = false
+           AND COALESCE(t.is_split, false) = false
+           AND NOT EXISTS (
+             SELECT 1 FROM transactions t2
+             WHERE t2.transaction_group_id = t.transaction_group_id
+               AND t2.is_grouped_expense = true
+               AND t2.is_deleted = false
+           )))
+"""
 
 
 class AccountOperations:
@@ -420,18 +443,7 @@ class TransactionOperations:
                     LEFT JOIN transaction_tags tt ON t.id = tt.transaction_id
                     LEFT JOIN tags tag ON tt.tag_id = tag.id AND tag.is_active = true
                     WHERE t.is_deleted = false
-                      AND (t.transaction_group_id IS NULL 
-                           OR t.is_grouped_expense = TRUE 
-                           OR t.is_split = TRUE
-                           OR (t.transaction_group_id IS NOT NULL 
-                               AND COALESCE(t.is_grouped_expense, false) = false 
-                               AND COALESCE(t.is_split, false) = false
-                               AND NOT EXISTS (
-                                 SELECT 1 FROM transactions t2
-                                 WHERE t2.transaction_group_id = t.transaction_group_id
-                                   AND t2.is_grouped_expense = true
-                                   AND t2.is_deleted = false
-                               )))
+                    {_TRANSACTION_VISIBILITY_FILTER}
                     GROUP BY t.id, c.name
                     ORDER BY t.transaction_date {order_by}, t.created_at {order_by}
                     LIMIT :limit OFFSET :offset
@@ -501,18 +513,7 @@ class TransactionOperations:
                     LEFT JOIN tags tag ON tt.tag_id = tag.id AND tag.is_active = true
                     WHERE t.transaction_date BETWEEN :start_date AND :end_date
                       AND t.is_deleted = false
-                      AND (t.transaction_group_id IS NULL 
-                           OR t.is_grouped_expense = TRUE 
-                           OR t.is_split = TRUE
-                           OR (t.transaction_group_id IS NOT NULL 
-                               AND COALESCE(t.is_grouped_expense, false) = false 
-                               AND COALESCE(t.is_split, false) = false
-                               AND NOT EXISTS (
-                                 SELECT 1 FROM transactions t2
-                                 WHERE t2.transaction_group_id = t.transaction_group_id
-                                   AND t2.is_grouped_expense = true
-                                   AND t2.is_deleted = false
-                               )))
+                    {_TRANSACTION_VISIBILITY_FILTER}
                     GROUP BY t.id, c.name
                     ORDER BY t.transaction_date {order_by}, t.created_at {order_by}
                     LIMIT :limit OFFSET :offset
@@ -715,7 +716,6 @@ class TransactionOperations:
                     set_clauses.append(f"{field} = :{field}")
                     # Handle JSON fields that need to be encoded
                     if field in ['split_breakdown', 'raw_data'] and value is not None:
-                        import json
                         params[field] = json.dumps(value)
                     else:
                         params[field] = value
@@ -769,23 +769,12 @@ class TransactionOperations:
         try:
             search_term = f"%{query.lower()}%"
             result = await session.execute(
-                text("""
+                text(f"""
                     SELECT t.*, c.name as category
                     FROM transactions t
                     LEFT JOIN categories c ON t.category_id = c.id
                     WHERE t.is_deleted = false
-                      AND (t.transaction_group_id IS NULL 
-                           OR t.is_grouped_expense = TRUE 
-                           OR t.is_split = TRUE
-                           OR (t.transaction_group_id IS NOT NULL 
-                               AND COALESCE(t.is_grouped_expense, false) = false 
-                               AND COALESCE(t.is_split, false) = false
-                               AND NOT EXISTS (
-                                 SELECT 1 FROM transactions t2
-                                 WHERE t2.transaction_group_id = t.transaction_group_id
-                                   AND t2.is_grouped_expense = true
-                                   AND t2.is_deleted = false
-                               )))
+                    {_TRANSACTION_VISIBILITY_FILTER}
                       AND (
                         LOWER(t.description) LIKE :search_term
                         OR LOWER(COALESCE(t.user_description, '')) LIKE :search_term
@@ -1042,15 +1031,13 @@ class TransactionOperations:
             non_splitwise_transactions = [t for t in transactions if t.get('account', '').lower() != 'splitwise']
             
             splitwise_to_insert = []
-            was_upsert_used = False
-            
+
             # Handle Splitwise transactions with upsert if enabled
             if splitwise_transactions and upsert_splitwise:
                 updated_count, splitwise_to_insert = await TransactionOperations._upsert_splitwise_transactions(
                     session, splitwise_transactions
                 )
                 result["updated_count"] = updated_count
-                was_upsert_used = True
                 # After upsert, check for duplicates in remaining transactions before insert
                 # (in case upsert failed to find some and they already exist)
                 if check_duplicates and splitwise_to_insert:
@@ -1096,8 +1083,6 @@ class TransactionOperations:
                     error_msg = f"Error preparing transaction {transaction.get('description', 'unknown')}: {e}"
                     result["errors"].append(error_msg)
                     logger.error(error_msg, exc_info=True)
-                    import traceback
-                    logger.error(f"Traceback: {traceback.format_exc()}")
                     continue
             
             if not insert_data:
@@ -1304,8 +1289,6 @@ class TransactionOperations:
             
         except Exception as e:
             logger.error("Error filtering duplicate transactions", exc_info=True)
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
             return transactions  # Return all if filtering fails
     
     @staticmethod
@@ -1420,8 +1403,6 @@ class TransactionOperations:
                                     update_params[field] = prepared_data[field]
                         
                         if set_clauses:
-                            # Convert transaction_id to UUID if it's a string
-                            from uuid import UUID
                             transaction_uuid = UUID(transaction_id) if isinstance(transaction_id, str) else transaction_id
                             update_params['transaction_id'] = transaction_uuid
                             
@@ -1450,8 +1431,6 @@ class TransactionOperations:
         except Exception as e:
             await session.rollback()
             logger.error("Error upserting Splitwise transactions", exc_info=True)
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
             # On error, return all for insert as fallback
             return 0, transactions
     
@@ -1620,8 +1599,6 @@ class TransactionOperations:
             result["duplicates_removed"] = len(transaction_ids_to_delete)
             
             if not dry_run and transaction_ids_to_delete:
-                # Soft delete duplicates - use IN clause with parameterized query
-                from uuid import UUID
                 uuid_ids = [UUID(tid) for tid in transaction_ids_to_delete]
                 
                 # Build parameterized IN clause
@@ -1654,8 +1631,6 @@ class TransactionOperations:
             result["success"] = False
             result["errors"].append(str(e))
             logger.error("Error removing duplicate Splitwise transactions", exc_info=True)
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
             return result
         finally:
             await session.close()
@@ -1711,14 +1686,13 @@ class TransactionOperations:
         
         # If it's already a string, try to parse it
         if isinstance(raw_data, str):
-            try:
-                # Try JSON first
-                parsed = json.loads(raw_data)
-            except json.JSONDecodeError:
                 try:
-                    # Try eval for Python dict string representation (with single quotes)
-                    import ast
-                    parsed = ast.literal_eval(raw_data)
+                    # Try JSON first
+                    parsed = json.loads(raw_data)
+                except json.JSONDecodeError:
+                    try:
+                        # Try eval for Python dict string representation (with single quotes)
+                        parsed = ast.literal_eval(raw_data)
                 except (ValueError, SyntaxError):
                     logger.warning(f"Could not parse raw_data string: {raw_data[:100]}")
                     return None
@@ -1813,7 +1787,6 @@ class TransactionOperations:
                 except json.JSONDecodeError:
                     try:
                         # Try eval for Python dict string representation (with single quotes)
-                        import ast
                         split_breakdown = ast.literal_eval(split_breakdown)
                     except (ValueError, SyntaxError):
                         logger.warning(f"Could not parse split_breakdown string: {split_breakdown[:100]}")
@@ -1832,7 +1805,6 @@ class TransactionOperations:
                         raw_data = json.loads(raw_data)
                     except json.JSONDecodeError:
                         try:
-                            import ast
                             raw_data = ast.literal_eval(raw_data)
                         except (ValueError, SyntaxError):
                             raw_data = {}
@@ -2306,8 +2278,6 @@ class TagOperations:
         except Exception as e:
             await session.rollback()
             logger.error(f"Failed to create tag '{name}'", exc_info=True)
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
             raise
         finally:
             await session.close()
@@ -2852,3 +2822,89 @@ class CategoryOperations:
                 parent_id=parent_id,
                 sort_order=sort_order
             )
+
+
+class SuggestionOperations:
+    """Operations for generating transaction suggestions."""
+
+    @staticmethod
+    async def find_transfer_suggestions(
+        days_back: int = 30,
+        min_amount: float = 10.0,
+        max_time_diff_hours: int = 24
+    ) -> List[Dict[str, Any]]:
+        """Find potential transfer pairs based on amount similarity and timing."""
+        session_factory = get_session_factory()
+        session = session_factory()
+        try:
+            start_date = datetime.now() - timedelta(days=days_back)
+
+            result = await session.execute(
+                text("""
+                    SELECT
+                        t1.id as t1_id, t1.transaction_date as t1_date, t1.amount as t1_amount,
+                        t1.direction as t1_direction, t1.account as t1_account,
+                        t1.description as t1_description,
+                        t2.id as t2_id, t2.transaction_date as t2_date, t2.amount as t2_amount,
+                        t2.direction as t2_direction, t2.account as t2_account,
+                        t2.description as t2_description,
+                        ABS(t1.amount + t2.amount) as amount_diff,
+                        ABS(EXTRACT(EPOCH FROM (t1.transaction_date - t2.transaction_date))/3600) as time_diff_hours
+                    FROM transactions t1
+                    JOIN transactions t2 ON (
+                        t1.id != t2.id
+                        AND t1.transaction_date >= :start_date
+                        AND t2.transaction_date >= :start_date
+                        AND ABS(t1.amount + t2.amount) < :amount_tolerance
+                        AND ABS(EXTRACT(EPOCH FROM (t1.transaction_date - t2.transaction_date))/3600) < :max_time_diff
+                        AND t1.direction != t2.direction
+                        AND ABS(t1.amount) >= :min_amount
+                        AND ABS(t2.amount) >= :min_amount
+                        AND t1.transaction_group_id IS NULL
+                        AND t2.transaction_group_id IS NULL
+                    )
+                    WHERE t1.id < t2.id
+                    ORDER BY amount_diff ASC, time_diff_hours ASC
+                    LIMIT 50
+                """), {
+                    "start_date": start_date,
+                    "amount_tolerance": min_amount * 0.1,
+                    "max_time_diff": max_time_diff_hours,
+                    "min_amount": min_amount
+                }
+            )
+
+            rows = result.fetchall()
+            suggestions = []
+
+            for row in rows:
+                amount_confidence = max(0, 1 - (row.amount_diff / min_amount))
+                time_confidence = max(0, 1 - (row.time_diff_hours / max_time_diff_hours))
+                confidence = (amount_confidence + time_confidence) / 2
+
+                if confidence > 0.3:
+                    suggestions.append({
+                        "transactions": [
+                            {
+                                "id": row.t1_id,
+                                "amount": float(row.t1_amount),
+                                "direction": row.t1_direction,
+                                "account": row.t1_account,
+                                "description": row.t1_description
+                            },
+                            {
+                                "id": row.t2_id,
+                                "amount": float(row.t2_amount),
+                                "direction": row.t2_direction,
+                                "account": row.t2_account,
+                                "description": row.t2_description
+                            }
+                        ],
+                        "confidence": confidence,
+                        "reason": f"Similar amounts ({row.amount_diff:.2f} difference) within {row.time_diff_hours:.1f} hours"
+                    })
+
+            return suggestions
+
+        finally:
+            await session.close()

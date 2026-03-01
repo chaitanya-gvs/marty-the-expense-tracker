@@ -13,6 +13,7 @@ This orchestrator coordinates the complete statement processing workflow:
 import asyncio
 import json
 import os
+import re
 import shutil
 import tempfile
 from datetime import datetime, timedelta
@@ -20,11 +21,11 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 import pandas as pd
-from dotenv import load_dotenv
 from googleapiclient.discovery import build
 
 from src.services.database_manager.operations import AccountOperations, TransactionOperations
 from src.services.email_ingestion.client import EmailClient
+from src.services.email_ingestion.token_manager import TokenManager
 from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
 from src.services.statement_processor.document_extractor import DocumentExtractor
 from .transaction_standardizer import TransactionStandardizer
@@ -37,17 +38,9 @@ logger = get_logger(__name__)
 
 
 def get_secondary_account_setting() -> bool:
-    """Get secondary account setting from environment variables"""
-    try:
-        # Load environment variables from configs/.env
-        load_dotenv("configs/.env")
-        
-        # Get the setting, default to False (primary account only)
-        enable_secondary = os.getenv("ENABLE_SECONDARY_ACCOUNT", "false").lower()
-        return enable_secondary in ("true", "1", "yes", "on")
-    except Exception as e:
-        logger.warning(f"Error loading secondary account setting from environment: {e}")
-        return False  # Default to primary account only
+    """Get secondary account setting from environment variables."""
+    enable_secondary = os.getenv("ENABLE_SECONDARY_ACCOUNT", "false").lower()
+    return enable_secondary in ("true", "1", "yes", "on")
 
 
 def extract_search_pattern_from_csv_filename(csv_filename: str) -> str:
@@ -125,37 +118,34 @@ class StatementWorkflow:
         logger.info(f"Secondary account enabled: {self.enable_secondary_account}")
     
     async def _refresh_all_tokens(self) -> bool:
-        """Refresh Gmail tokens for all accounts before starting workflow"""
-        logger.info("🔄 Refreshing Gmail tokens for all accounts...")
-        from src.services.email_ingestion.token_manager import TokenManager
-        
+        """Refresh Gmail tokens for all accounts before starting workflow."""
+        logger.info("Refreshing Gmail tokens for all accounts...")
         all_success = True
         for account_id in self.account_ids:
             try:
                 token_manager = TokenManager(account_id)
                 credentials = token_manager.get_valid_credentials()
                 if credentials:
-                    logger.info(f"✅ Successfully refreshed token for {account_id} account")
-                    # Update the email client's credentials
+                    logger.info(f"Successfully refreshed token for {account_id} account")
                     if account_id in self.email_clients:
                         self.email_clients[account_id].creds = credentials
                         self.email_clients[account_id].service = build(
-                            "gmail", "v1", 
-                            credentials=credentials, 
+                            "gmail", "v1",
+                            credentials=credentials,
                             cache_discovery=False
                         )
                 else:
-                    logger.warning(f"⚠️ Failed to refresh token for {account_id} account")
+                    logger.warning(f"Failed to refresh token for {account_id} account")
                     all_success = False
             except Exception as e:
-                logger.error(f"❌ Error refreshing token for {account_id} account", exc_info=True)
+                logger.error(f"Error refreshing token for {account_id} account", exc_info=True)
                 all_success = False
-        
+
         if all_success:
-            logger.info("✅ All tokens refreshed successfully")
+            logger.info("All tokens refreshed successfully")
         else:
-            logger.warning("⚠️ Some tokens failed to refresh - workflow may encounter authentication errors")
-        
+            logger.warning("Some tokens failed to refresh - workflow may encounter authentication errors")
+
         return all_success
     
     def _calculate_date_range(self) -> tuple[str, str]:
@@ -212,45 +202,6 @@ class StatementWorkflow:
         logger.info(f"Splitwise date range: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
         return start_date, end_date
     
-    def _get_previous_month_name(self, email_date: str) -> str:
-        """
-        Get the previous month name from email date
-        If statement was sent in September, it's for August data
-        """
-        try:
-            # Parse email date (handle Gmail format)
-            try:
-                # Try Gmail format first: "Wed, 03 Sep 2025 06:48:41 +0530"
-                email_datetime = datetime.strptime(email_date, "%a, %d %b %Y %H:%M:%S %z")
-            except ValueError:
-                try:
-                    # Try Gmail format without timezone: "Wed, 03 Sep 2025 11:47:18 GMT"
-                    email_datetime = datetime.strptime(email_date, "%a, %d %b %Y %H:%M:%S %Z")
-                except ValueError:
-                    try:
-                        # Try ISO format: "2025-09-04T10:00:00Z"
-                        email_datetime = datetime.strptime(email_date.split('T')[0], "%Y-%m-%d")
-                    except ValueError:
-                        # Fallback to current date
-                        email_datetime = datetime.now()
-                        logger.warning(f"Could not parse email date '{email_date}', using current date")
-            
-            # Get previous month
-            if email_datetime.month == 1:
-                prev_month = 12
-                prev_year = email_datetime.year - 1
-            else:
-                prev_month = email_datetime.month - 1
-                prev_year = email_datetime.year
-            
-            # Format as month name (e.g., "August_2025")
-            prev_month_name = datetime(prev_year, prev_month, 1).strftime("%B_%Y")
-            return prev_month_name
-            
-        except Exception as e:
-            logger.error(f"Error parsing email date {email_date}", exc_info=True)
-            # Fallback to current month
-            return datetime.now().strftime("%B_%Y")
     
     def _get_previous_month_folder(self, email_date: str) -> str:
         """
@@ -371,7 +322,7 @@ class StatementWorkflow:
                                 with open(temp_file_path, "wb") as f:
                                     f.write(attachment_data)
                                 
-                                logger.info(f"✅ Downloaded from {account_id}: {normalized_filename}")
+                                logger.info(f"Downloaded from {account_id}: {normalized_filename}")
                                 
                                 all_downloaded_statements.append({
                                     "sender_email": sender_email,
@@ -396,7 +347,7 @@ class StatementWorkflow:
                 logger.error(f"Error searching in {account_id} account for {sender_email}", exc_info=True)
                 continue
         
-        logger.info(f"📊 Total statements downloaded for {sender_email}: {len(all_downloaded_statements)}")
+        logger.info(f"Total statements downloaded for {sender_email}: {len(all_downloaded_statements)}")
         return all_downloaded_statements
     
     async def _unlock_pdf_async(self, pdf_path: Path, sender_email: str) -> Dict[str, Any]:
@@ -404,7 +355,7 @@ class StatementWorkflow:
         try:
             # Ensure pdf_path is a Path object
             pdf_path = Path(pdf_path)
-            logger.info(f"🔓 Unlocking PDF: {pdf_path.name}")
+            logger.info(f"Unlocking PDF: {pdf_path.name}")
             
             # Get password using async method
             password = await self.password_manager.get_password_for_sender_async(sender_email)
@@ -414,7 +365,7 @@ class StatementWorkflow:
                     "error": f"No password found for sender: {sender_email}"
                 }
             
-            logger.info("🔑 Password found")
+            logger.info("Password found")
             
             # Use the existing PDF unlocker with the password
             unlock_result = self.pdf_unlocker.unlock_pdf_with_password(pdf_path, password)
@@ -436,7 +387,7 @@ class StatementWorkflow:
             if not account_nickname:
                 # Fallback to sender email
                 account_nickname = sender_email.replace("@", "_").replace(".", "_")
-                logger.warning(f"⚠️ No account nickname found, using fallback: {account_nickname}")
+                logger.warning(f"No account nickname found, using fallback: {account_nickname}")
             
             # Process nickname: convert to lowercase and replace spaces with underscores
             processed_nickname = account_nickname.lower().replace(" ", "_")
@@ -486,7 +437,7 @@ class StatementWorkflow:
             # Check if we already have extracted data for this statement
             already_extracted = await self.check_statement_already_extracted(statement_data)
             if already_extracted:
-                logger.info(f"⏭️ Skipping extraction for {normalized_filename} - data already exists in cloud storage")
+                logger.info(f"Skipping extraction for {normalized_filename} - data already exists in cloud storage")
                 return {
                     "success": True,
                     "skipped": True,
@@ -503,7 +454,7 @@ class StatementWorkflow:
                 unlocked_path = temp_file_path
             else:
                 unlocked_path = unlock_result.get("unlocked_path")
-                logger.info(f"🔓 Successfully unlocked PDF: {normalized_filename}")
+                logger.info(f"Successfully unlocked PDF: {normalized_filename}")
             
             # Extract data from unlocked PDF using account nickname for schema selection
             # Enable CSV creation and cloud upload, but clean up local files after
@@ -520,12 +471,12 @@ class StatementWorkflow:
                     csv_file_path = Path(extraction_result["csv_file"])
                     if csv_file_path.exists():
                         csv_file_path.unlink()  # Delete local CSV file
-                        logger.info(f"🧹 Cleaned up local CSV file: {csv_file_path.name}")
+                        logger.info(f"Cleaned up local CSV file: {csv_file_path.name}")
                 except Exception as e:
                     logger.warning(f"Failed to clean up local CSV file: {e}")
             
             if extraction_result.get("success"):
-                logger.info(f"📊 Extracted data from: {normalized_filename}")
+                logger.info(f"Extracted data from: {normalized_filename}")
                 return extraction_result
             else:
                 logger.error(f"Failed to extract data from: {normalized_filename}", exc_info=True)
@@ -570,7 +521,7 @@ class StatementWorkflow:
             )
             
             if upload_result.get("success"):
-                logger.info(f"☁️ Uploaded unlocked statement to cloud: {cloud_path}")
+                logger.info(f"☁Uploaded unlocked statement to cloud: {cloud_path}")
                 return cloud_path
             else:
                 logger.error(f"Failed to upload unlocked statement to cloud: {upload_result.get('error')}", exc_info=True)
@@ -588,7 +539,7 @@ class StatementWorkflow:
     ) -> Optional[Dict[str, Any]]:
         """Process Splitwise data and upload to cloud storage"""
         try:
-            logger.info("🔄 Processing Splitwise data")
+            logger.info("Processing Splitwise data")
             
             # Calculate date range for previous month, or use custom dates
             if custom_start_date and custom_end_date:
@@ -697,7 +648,7 @@ class StatementWorkflow:
             )
             
             if upload_result.get("success"):
-                logger.info(f"☁️ Uploaded Splitwise data to cloud: {cloud_path}")
+                logger.info(f"☁Uploaded Splitwise data to cloud: {cloud_path}")
                 return {
                     "success": True,
                     "cloud_path": cloud_path,
@@ -773,98 +724,6 @@ class StatementWorkflow:
             logger.error(f"Error standardizing data from {extraction_result.get('saved_path', 'unknown')}", exc_info=True)
             return []
     
-    async def process_and_combine_existing_csvs(self) -> Optional[str]:
-        """Process all existing CSV files from extracted_data directory, standardize and combine them"""
-        try:
-            extracted_data_dir = Path("data/extracted_data")
-            if not extracted_data_dir.exists():
-                logger.warning("No extracted_data directory found")
-                return None
-            
-            # Get all CSV files
-            csv_files = list(extracted_data_dir.glob("*.csv"))
-            if not csv_files:
-                logger.warning("No CSV files found in extracted_data directory")
-                return None
-            
-            logger.info(f"Found {len(csv_files)} CSV files to process")
-            
-            # Process each CSV file
-            all_standardized_transactions = []
-            for csv_file in csv_files:
-                try:
-                    logger.info(f"Processing CSV: {csv_file.name}")
-                    
-                    # Read CSV file
-                    df = pd.read_csv(csv_file)
-                    
-                    # Extract search pattern from CSV filename for database lookup
-                    search_pattern = extract_search_pattern_from_csv_filename(csv_file.name)
-                    
-                    # Get account nickname using database lookup
-                    account_nickname = await self.transaction_standardizer.get_account_name(search_pattern)
-                    
-                    # Convert DataFrame to list of dictionaries
-                    extracted_data = []
-                    for _, row in df.iterrows():
-                        row_dict = {}
-                        for col, value in row.items():
-                            if pd.isna(value):
-                                row_dict[col] = ""
-                            else:
-                                row_dict[col] = str(value).strip()
-                        
-                        # Add metadata
-                        row_dict['source_file'] = csv_file.name  # Use full filename for traceability
-                        row_dict['account'] = account_nickname  # Use database lookup result
-                        
-                        extracted_data.append(row_dict)
-                    
-                    # Use dynamic processing method lookup with search pattern
-                    standardized_df = await self.transaction_standardizer.process_with_dynamic_method(df, search_pattern, csv_file.name)
-                    
-                    # Convert DataFrame to list of dictionaries
-                    if not standardized_df.empty:
-                        standardized_data = standardized_df.to_dict('records')
-                        all_standardized_transactions.extend(standardized_data)
-                    
-                    logger.info(f"Standardized {len(standardized_data)} transactions from {csv_file.name}")
-                    
-                except Exception as e:
-                    logger.error(f"Error processing CSV {csv_file.name}", exc_info=True)
-                    continue
-            
-            if not all_standardized_transactions:
-                logger.warning("No standardized transactions generated")
-                return None
-            
-            # Save final combined CSV
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            csv_filename = f"standardized_transactions_{timestamp}.csv"
-            csv_path = Path("data") / csv_filename
-            
-            # Ensure data directory exists
-            csv_path.parent.mkdir(exist_ok=True)
-            
-            # Save to CSV with sorting by transaction date
-            df_final = pd.DataFrame(all_standardized_transactions)
-            
-            # Sort by transaction_date (chronological order)
-            if 'transaction_date' in df_final.columns:
-                df_final['transaction_date'] = pd.to_datetime(df_final['transaction_date'], errors='coerce')
-                df_final = df_final.sort_values('transaction_date', ascending=True)
-                logger.info("📅 Sorted transactions by date (chronological order)")
-            
-            df_final.to_csv(csv_path, index=False)
-            
-            logger.info(f"💾 Saved {len(all_standardized_transactions)} standardized transactions to: {csv_path}")
-            
-            return str(csv_path)
-            
-        except Exception as e:
-            logger.error("Error processing and combining CSVs", exc_info=True)
-            return None
-    
     
     async def run_complete_workflow(
         self,
@@ -881,9 +740,9 @@ class StatementWorkflow:
             resume_from_standardization: If True, skip document extraction and start from standardization
         """
         if resume_from_standardization:
-            logger.info("🔄 Resuming workflow from standardization step (skipping document extraction)")
+            logger.info("Resuming workflow from standardization step (skipping document extraction)")
         else:
-            logger.info("🚀 Starting complete statement processing workflow")
+            logger.info("Starting complete statement processing workflow")
         
         workflow_results = {
             "total_senders": 0,
@@ -907,7 +766,7 @@ class StatementWorkflow:
         try:
             # Step 0: Refresh Gmail tokens proactively
             if not resume_from_standardization:
-                logger.info("🔄 Step 0: Refreshing Gmail tokens...")
+                logger.info("Step 0: Refreshing Gmail tokens...")
                 await self._refresh_all_tokens()
             
             # Step 1: Get all statement senders
@@ -945,20 +804,12 @@ class StatementWorkflow:
                 start_date = custom_start_date
                 end_date = custom_end_date
             
-            # Check if we should skip document extraction and resume from standardization
-            if resume_from_standardization:
-                logger.info("⏭️ Skipping document extraction - resuming from standardization step")
-                # Skip to Step 4: Process Splitwise data
-                goto_splitwise_processing = True
-            else:
-                # Step 3: Process each sender (document extraction)
-                goto_splitwise_processing = False
-            
-            if not goto_splitwise_processing:
-                # Step 3: Process each sender
+            # Step 3: Process each sender (skipped when resuming from standardization)
+            if not resume_from_standardization:
+                logger.info("Starting document extraction step")
                 for sender_email in statement_senders:
                     try:
-                        logger.info(f"🔄 Processing sender: {sender_email}")
+                        logger.info(f"Processing sender: {sender_email}")
                         
                         # Download statements from this sender
                         statements = await self._download_statements_from_sender(sender_email, start_date, end_date)
@@ -975,7 +826,7 @@ class StatementWorkflow:
                                     # Track if extraction was skipped
                                     if extraction_result.get("skipped"):
                                         workflow_results["total_statements_skipped"] = workflow_results.get("total_statements_skipped", 0) + 1
-                                        logger.info(f"⏭️ Skipped extraction for {statement_data['normalized_filename']}")
+                                        logger.info(f"Skipped extraction for {statement_data['normalized_filename']}")
                                     
                                     # Upload unlocked statement to cloud storage (only if not skipped)
                                     if not extraction_result.get("skipped"):
@@ -1011,7 +862,7 @@ class StatementWorkflow:
                         workflow_results["errors"].append(error_msg)
             
             # Step 4: Process Splitwise data
-            logger.info("🔄 Step 4: Processing Splitwise data")
+            logger.info("Step 4: Processing Splitwise data")
             splitwise_result = await self._process_splitwise_data(
                 continue_on_error=True,
                 custom_start_date=custom_splitwise_start_date,
@@ -1021,21 +872,21 @@ class StatementWorkflow:
                 workflow_results["splitwise_processed"] = True
                 workflow_results["splitwise_cloud_path"] = splitwise_result.get("cloud_path")
                 workflow_results["splitwise_transaction_count"] = splitwise_result.get("transaction_count")
-                logger.info(f"✅ Processed {splitwise_result.get('transaction_count')} Splitwise transactions")
+                logger.info(f"Processed {splitwise_result.get('transaction_count')} Splitwise transactions")
             else:
                 workflow_results["splitwise_processed"] = False
-                logger.warning("⚠️ Splitwise processing failed or no data found")
+                logger.warning("Splitwise processing failed or no data found")
             
             # Step 5: Standardize and combine all data
-            logger.info("🔄 Step 5: Standardizing and combining all transaction data")
+            logger.info("Step 5: Standardizing and combining all transaction data")
             combined_data = await self._standardize_and_combine_all_data()
             if combined_data:
                 workflow_results["combined_transaction_count"] = len(combined_data)
                 workflow_results["all_standardized_data"] = combined_data
-                logger.info(f"✅ Combined and standardized {len(combined_data)} total transactions")
+                logger.info(f"Combined and standardized {len(combined_data)} total transactions")
                 
                 # Step 6: Store data in database
-                logger.info("🔄 Step 6: Storing transactions in database")
+                logger.info("Step 6: Storing transactions in database")
                 db_result = await TransactionOperations.bulk_insert_transactions(
                     combined_data, 
                     check_duplicates=True,
@@ -1047,17 +898,17 @@ class StatementWorkflow:
                     workflow_results["database_updated_count"] = db_result.get("updated_count", 0)
                     workflow_results["database_skipped_count"] = db_result.get("skipped_count", 0)
                     workflow_results["database_error_count"] = db_result.get("error_count", 0)
-                    logger.info(f"✅ Database storage: {db_result.get('inserted_count', 0)} inserted, "
+                    logger.info(f"Database storage: {db_result.get('inserted_count', 0)} inserted, "
                                f"{db_result.get('updated_count', 0)} updated, "
                                f"{db_result.get('skipped_count', 0)} skipped, "
                                f"{db_result.get('error_count', 0)} errors")
                 else:
                     workflow_results["database_errors"] = db_result.get("errors", [])
-                    logger.error(f"❌ Database storage failed: {db_result.get('errors', [])}", exc_info=True)
+                    logger.error(f"Database storage failed: {db_result.get('errors', [])}", exc_info=True)
             else:
-                logger.warning("⚠️ No combined transaction data generated")
+                logger.warning("No combined transaction data generated")
             
-            logger.info("✅ Complete statement processing workflow finished")
+            logger.info("Complete statement processing workflow finished")
             
             skipped_count = workflow_results.get('total_statements_skipped', 0)
             logger.info(f"Results: {workflow_results['total_statements_downloaded']} downloaded, "
@@ -1082,48 +933,14 @@ class StatementWorkflow:
             # Cleanup temp directory
             try:
                 shutil.rmtree(self.temp_dir)
-                logger.info(f"🧹 Cleaned up temp directory: {self.temp_dir}")
+                logger.info(f"Cleaned up temp directory: {self.temp_dir}")
             except Exception as e:
                 logger.warning(f"Failed to cleanup temp directory: {e}")
-    
-    async def _store_standardized_csv_locally(self, standardized_data: List[Dict[str, Any]]) -> Path:
-        """Store standardized transaction data as CSV locally"""
-        try:
-            if not standardized_data:
-                logger.warning("No standardized data to store")
-                return None
-            
-            # Create data directory if it doesn't exist
-            data_dir = Path("data")
-            data_dir.mkdir(exist_ok=True)
-            
-            # Generate filename with timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            csv_filename = f"standardized_transactions_{timestamp}.csv"
-            csv_path = data_dir / csv_filename
-            
-            # Convert to DataFrame and save with sorting by transaction date
-            df = pd.DataFrame(standardized_data)
-            
-            # Sort by transaction_date (chronological order)
-            if 'transaction_date' in df.columns:
-                df['transaction_date'] = pd.to_datetime(df['transaction_date'], errors='coerce')
-                df = df.sort_values('transaction_date', ascending=True)
-                logger.info("📅 Sorted transactions by date (chronological order)")
-            
-            df.to_csv(csv_path, index=False)
-            
-            logger.info(f"💾 Stored {len(standardized_data)} standardized transactions to: {csv_path}")
-            return csv_path
-            
-        except Exception as e:
-            logger.error("Error storing standardized CSV", exc_info=True)
-            return None
     
     async def _standardize_and_combine_all_data(self) -> List[Dict[str, Any]]:
         """Standardize and combine all transaction data from cloud storage"""
         try:
-            logger.info("🔄 Standardizing and combining all transaction data")
+            logger.info("Standardizing and combining all transaction data")
             
             # Get all CSV files from cloud storage for the previous month
             start_date, end_date = self._calculate_splitwise_date_range()
@@ -1324,10 +1141,10 @@ class StatementWorkflow:
             for cloud_file_info in cloud_csv_files:
                 cloud_filename = cloud_file_info.get("name", "")
                 if cloud_filename.endswith('.csv') and expected_csv_pattern in cloud_filename:
-                    logger.info(f"✅ Found existing extracted data for {normalized_filename}: {cloud_filename}")
+                    logger.info(f"Found existing extracted data for {normalized_filename}: {cloud_filename}")
                     return True
             
-            logger.info(f"❌ No existing extracted data found for {normalized_filename}")
+            logger.info(f"No existing extracted data found for {normalized_filename}")
             return False
             
         except Exception as e:
@@ -1337,9 +1154,6 @@ class StatementWorkflow:
     def _extract_date_from_filename(self, filename: str) -> Optional[str]:
         """Extract date from filename in YYYYMMDD format"""
         try:
-            # Look for date patterns in filename
-            import re
-            
             # Pattern for YYYYMMDD
             date_pattern = r'(\d{8})'
             match = re.search(date_pattern, filename)
@@ -1377,7 +1191,6 @@ class StatementWorkflow:
                     continue
             
             # If all formats fail, try to extract just the date part
-            import re
             date_match = re.search(r'(\d{4}-\d{2}-\d{2})', email_date)
             if date_match:
                 return datetime.strptime(date_match.group(1), "%Y-%m-%d")
@@ -1401,7 +1214,7 @@ class StatementWorkflow:
     
     async def run_resume_workflow(self) -> Dict[str, Any]:
         """Run workflow resuming from standardization step (skip document extraction)"""
-        logger.info("🔄 Starting resume workflow - skipping document extraction")
+        logger.info("Starting resume workflow - skipping document extraction")
         return await self.run_complete_workflow(resume_from_standardization=True)
 
 
@@ -1413,7 +1226,6 @@ async def run_statement_workflow(
     custom_end_date: Optional[str] = None,
     custom_splitwise_start_date: Optional[datetime] = None,
     custom_splitwise_end_date: Optional[datetime] = None,
-    clear_before_insert: bool = False,  # Currently unused, kept for CLI compatibility
 ) -> Dict[str, Any]:
     """Run the complete statement processing workflow."""
     workflow = StatementWorkflow(
@@ -1437,7 +1249,6 @@ async def run_resume_workflow(
     custom_end_date: Optional[str] = None,
     custom_splitwise_start_date: Optional[datetime] = None,
     custom_splitwise_end_date: Optional[datetime] = None,
-    clear_before_insert: bool = False,  # Currently unused, kept for CLI compatibility
 ) -> Dict[str, Any]:
     """Run workflow resuming from standardization step (skip document extraction)."""
     workflow = StatementWorkflow(

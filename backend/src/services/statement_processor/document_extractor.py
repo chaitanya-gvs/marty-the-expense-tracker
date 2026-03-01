@@ -24,8 +24,8 @@ backend_path = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(backend_path))
 
 from src.schemas.extraction import BANK_STATEMENT_MODELS
-from src.services.database_manager.operations import AccountOperations
 from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
+from src.services.statement_processor.pdf_page_filter import PDFPageFilter
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -125,8 +125,23 @@ class DocumentExtractor:
         
         logger.warning(f"No schema found for nickname '{nickname}' (derived key: '{schema_key}')")
         return None
-    
-    
+
+    def _get_schema_key(self, account_nickname: str) -> Optional[str]:
+        """
+        Return the schema registry key for an account nickname (e.g. 'axis_atlas').
+        Mirrors the transformation in _map_nickname_to_schema without fetching the model.
+        Returns None if no mapping exists.
+        """
+        if not account_nickname:
+            return None
+        key = account_nickname.lower()
+        if key.endswith(" credit card"):
+            key = key[:-12]
+        elif key.endswith(" account"):
+            key = key[:-8]
+        key = key.replace(" ", "_")
+        return key if key in BANK_STATEMENT_MODELS else None
+
     def _parse_html_table_to_dataframe(self, html_table: str) -> pd.DataFrame:
         """
         Parse HTML table string and convert to pandas DataFrame
@@ -240,6 +255,7 @@ class DocumentExtractor:
     
     def _extract_with_agentic_doc(self, pdf_path: Path, account_nickname: str = None) -> Dict[str, Any]:
         """Extract data using the agentic-doc library"""
+        filtered_path: Optional[Path] = None
         try:
             logger.info("Calling agentic-doc parse function...")
             
@@ -249,9 +265,16 @@ class DocumentExtractor:
                 raise Exception(f"No extraction schema found for account nickname: {account_nickname}")
             
             logger.info(f"Using extraction schema: {extraction_schema.__name__}")
-            
+
+            # Pre-filter pages to skip non-transaction pages (covers, ads, T&Cs)
+            schema_key = self._get_schema_key(account_nickname)
+            page_filter = PDFPageFilter()
+            parse_path, kept_pages = page_filter.filter_transaction_pages(pdf_path, schema_key)
+            if parse_path != pdf_path:
+                filtered_path = parse_path  # track so we can clean up after parse
+
             # Parse the document with the appropriate schema
-            file_paths = [str(pdf_path)]
+            file_paths = [str(parse_path)]
             results = self.parse(file_paths, extraction_model=extraction_schema)
             
             if not results:
@@ -281,6 +304,10 @@ class DocumentExtractor:
         except Exception as e:
             logger.error("Error in agentic-doc extraction", exc_info=True)
             raise
+        finally:
+            if filtered_path is not None and filtered_path.exists():
+                filtered_path.unlink()
+                logger.debug(f"Cleaned up filtered PDF: {filtered_path.name}")
     
     def _save_extraction_csv_only(self, extraction_result: Dict[str, Any], pdf_path: Path, account_nickname: str = None, email_date: str = None) -> Optional[str]:
         """Save extraction results as CSV only in extracted_data directory and upload to GCS"""
