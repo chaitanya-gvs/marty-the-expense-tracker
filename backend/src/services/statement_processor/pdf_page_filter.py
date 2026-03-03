@@ -23,7 +23,7 @@ import fitz  # PyMuPDF
 backend_path = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(backend_path))
 
-from src.schemas.extraction import PAGE_FILTER_CONFIGS, PageFilterConfig
+from src.services.statement_processor.schemas import PAGE_FILTER_CONFIGS, PageFilterConfig
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
