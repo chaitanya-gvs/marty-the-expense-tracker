@@ -10,7 +10,6 @@ This orchestrator coordinates the complete statement processing workflow:
 6. Standardize and store in database
 """
 
-import asyncio
 import json
 import os
 import re
@@ -18,7 +17,7 @@ import shutil
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Callable, Dict, List, Optional, Any
 
 import pandas as pd
 from googleapiclient.discovery import build
@@ -67,7 +66,7 @@ def extract_search_pattern_from_csv_filename(csv_filename: str) -> str:
         search_pattern = '_'.join(search_parts)
         return search_pattern
                 
-    except Exception as e:
+    except Exception:
         logger.error(f"Error extracting search pattern from {csv_filename}", exc_info=True)
         return csv_filename.replace('.csv', '').replace('_extracted', '')
 
@@ -75,7 +74,12 @@ def extract_search_pattern_from_csv_filename(csv_filename: str) -> str:
 class StatementWorkflow:
     """Orchestrates the complete statement processing workflow"""
     
-    def __init__(self, account_ids: List[str] = None, enable_secondary_account: bool = None):
+    def __init__(
+        self,
+        account_ids: List[str] = None,
+        enable_secondary_account: bool = None,
+        event_callback: Optional[Callable[[dict], None]] = None,
+    ):
         """
         Initialize the StatementWorkflow
         
@@ -83,6 +87,8 @@ class StatementWorkflow:
             account_ids: List of account IDs to use. If None, uses default accounts based on enable_secondary_account
             enable_secondary_account: If True, includes secondary account. If False, only uses primary account.
                                     If None, uses environment variable ENABLE_SECONDARY_ACCOUNT (default: False)
+            event_callback: Optional callable invoked with a status event dict at key workflow moments.
+                            Used by the API layer to stream real-time progress over SSE.
         """
         # Get secondary account setting from environment if not provided
         if enable_secondary_account is None:
@@ -98,6 +104,7 @@ class StatementWorkflow:
             self.account_ids = account_ids
         
         self.enable_secondary_account = enable_secondary_account
+        self.event_callback = event_callback
         
         # Initialize email clients for both accounts
         self.email_clients = {}
@@ -117,9 +124,33 @@ class StatementWorkflow:
         logger.info(f"Initialized email clients for accounts: {self.account_ids}")
         logger.info(f"Secondary account enabled: {self.enable_secondary_account}")
     
+    def _emit(
+        self,
+        event_type: str,
+        step: str,
+        message: str,
+        account: str = None,
+        level: str = "info",
+        data: dict = None,
+    ) -> None:
+        """Emit a workflow status event to the registered callback (no-op when callback is None)."""
+        if self.event_callback is None:
+            return
+        event = {
+            "event": event_type,
+            "step": step,
+            "message": message,
+            "account": account,
+            "level": level,
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "data": data or {},
+        }
+        self.event_callback(event)
+
     async def _refresh_all_tokens(self) -> bool:
         """Refresh Gmail tokens for all accounts before starting workflow."""
         logger.info("Refreshing Gmail tokens for all accounts...")
+        self._emit("token_refresh_started", "token_refresh", f"Refreshing Gmail tokens for accounts: {', '.join(self.account_ids)}")
         all_success = True
         for account_id in self.account_ids:
             try:
@@ -134,11 +165,26 @@ class StatementWorkflow:
                             credentials=credentials,
                             cache_discovery=False
                         )
+                    self._emit(
+                        "token_refresh_complete", "token_refresh",
+                        f"Token refreshed for {account_id} account",
+                        account=account_id, level="success",
+                    )
                 else:
                     logger.warning(f"Failed to refresh token for {account_id} account")
+                    self._emit(
+                        "token_refresh_failed", "token_refresh",
+                        f"Failed to refresh token for {account_id} account",
+                        account=account_id, level="warning",
+                    )
                     all_success = False
             except Exception as e:
                 logger.error(f"Error refreshing token for {account_id} account", exc_info=True)
+                self._emit(
+                    "token_refresh_failed", "token_refresh",
+                    f"Error refreshing token for {account_id}: {e}",
+                    account=account_id, level="error",
+                )
                 all_success = False
 
         if all_success:
@@ -237,7 +283,7 @@ class StatementWorkflow:
             # Format as YYYY-MM (e.g., "2025-08")
             return f"{prev_year}-{prev_month:02d}"
             
-        except Exception as e:
+        except Exception:
             logger.error(f"Error parsing email date {email_date}", exc_info=True)
             # Fallback to current month
             return datetime.now().strftime("%Y-%m")
@@ -262,6 +308,11 @@ class StatementWorkflow:
     async def _download_statements_from_sender(self, sender_email: str, start_date: str, end_date: str) -> List[Dict[str, Any]]:
         """Download all statements from a specific sender within date range from all email accounts"""
         logger.info(f"🔍 Searching for statements from {sender_email}")
+        self._emit(
+            "email_search_started", "email_search",
+            f"Searching for statements from {sender_email} ({start_date} → {end_date})",
+            data={"sender": sender_email, "start_date": start_date, "end_date": end_date},
+        )
         
         all_downloaded_statements = []
         
@@ -279,6 +330,12 @@ class StatementWorkflow:
                     continue
                 
                 logger.info(f"📧 Found {len(emails)} emails from {sender_email} in {account_id} account")
+                self._emit(
+                    "email_found", "email_search",
+                    f"Found {len(emails)} email(s) from {sender_email} in {account_id} account",
+                    account=account_id,
+                    data={"sender": sender_email, "email_count": len(emails)},
+                )
                 
                 for email_data in emails:
                     try:
@@ -307,6 +364,12 @@ class StatementWorkflow:
                                 attachment_id = attachment.get("attachment_id")
                                 original_filename = attachment.get("filename", "statement.pdf")
                                 
+                                self._emit(
+                                    "pdf_download_started", "pdf_download",
+                                    f"Downloading attachment: {original_filename}",
+                                    data={"filename": original_filename, "subject": subject},
+                                )
+                                
                                 # Download attachment data
                                 attachment_data = email_client.download_attachment(email_id, attachment_id)
                                 if not attachment_data:
@@ -322,7 +385,14 @@ class StatementWorkflow:
                                 with open(temp_file_path, "wb") as f:
                                     f.write(attachment_data)
                                 
+                                file_size = temp_file_path.stat().st_size
                                 logger.info(f"Downloaded from {account_id}: {normalized_filename}")
+                                self._emit(
+                                    "pdf_downloaded", "pdf_download",
+                                    f"Downloaded {normalized_filename} ({file_size // 1024} KB)",
+                                    account=account_id, level="success",
+                                    data={"filename": normalized_filename, "file_size_bytes": file_size},
+                                )
                                 
                                 all_downloaded_statements.append({
                                     "sender_email": sender_email,
@@ -331,23 +401,41 @@ class StatementWorkflow:
                                     "original_filename": original_filename,
                                     "normalized_filename": normalized_filename,
                                     "temp_file_path": str(temp_file_path),
-                                    "file_size": temp_file_path.stat().st_size,
+                                    "file_size": file_size,
                                     "source_account": account_id
                                 })
                                 
                             except Exception as e:
                                 logger.error(f"Error downloading attachment {attachment.get('filename')} from {account_id}", exc_info=True)
+                                self._emit(
+                                    "pdf_download_failed", "pdf_download",
+                                    f"Failed to download {attachment.get('filename')}: {e}",
+                                    account=account_id, level="error",
+                                    data={"filename": attachment.get("filename"), "error": str(e)},
+                                )
                                 continue
                     
-                    except Exception as e:
+                    except Exception:
                         logger.error(f"Error processing email {email_data.get('id')} from {account_id}", exc_info=True)
                         continue
             
             except Exception as e:
                 logger.error(f"Error searching in {account_id} account for {sender_email}", exc_info=True)
+                self._emit(
+                    "email_search_failed", "email_search",
+                    f"Error searching {account_id} account for {sender_email}: {e}",
+                    account=account_id, level="error",
+                    data={"sender": sender_email, "error": str(e)},
+                )
                 continue
         
         logger.info(f"Total statements downloaded for {sender_email}: {len(all_downloaded_statements)}")
+        self._emit(
+            "email_search_complete", "email_search",
+            f"Downloaded {len(all_downloaded_statements)} statement(s) from {sender_email}",
+            level="success" if all_downloaded_statements else "info",
+            data={"sender": sender_email, "downloaded_count": len(all_downloaded_statements)},
+        )
         return all_downloaded_statements
     
     async def _unlock_pdf_async(self, pdf_path: Path, sender_email: str) -> Dict[str, Any]:
@@ -416,7 +504,7 @@ class StatementWorkflow:
             
             return normalized_filename
             
-        except Exception as e:
+        except Exception:
             logger.error("Error generating normalized filename", exc_info=True)
             # Fallback filename
             return f"statement_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
@@ -432,12 +520,24 @@ class StatementWorkflow:
             account_nickname = await AccountOperations.get_account_nickname_by_sender(sender_email)
             if not account_nickname:
                 logger.error(f"No account nickname found for sender: {sender_email}", exc_info=True)
+                self._emit(
+                    "extraction_failed", "extraction",
+                    f"No account nickname found for sender {sender_email}",
+                    level="error",
+                    data={"filename": normalized_filename, "sender": sender_email},
+                )
                 return None
             
             # Check if we already have extracted data for this statement
             already_extracted = await self.check_statement_already_extracted(statement_data)
             if already_extracted:
                 logger.info(f"Skipping extraction for {normalized_filename} - data already exists in cloud storage")
+                self._emit(
+                    "extraction_skipped", "extraction",
+                    f"Skipping {normalized_filename} — already extracted in GCS",
+                    level="info",
+                    data={"filename": normalized_filename, "account": account_nickname},
+                )
                 return {
                     "success": True,
                     "skipped": True,
@@ -446,22 +546,42 @@ class StatementWorkflow:
                     "csv_cloud_path": "already_exists"
                 }
             
-            # Unlock PDF if needed
+            # Unlock PDF
+            self._emit(
+                "pdf_unlock_started", "pdf_unlock",
+                f"Unlocking {normalized_filename}",
+                data={"filename": normalized_filename, "account": account_nickname},
+            )
             unlock_result = await self._unlock_pdf_async(temp_file_path, sender_email)
             if not unlock_result.get("success"):
                 logger.warning(f"Could not unlock PDF: {normalized_filename}")
-                # Use original if unlock fails
+                self._emit(
+                    "pdf_unlock_failed", "pdf_unlock",
+                    f"Could not unlock {normalized_filename}: {unlock_result.get('error', 'unknown error')}",
+                    level="warning",
+                    data={"filename": normalized_filename, "error": unlock_result.get("error")},
+                )
                 unlocked_path = temp_file_path
             else:
                 unlocked_path = unlock_result.get("unlocked_path")
                 logger.info(f"Successfully unlocked PDF: {normalized_filename}")
+                self._emit(
+                    "pdf_unlocked", "pdf_unlock",
+                    f"Unlocked {normalized_filename}",
+                    level="success",
+                    data={"filename": normalized_filename, "account": account_nickname},
+                )
             
-            # Extract data from unlocked PDF using account nickname for schema selection
-            # Enable CSV creation and cloud upload, but clean up local files after
+            # Extract data from unlocked PDF
+            self._emit(
+                "extraction_started", "extraction",
+                f"Extracting transactions from {normalized_filename} ({account_nickname})",
+                data={"filename": normalized_filename, "account": account_nickname},
+            )
             extraction_result = self.document_extractor.extract_from_pdf(
                 pdf_path=unlocked_path,
                 account_nickname=account_nickname,
-                save_results=True,  # Enable CSV creation and cloud upload
+                save_results=True,
                 email_date=statement_data.get("email_date")
             )
             
@@ -470,20 +590,42 @@ class StatementWorkflow:
                 try:
                     csv_file_path = Path(extraction_result["csv_file"])
                     if csv_file_path.exists():
-                        csv_file_path.unlink()  # Delete local CSV file
+                        csv_file_path.unlink()
                         logger.info(f"Cleaned up local CSV file: {csv_file_path.name}")
                 except Exception as e:
                     logger.warning(f"Failed to clean up local CSV file: {e}")
             
             if extraction_result.get("success"):
                 logger.info(f"Extracted data from: {normalized_filename}")
+                self._emit(
+                    "extraction_complete", "extraction",
+                    f"Extracted data from {normalized_filename}",
+                    level="success",
+                    data={
+                        "filename": normalized_filename,
+                        "account": account_nickname,
+                        "csv_cloud_path": extraction_result.get("csv_cloud_path"),
+                    },
+                )
                 return extraction_result
             else:
                 logger.error(f"Failed to extract data from: {normalized_filename}", exc_info=True)
+                self._emit(
+                    "extraction_failed", "extraction",
+                    f"Failed to extract data from {normalized_filename}",
+                    level="error",
+                    data={"filename": normalized_filename, "account": account_nickname},
+                )
                 return None
                 
         except Exception as e:
             logger.error("Error processing statement extraction", exc_info=True)
+            self._emit(
+                "extraction_failed", "extraction",
+                f"Unexpected error extracting {statement_data.get('normalized_filename', 'unknown')}: {e}",
+                level="error",
+                data={"filename": statement_data.get("normalized_filename"), "error": str(e)},
+            )
             return None
     
     async def _upload_unlocked_statement_to_cloud(self, statement_data: Dict[str, Any], extraction_result: Dict[str, Any]) -> Optional[str]:
@@ -506,6 +648,12 @@ class StatementWorkflow:
             unlocked_filename = normalized_filename.replace("_locked.pdf", "_unlocked.pdf")
             cloud_path = self._generate_cloud_path(sender_email, email_date, unlocked_filename)
             
+            self._emit(
+                "gcs_upload_started", "gcs_upload",
+                f"Uploading unlocked PDF to GCS: {unlocked_filename}",
+                data={"filename": unlocked_filename, "cloud_path": cloud_path},
+            )
+            
             # Upload unlocked statement to cloud storage
             upload_result = self.cloud_storage.upload_file(
                 local_file_path=unlocked_path,
@@ -522,13 +670,31 @@ class StatementWorkflow:
             
             if upload_result.get("success"):
                 logger.info(f"☁Uploaded unlocked statement to cloud: {cloud_path}")
+                self._emit(
+                    "gcs_uploaded", "gcs_upload",
+                    f"Uploaded unlocked PDF to GCS: {cloud_path}",
+                    level="success",
+                    data={"filename": unlocked_filename, "cloud_path": cloud_path},
+                )
                 return cloud_path
             else:
                 logger.error(f"Failed to upload unlocked statement to cloud: {upload_result.get('error')}", exc_info=True)
+                self._emit(
+                    "gcs_upload_failed", "gcs_upload",
+                    f"Failed to upload {unlocked_filename} to GCS: {upload_result.get('error')}",
+                    level="error",
+                    data={"filename": unlocked_filename, "error": upload_result.get("error")},
+                )
                 return None
                 
         except Exception as e:
             logger.error("Error uploading unlocked statement to cloud storage", exc_info=True)
+            self._emit(
+                "gcs_upload_failed", "gcs_upload",
+                f"Unexpected error uploading {statement_data.get('normalized_filename', 'unknown')} to GCS: {e}",
+                level="error",
+                data={"error": str(e)},
+            )
             return None
     
     async def _process_splitwise_data(
@@ -551,6 +717,12 @@ class StatementWorkflow:
             else:
                 start_date, end_date = self._calculate_splitwise_date_range()
             
+            self._emit(
+                "splitwise_sync_started", "splitwise",
+                f"Fetching Splitwise transactions ({start_date.strftime('%Y-%m-%d')} → {end_date.strftime('%Y-%m-%d')})",
+                data={"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
+            )
+            
             # Get Splitwise transactions for the date range
             splitwise_transactions = self.splitwise_service.get_transactions_for_past_month(
                 exclude_created_by_me=True,
@@ -561,6 +733,12 @@ class StatementWorkflow:
             
             if not splitwise_transactions:
                 logger.info("No Splitwise transactions found for the date range")
+                self._emit(
+                    "splitwise_sync_complete", "splitwise",
+                    "No Splitwise transactions found for the date range",
+                    level="warning",
+                    data={"transaction_count": 0},
+                )
                 return None
             
             logger.info(f"Found {len(splitwise_transactions)} Splitwise transactions")
@@ -649,6 +827,15 @@ class StatementWorkflow:
             
             if upload_result.get("success"):
                 logger.info(f"☁Uploaded Splitwise data to cloud: {cloud_path}")
+                self._emit(
+                    "splitwise_sync_complete", "splitwise",
+                    f"Fetched {len(splitwise_transactions)} Splitwise transactions and uploaded CSV to GCS",
+                    level="success",
+                    data={
+                        "transaction_count": len(splitwise_transactions),
+                        "cloud_path": cloud_path,
+                    },
+                )
                 return {
                     "success": True,
                     "cloud_path": cloud_path,
@@ -658,11 +845,23 @@ class StatementWorkflow:
                 }
             else:
                 logger.error(f"Failed to upload Splitwise data to cloud: {upload_result.get('error')}", exc_info=True)
+                self._emit(
+                    "splitwise_sync_failed", "splitwise",
+                    f"Failed to upload Splitwise CSV to GCS: {upload_result.get('error')}",
+                    level="error",
+                    data={"error": upload_result.get("error")},
+                )
                 return None
                 
         except Exception as e:
             error_msg = f"Error processing Splitwise data: {e}"
             logger.error(error_msg, exc_info=True)
+            self._emit(
+                "splitwise_sync_failed", "splitwise",
+                f"Splitwise processing error: {e}",
+                level="error",
+                data={"error": str(e)},
+            )
             if continue_on_error:
                 logger.warning("Continuing workflow despite Splitwise error")
                 return None
@@ -720,7 +919,7 @@ class StatementWorkflow:
                 logger.warning(f"No standardized transactions generated from {csv_file_path.name}")
                 return []
                 
-        except Exception as e:
+        except Exception:
             logger.error(f"Error standardizing data from {extraction_result.get('saved_path', 'unknown')}", exc_info=True)
             return []
     
@@ -741,8 +940,18 @@ class StatementWorkflow:
         """
         if resume_from_standardization:
             logger.info("Resuming workflow from standardization step (skipping document extraction)")
+            self._emit(
+                "workflow_started", "workflow",
+                "Resuming workflow from standardization — skipping email/extraction steps",
+                data={"mode": "resume"},
+            )
         else:
             logger.info("Starting complete statement processing workflow")
+            self._emit(
+                "workflow_started", "workflow",
+                "Starting full statement processing workflow",
+                data={"mode": "full"},
+            )
         
         workflow_results = {
             "total_senders": 0,
@@ -887,6 +1096,11 @@ class StatementWorkflow:
                 
                 # Step 6: Store data in database
                 logger.info("Step 6: Storing transactions in database")
+                self._emit(
+                    "db_insert_started", "db_insert",
+                    f"Inserting {len(combined_data)} transaction(s) into the database",
+                    data={"transaction_count": len(combined_data)},
+                )
                 db_result = await TransactionOperations.bulk_insert_transactions(
                     combined_data, 
                     check_duplicates=True,
@@ -902,9 +1116,30 @@ class StatementWorkflow:
                                f"{db_result.get('updated_count', 0)} updated, "
                                f"{db_result.get('skipped_count', 0)} skipped, "
                                f"{db_result.get('error_count', 0)} errors")
+                    self._emit(
+                        "db_insert_complete", "db_insert",
+                        (
+                            f"DB insert complete: {db_result.get('inserted_count', 0)} inserted, "
+                            f"{db_result.get('updated_count', 0)} updated, "
+                            f"{db_result.get('skipped_count', 0)} skipped"
+                        ),
+                        level="success",
+                        data={
+                            "inserted": db_result.get("inserted_count", 0),
+                            "updated": db_result.get("updated_count", 0),
+                            "skipped": db_result.get("skipped_count", 0),
+                            "errors": db_result.get("error_count", 0),
+                        },
+                    )
                 else:
                     workflow_results["database_errors"] = db_result.get("errors", [])
                     logger.error(f"Database storage failed: {db_result.get('errors', [])}", exc_info=True)
+                    self._emit(
+                        "db_insert_complete", "db_insert",
+                        f"DB insert failed: {db_result.get('errors', [])}",
+                        level="error",
+                        data={"errors": db_result.get("errors", [])},
+                    )
             else:
                 logger.warning("No combined transaction data generated")
             
@@ -920,6 +1155,24 @@ class StatementWorkflow:
                        f"{workflow_results.get('database_inserted_count', 0)} inserted to database, "
                        f"{workflow_results.get('database_skipped_count', 0)} skipped (duplicates)")
             logger.info(f"Temp directory used: {workflow_results['temp_directory']}")
+            self._emit(
+                "workflow_complete", "workflow",
+                (
+                    f"Workflow complete — {workflow_results.get('database_inserted_count', 0)} inserted, "
+                    f"{workflow_results.get('database_updated_count', 0)} updated, "
+                    f"{workflow_results.get('database_skipped_count', 0)} skipped"
+                ),
+                level="success",
+                data={
+                    "statements_downloaded": workflow_results["total_statements_downloaded"],
+                    "statements_processed": workflow_results["total_statements_processed"],
+                    "splitwise_transactions": workflow_results.get("splitwise_transaction_count", 0),
+                    "db_inserted": workflow_results.get("database_inserted_count", 0),
+                    "db_updated": workflow_results.get("database_updated_count", 0),
+                    "db_skipped": workflow_results.get("database_skipped_count", 0),
+                    "errors": workflow_results["errors"],
+                },
+            )
             
             return workflow_results
             
@@ -927,6 +1180,12 @@ class StatementWorkflow:
             error_msg = f"Critical error in workflow: {e}"
             logger.error(error_msg, exc_info=True)
             workflow_results["errors"].append(error_msg)
+            self._emit(
+                "workflow_error", "workflow",
+                f"Critical workflow error: {e}",
+                level="error",
+                data={"error": str(e)},
+            )
             return workflow_results
         
         finally:
@@ -951,9 +1210,20 @@ class StatementWorkflow:
             
             if not cloud_csv_files:
                 logger.warning(f"No CSV files found in cloud storage for {previous_month}")
+                self._emit(
+                    "standardization_started", "standardization",
+                    f"No CSV files found in GCS for {previous_month}",
+                    level="warning",
+                )
                 return []
             
-            logger.info(f"Found {len(cloud_csv_files)} CSV files in cloud storage")
+            csv_files_only = [f for f in cloud_csv_files if f.get("name", "").endswith(".csv")]
+            logger.info(f"Found {len(csv_files_only)} CSV files in cloud storage")
+            self._emit(
+                "standardization_started", "standardization",
+                f"Standardizing {len(csv_files_only)} CSV file(s) from GCS ({previous_month})",
+                data={"csv_count": len(csv_files_only), "month": previous_month},
+            )
             
             all_standardized_data = []
             
@@ -966,6 +1236,11 @@ class StatementWorkflow:
                         continue
                     
                     logger.info(f"Processing cloud CSV: {cloud_file}")
+                    self._emit(
+                        "standardization_file_started", "standardization",
+                        f"Standardizing {Path(cloud_file).name}",
+                        data={"cloud_file": cloud_file},
+                    )
                     
                     # Download CSV from cloud storage to temp directory
                     temp_csv_path = self.temp_dir / Path(cloud_file).name
@@ -973,6 +1248,12 @@ class StatementWorkflow:
                     
                     if not download_result.get("success"):
                         logger.error(f"Failed to download {cloud_file}: {download_result.get('error')}", exc_info=True)
+                        self._emit(
+                            "standardization_file_failed", "standardization",
+                            f"Failed to download {Path(cloud_file).name} from GCS",
+                            level="error",
+                            data={"cloud_file": cloud_file, "error": download_result.get("error")},
+                        )
                         continue
                     
                     # Read CSV file
@@ -993,9 +1274,28 @@ class StatementWorkflow:
                         standardized_data = standardized_df.to_dict('records')
                         all_standardized_data.extend(standardized_data)
                         logger.info(f"Standardized {len(standardized_data)} transactions from {cloud_file}")
+                        self._emit(
+                            "standardization_file_complete", "standardization",
+                            f"Standardized {len(standardized_data)} transaction(s) from {Path(cloud_file).name}",
+                            level="success",
+                            data={"cloud_file": cloud_file, "row_count": len(standardized_data)},
+                        )
+                    else:
+                        self._emit(
+                            "standardization_file_complete", "standardization",
+                            f"No transactions extracted from {Path(cloud_file).name}",
+                            level="warning",
+                            data={"cloud_file": cloud_file, "row_count": 0},
+                        )
                     
                 except Exception as e:
                     logger.error(f"Error processing cloud CSV {cloud_file}", exc_info=True)
+                    self._emit(
+                        "standardization_file_failed", "standardization",
+                        f"Error standardizing {Path(cloud_file).name}: {e}",
+                        level="error",
+                        data={"cloud_file": cloud_file, "error": str(e)},
+                    )
                     continue
             
             if all_standardized_data:
@@ -1007,13 +1307,35 @@ class StatementWorkflow:
                 sorted_data = await self._sort_transactions_by_date(deduplicated_data)
                 logger.info(f"Sorted {len(sorted_data)} transactions by date (chronological order)")
                 
+                self._emit(
+                    "standardization_complete", "standardization",
+                    f"Standardization complete: {len(sorted_data)} unique transaction(s) across all sources",
+                    level="success",
+                    data={
+                        "total_before_dedup": len(all_standardized_data),
+                        "total_after_dedup": len(sorted_data),
+                        "duplicates_removed": len(all_standardized_data) - len(deduplicated_data),
+                    },
+                )
                 return sorted_data
             else:
                 logger.warning("No standardized transaction data generated")
+                self._emit(
+                    "standardization_complete", "standardization",
+                    "No transaction data generated from any CSV source",
+                    level="warning",
+                    data={"total_after_dedup": 0},
+                )
                 return []
                 
         except Exception as e:
             logger.error("Error standardizing and combining all data", exc_info=True)
+            self._emit(
+                "standardization_complete", "standardization",
+                f"Standardization failed: {e}",
+                level="error",
+                data={"error": str(e)},
+            )
             return []
     
     async def _remove_duplicate_transactions(self, transactions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -1040,7 +1362,7 @@ class StatementWorkflow:
             logger.info(f"Deduplication: {len(transactions)} -> {len(unique_transactions)} transactions")
             return unique_transactions
             
-        except Exception as e:
+        except Exception:
             logger.error("Error removing duplicate transactions", exc_info=True)
             return transactions
     
@@ -1073,7 +1395,7 @@ class StatementWorkflow:
             logger.info(f"Sorted {len(sorted_transactions)} transactions by date")
             return sorted_transactions
             
-        except Exception as e:
+        except Exception:
             logger.error("Error sorting transactions by date", exc_info=True)
             return transactions
     
@@ -1101,7 +1423,7 @@ class StatementWorkflow:
                 logger.info(f"No CSV files found in cloud storage for {previous_month}")
                 return False
                 
-        except Exception as e:
+        except Exception:
             logger.error("Error checking cloud CSV files", exc_info=True)
             return False
     
@@ -1147,7 +1469,7 @@ class StatementWorkflow:
             logger.info(f"No existing extracted data found for {normalized_filename}")
             return False
             
-        except Exception as e:
+        except Exception:
             logger.error("Error checking if statement already extracted", exc_info=True)
             return False
     
@@ -1199,7 +1521,7 @@ class StatementWorkflow:
             logger.warning(f"Could not parse email date: {email_date}, using current date")
             return datetime.now()
             
-        except Exception as e:
+        except Exception:
             logger.error(f"Error parsing email date {email_date}", exc_info=True)
             return datetime.now()
     
@@ -1217,6 +1539,119 @@ class StatementWorkflow:
         logger.info("Starting resume workflow - skipping document extraction")
         return await self.run_complete_workflow(resume_from_standardization=True)
 
+    async def run_splitwise_only_workflow(
+        self,
+        custom_start_date: Optional[datetime] = None,
+        custom_end_date: Optional[datetime] = None,
+    ) -> Dict[str, Any]:
+        """Run Splitwise-only workflow: fetch → GCS → standardize → DB insert."""
+        logger.info("Starting Splitwise-only workflow")
+        self._emit(
+            "workflow_started", "workflow",
+            "Starting Splitwise-only workflow",
+            data={"mode": "splitwise_only"},
+        )
+        workflow_results: Dict[str, Any] = {
+            "splitwise_processed": False,
+            "splitwise_cloud_path": None,
+            "splitwise_transaction_count": 0,
+            "combined_transaction_count": 0,
+            "database_inserted_count": 0,
+            "database_updated_count": 0,
+            "database_skipped_count": 0,
+            "database_error_count": 0,
+            "database_errors": [],
+            "errors": [],
+        }
+        try:
+            splitwise_result = await self._process_splitwise_data(
+                continue_on_error=False,
+                custom_start_date=custom_start_date,
+                custom_end_date=custom_end_date,
+            )
+            if not splitwise_result:
+                workflow_results["errors"].append("Splitwise processing returned no data")
+                self._emit(
+                    "workflow_error", "workflow",
+                    "Splitwise-only workflow failed — no Splitwise data returned",
+                    level="error",
+                    data={"error": "No Splitwise data"},
+                )
+                return workflow_results
+
+            workflow_results["splitwise_processed"] = True
+            workflow_results["splitwise_cloud_path"] = splitwise_result.get("cloud_path")
+            workflow_results["splitwise_transaction_count"] = splitwise_result.get("transaction_count", 0)
+
+            # Standardize from GCS (reuses the same combine logic)
+            combined_data = await self._standardize_and_combine_all_data()
+            if combined_data:
+                workflow_results["combined_transaction_count"] = len(combined_data)
+                self._emit(
+                    "db_insert_started", "db_insert",
+                    f"Inserting {len(combined_data)} Splitwise transaction(s) into the database",
+                    data={"transaction_count": len(combined_data)},
+                )
+                db_result = await TransactionOperations.bulk_insert_transactions(
+                    combined_data,
+                    check_duplicates=True,
+                    upsert_splitwise=True,
+                )
+                if db_result.get("success"):
+                    workflow_results["database_inserted_count"] = db_result.get("inserted_count", 0)
+                    workflow_results["database_updated_count"] = db_result.get("updated_count", 0)
+                    workflow_results["database_skipped_count"] = db_result.get("skipped_count", 0)
+                    workflow_results["database_error_count"] = db_result.get("error_count", 0)
+                    self._emit(
+                        "db_insert_complete", "db_insert",
+                        (
+                            f"DB insert complete: {db_result.get('inserted_count', 0)} inserted, "
+                            f"{db_result.get('updated_count', 0)} updated, "
+                            f"{db_result.get('skipped_count', 0)} skipped"
+                        ),
+                        level="success",
+                        data={
+                            "inserted": db_result.get("inserted_count", 0),
+                            "updated": db_result.get("updated_count", 0),
+                            "skipped": db_result.get("skipped_count", 0),
+                        },
+                    )
+                else:
+                    workflow_results["database_errors"] = db_result.get("errors", [])
+
+            self._emit(
+                "workflow_complete", "workflow",
+                (
+                    f"Splitwise-only workflow complete — "
+                    f"{workflow_results.get('database_inserted_count', 0)} inserted, "
+                    f"{workflow_results.get('database_updated_count', 0)} updated"
+                ),
+                level="success",
+                data={
+                    "splitwise_transactions": workflow_results["splitwise_transaction_count"],
+                    "db_inserted": workflow_results.get("database_inserted_count", 0),
+                    "db_updated": workflow_results.get("database_updated_count", 0),
+                    "db_skipped": workflow_results.get("database_skipped_count", 0),
+                },
+            )
+        except Exception as e:
+            error_msg = f"Critical error in Splitwise-only workflow: {e}"
+            logger.error(error_msg, exc_info=True)
+            workflow_results["errors"].append(error_msg)
+            self._emit(
+                "workflow_error", "workflow",
+                f"Critical error in Splitwise-only workflow: {e}",
+                level="error",
+                data={"error": str(e)},
+            )
+        finally:
+            try:
+                shutil.rmtree(self.temp_dir)
+                logger.info(f"Cleaned up temp directory: {self.temp_dir}")
+            except Exception as e:
+                logger.warning(f"Failed to cleanup temp directory: {e}")
+        return workflow_results
+
 
 # Convenience function for running the workflow
 async def run_statement_workflow(
@@ -1226,11 +1661,13 @@ async def run_statement_workflow(
     custom_end_date: Optional[str] = None,
     custom_splitwise_start_date: Optional[datetime] = None,
     custom_splitwise_end_date: Optional[datetime] = None,
+    event_callback: Optional[Callable[[dict], None]] = None,
 ) -> Dict[str, Any]:
     """Run the complete statement processing workflow."""
     workflow = StatementWorkflow(
         account_ids=account_ids,
         enable_secondary_account=enable_secondary_account,
+        event_callback=event_callback,
     )
     return await workflow.run_complete_workflow(
         resume_from_standardization=False,
@@ -1249,11 +1686,13 @@ async def run_resume_workflow(
     custom_end_date: Optional[str] = None,
     custom_splitwise_start_date: Optional[datetime] = None,
     custom_splitwise_end_date: Optional[datetime] = None,
+    event_callback: Optional[Callable[[dict], None]] = None,
 ) -> Dict[str, Any]:
     """Run workflow resuming from standardization step (skip document extraction)."""
     workflow = StatementWorkflow(
         account_ids=account_ids,
         enable_secondary_account=enable_secondary_account,
+        event_callback=event_callback,
     )
     return await workflow.run_complete_workflow(
         resume_from_standardization=True,
