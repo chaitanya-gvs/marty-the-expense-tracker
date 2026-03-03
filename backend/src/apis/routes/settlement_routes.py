@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.schemas.api.common import ApiResponse
-from src.schemas.api.settlements import (
+from src.apis.schemas.common import ApiResponse
+from src.apis.schemas.settlements import (
     SettlementDetail,
     SettlementEntry,
     SettlementFilters,

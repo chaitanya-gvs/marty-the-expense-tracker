@@ -11,8 +11,8 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.participant import Participant
-from src.schemas.api.participants import (
+from src.services.database_manager.models.participant import Participant
+from src.apis.schemas.participants import (
     ParticipantCreate,
     ParticipantUpdate,
     ParticipantResponse,

@@ -18,7 +18,7 @@ import asyncpg
 from pathlib import Path
 import tempfile
 
-from src.schemas.api.common import ApiResponse
+from src.apis.schemas.common import ApiResponse
 from src.services.database_manager.operations import TransactionOperations, CategoryOperations, TagOperations, SuggestionOperations
 from src.services.database_manager.connection import get_session_factory, refresh_connection_pool
 from src.services.email_ingestion.client import EmailClient
