@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 
 from src.utils.logger import get_logger
-from src.schemas.extraction.splitwise import (
+from src.services.splitwise_processor.schemas import (
     SplitwiseExpense, 
     ProcessedSplitwiseTransaction, 
     SplitwiseTransactionFilter

@@ -9,7 +9,7 @@ from typing import List, Optional, Dict, Any
 from pathlib import Path
 
 from src.utils.logger import get_logger
-from src.schemas.extraction.splitwise import SplitwiseExpense, SplitwiseUser, SplitwiseExpenseUser, SplitwiseCategory, SplitwiseGroup
+from src.services.splitwise_processor.schemas import SplitwiseExpense, SplitwiseUser, SplitwiseExpenseUser, SplitwiseCategory, SplitwiseGroup
 
 logger = get_logger(__name__)
 
