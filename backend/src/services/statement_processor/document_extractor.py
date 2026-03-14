@@ -323,7 +323,7 @@ class DocumentExtractor:
                 
                 # Extract date from PDF filename or use current date
                 date_str = self._extract_date_from_pdf_filename(pdf_path)
-                base_filename = f"{nickname_clean}_{date_str}_extracted"
+                base_filename = f"{nickname_clean}_{date_str}"
             else:
                 # Fallback to original method
                 timestamp = self._get_timestamp().replace(":", "-").replace(".", "-")
