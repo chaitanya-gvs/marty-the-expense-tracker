@@ -23,7 +23,7 @@ from typing import Callable, Dict, List, Optional, Any
 import pandas as pd
 from googleapiclient.discovery import build
 
-from src.services.database_manager.operations import AccountOperations, TransactionOperations
+from src.services.database_manager.operations import AccountOperations, StatementLogOperations, TransactionOperations
 from src.services.email_ingestion.client import EmailClient
 from src.services.email_ingestion.token_manager import TokenManager
 from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
@@ -121,6 +121,7 @@ class StatementWorkflow:
         
         # Create temp directory for processing
         self.temp_dir = Path(tempfile.mkdtemp(prefix="statement_processing_"))
+        self.workflow_run_id: Optional[str] = None
         logger.info(f"Created temp directory: {self.temp_dir}")
         logger.info(f"Initialized email clients for accounts: {self.account_ids}")
         logger.info(f"Secondary account enabled: {self.enable_secondary_account}")
@@ -395,16 +396,30 @@ class StatementWorkflow:
                                     data={"filename": normalized_filename, "file_size_bytes": file_size},
                                 )
                                 
+                                log_key = normalized_filename.replace("_locked.pdf", "")
+                                statement_month = self._get_previous_month_folder(email_date)
                                 all_downloaded_statements.append({
                                     "sender_email": sender_email,
                                     "email_date": email_date,
                                     "email_subject": subject,
                                     "original_filename": original_filename,
                                     "normalized_filename": normalized_filename,
+                                    "log_key": log_key,
                                     "temp_file_path": str(temp_file_path),
                                     "file_size": file_size,
                                     "source_account": account_id
                                 })
+                                try:
+                                    await StatementLogOperations.upsert_log({
+                                        "normalized_filename": log_key,
+                                        "sender_email": sender_email,
+                                        "email_date": email_date,
+                                        "statement_month": statement_month,
+                                        "status": "downloaded",
+                                        "workflow_run_id": self.workflow_run_id,
+                                    })
+                                except Exception:
+                                    logger.warning(f"Failed to upsert log for {log_key}", exc_info=True)
                                 
                             except Exception as e:
                                 logger.error(f"Error downloading attachment {attachment.get('filename')} from {account_id}", exc_info=True)
@@ -602,6 +617,7 @@ class StatementWorkflow:
             temp_file_path = statement_data["temp_file_path"]
             normalized_filename = statement_data["normalized_filename"]
             sender_email = statement_data["sender_email"]
+            log_key = statement_data.get("log_key") or normalized_filename.replace("_locked.pdf", "")
 
             # Get account nickname from database
             account_nickname = await AccountOperations.get_account_nickname_by_sender(sender_email)
@@ -618,13 +634,15 @@ class StatementWorkflow:
             unlocked_path = None
 
             if not override:
-                # Tier 1: CSV already extracted in GCS?
-                already_extracted = await self.check_statement_already_extracted(statement_data)
+                # Tier 1: CSV already extracted? Check DB first, fall back to GCS scan.
+                already_extracted = await StatementLogOperations.check_already_extracted(log_key)
+                if not already_extracted:
+                    already_extracted = await self.check_statement_already_extracted(statement_data)
                 if already_extracted:
-                    logger.info(f"Skipping extraction for {normalized_filename} - data already exists in cloud storage")
+                    logger.info(f"Skipping extraction for {normalized_filename} - data already exists")
                     self._emit(
                         "extraction_skipped", "extraction",
-                        f"Skipping {normalized_filename} — already extracted in GCS",
+                        f"Skipping {normalized_filename} — already extracted",
                         level="info",
                         data={"filename": normalized_filename, "account": account_nickname},
                     )
@@ -680,6 +698,12 @@ class StatementWorkflow:
                         level="success",
                         data={"filename": normalized_filename, "account": account_nickname},
                     )
+                    try:
+                        await StatementLogOperations.update_status(
+                            log_key, "pdf_unlocked", workflow_run_id=self.workflow_run_id
+                        )
+                    except Exception:
+                        logger.warning(f"Failed to update log status to pdf_unlocked for {log_key}", exc_info=True)
 
             # Extract data from unlocked PDF
             self._emit(
@@ -716,6 +740,16 @@ class StatementWorkflow:
                         "csv_cloud_path": extraction_result.get("csv_cloud_path"),
                     },
                 )
+                try:
+                    csv_status = "csv_stored" if extraction_result.get("csv_cloud_path") else "csv_extracted"
+                    await StatementLogOperations.update_status(
+                        log_key,
+                        csv_status,
+                        csv_cloud_path=extraction_result.get("csv_cloud_path"),
+                        workflow_run_id=self.workflow_run_id,
+                    )
+                except Exception:
+                    logger.warning(f"Failed to update log status to {csv_status} for {log_key}", exc_info=True)
                 return extraction_result
             else:
                 logger.error(f"Failed to extract data from: {normalized_filename}", exc_info=True)
@@ -725,6 +759,12 @@ class StatementWorkflow:
                     level="error",
                     data={"filename": normalized_filename, "account": account_nickname},
                 )
+                try:
+                    await StatementLogOperations.set_error(
+                        log_key, f"Extraction failed: {extraction_result.get('error', 'unknown error')}"
+                    )
+                except Exception:
+                    logger.warning(f"Failed to set error in log for {log_key}", exc_info=True)
                 return None
 
         except Exception as e:
@@ -735,6 +775,12 @@ class StatementWorkflow:
                 level="error",
                 data={"filename": statement_data.get("normalized_filename"), "error": str(e)},
             )
+            _log_key = statement_data.get("log_key") or statement_data.get("normalized_filename", "").replace("_locked.pdf", "")
+            if _log_key:
+                try:
+                    await StatementLogOperations.set_error(_log_key, str(e))
+                except Exception:
+                    logger.warning(f"Failed to set error in log for {_log_key}", exc_info=True)
             return None
     
     async def _upload_unlocked_statement_to_cloud(self, statement_data: Dict[str, Any], extraction_result: Dict[str, Any]) -> Optional[str]:
@@ -744,6 +790,7 @@ class StatementWorkflow:
             normalized_filename = statement_data["normalized_filename"]
             sender_email = statement_data["sender_email"]
             email_date = statement_data["email_date"]
+            log_key = statement_data.get("log_key") or normalized_filename.replace("_locked.pdf", "")
             
             # Unlock the PDF first
             unlock_result = await self._unlock_pdf_async(temp_file_path, sender_email)
@@ -785,6 +832,14 @@ class StatementWorkflow:
                     level="success",
                     data={"filename": unlocked_filename, "cloud_path": cloud_path},
                 )
+                try:
+                    await StatementLogOperations.update_status(
+                        log_key, "pdf_stored",
+                        unlocked_cloud_path=cloud_path,
+                        workflow_run_id=self.workflow_run_id,
+                    )
+                except Exception:
+                    logger.warning(f"Failed to update log status to pdf_stored for {log_key}", exc_info=True)
                 return cloud_path
             else:
                 logger.error(f"Failed to upload unlocked statement to cloud: {upload_result.get('error')}", exc_info=True)
@@ -794,8 +849,14 @@ class StatementWorkflow:
                     level="error",
                     data={"filename": unlocked_filename, "error": upload_result.get("error")},
                 )
+                try:
+                    await StatementLogOperations.set_error(
+                        log_key, f"PDF upload failed: {upload_result.get('error')}"
+                    )
+                except Exception:
+                    logger.warning(f"Failed to set error in log for {log_key}", exc_info=True)
                 return None
-                
+
         except Exception as e:
             logger.error("Error uploading unlocked statement to cloud storage", exc_info=True)
             self._emit(
@@ -993,7 +1054,18 @@ class StatementWorkflow:
             
             # Read the extracted CSV
             df = pd.read_csv(csv_file_path)
-            
+
+            # Update transaction_count in the statement log (log_key = filename without _extracted suffix)
+            try:
+                log_key = csv_file_path.stem.replace("_extracted", "")
+                await StatementLogOperations.update_status(
+                    log_key, "csv_stored",
+                    transaction_count=len(df),
+                    workflow_run_id=self.workflow_run_id,
+                )
+            except Exception:
+                logger.warning(f"Failed to update transaction_count in log for {csv_file_path.name}", exc_info=True)
+
             # Extract search pattern from CSV filename for database lookup
             search_pattern = extract_search_pattern_from_csv_filename(csv_file_path.name)
             
@@ -1049,6 +1121,8 @@ class StatementWorkflow:
             resume_from_standardization: If True, skip document extraction and start from standardization
             override: If True, bypass all GCS resume checks and re-extract every statement from scratch
         """
+        self.workflow_run_id = datetime.now().isoformat()
+
         if resume_from_standardization:
             logger.info("Resuming workflow from standardization step (skipping document extraction)")
             self._emit(
@@ -1250,6 +1324,16 @@ class StatementWorkflow:
                                f"{db_result.get('updated_count', 0)} updated, "
                                f"{db_result.get('skipped_count', 0)} skipped, "
                                f"{db_result.get('error_count', 0)} errors")
+                    # Mark all processed statements as db_inserted in the log
+                    for stmt in workflow_results.get("processed_statements", []):
+                        if not stmt.get("extraction_skipped"):
+                            stmt_log_key = stmt["filename"].replace("_locked.pdf", "")
+                            try:
+                                await StatementLogOperations.update_status(
+                                    stmt_log_key, "db_inserted", workflow_run_id=self.workflow_run_id
+                                )
+                            except Exception:
+                                logger.warning(f"Failed to mark {stmt_log_key} as db_inserted", exc_info=True)
                     self._emit(
                         "db_insert_complete", "db_insert",
                         (
