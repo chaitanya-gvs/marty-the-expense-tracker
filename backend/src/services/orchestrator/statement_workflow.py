@@ -10,6 +10,7 @@ This orchestrator coordinates the complete statement processing workflow:
 6. Standardize and store in database
 """
 
+import calendar
 import json
 import os
 import re
@@ -430,14 +431,68 @@ class StatementWorkflow:
                 continue
         
         logger.info(f"Total statements downloaded for {sender_email}: {len(all_downloaded_statements)}")
+
+        # Deduplicate: keep only the latest statement per (sender, statement_month)
+        deduplicated = self._deduplicate_statements_by_account_month(all_downloaded_statements)
+
         self._emit(
             "email_search_complete", "email_search",
-            f"Downloaded {len(all_downloaded_statements)} statement(s) from {sender_email}",
-            level="success" if all_downloaded_statements else "info",
-            data={"sender": sender_email, "downloaded_count": len(all_downloaded_statements)},
+            f"Downloaded {len(all_downloaded_statements)} statement(s) from {sender_email}"
+            + (f", kept {len(deduplicated)} after deduplication" if len(deduplicated) < len(all_downloaded_statements) else ""),
+            level="success" if deduplicated else "info",
+            data={
+                "sender": sender_email,
+                "downloaded_count": len(all_downloaded_statements),
+                "kept_count": len(deduplicated),
+            },
         )
-        return all_downloaded_statements
+        return deduplicated
     
+    def _deduplicate_statements_by_account_month(
+        self, statements: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        For each (sender_email, statement_month) group keep only the statement
+        with the latest email date (most recent = most up-to-date).
+        Emits statement_duplicate_skipped for every dropped statement.
+        """
+        groups: Dict[tuple, Dict[str, Any]] = {}
+        for s in statements:
+            month = self._get_previous_month_folder(s["email_date"])
+            key = (s["sender_email"], month)
+            existing = groups.get(key)
+            if existing is None:
+                groups[key] = s
+            else:
+                s_dt = self._parse_email_date(s["email_date"])
+                ex_dt = self._parse_email_date(existing["email_date"])
+                if s_dt > ex_dt:
+                    # s is newer — drop existing
+                    self._emit(
+                        "statement_duplicate_skipped", "email_search",
+                        f"Skipped duplicate statement {existing['normalized_filename']} for {month} — kept newer one",
+                        level="info",
+                        data={
+                            "dropped_filename": existing["normalized_filename"],
+                            "kept_filename": s["normalized_filename"],
+                            "statement_month": month,
+                        },
+                    )
+                    groups[key] = s
+                else:
+                    # existing is newer (or equal) — drop s
+                    self._emit(
+                        "statement_duplicate_skipped", "email_search",
+                        f"Skipped duplicate statement {s['normalized_filename']} for {month} — kept newer one",
+                        level="info",
+                        data={
+                            "dropped_filename": s["normalized_filename"],
+                            "kept_filename": existing["normalized_filename"],
+                            "statement_month": month,
+                        },
+                    )
+        return list(groups.values())
+
     async def _unlock_pdf_async(self, pdf_path: Path, sender_email: str) -> Dict[str, Any]:
         """Async version of PDF unlocking that uses async password lookup"""
         try:
@@ -509,13 +564,45 @@ class StatementWorkflow:
             # Fallback filename
             return f"statement_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
     
-    async def _process_statement_extraction(self, statement_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Process statement for data extraction and unlock PDF"""
+    async def _check_unlocked_pdf_in_gcs(self, statement_data: Dict[str, Any]) -> Optional[str]:
+        """
+        Check whether the unlocked PDF for this statement already exists in GCS.
+        Returns the GCS cloud path if found, None otherwise.
+        """
+        try:
+            normalized_filename = statement_data["normalized_filename"]
+            email_date = statement_data["email_date"]
+
+            unlocked_filename = normalized_filename.replace("_locked.pdf", "_unlocked.pdf")
+            statement_month = self._get_previous_month_folder(email_date)
+            prefix = f"{statement_month}/unlocked_statements/"
+
+            cloud_files = self.cloud_storage.list_files(prefix)
+            for file_info in (cloud_files or []):
+                cloud_name = file_info.get("name", "")
+                if cloud_name.endswith(unlocked_filename) or unlocked_filename in cloud_name:
+                    logger.info(f"Found existing unlocked PDF in GCS: {cloud_name}")
+                    return cloud_name
+            return None
+        except Exception:
+            logger.error("Error checking unlocked PDF in GCS", exc_info=True)
+            return None
+
+    async def _process_statement_extraction(self, statement_data: Dict[str, Any], override: bool = False) -> Optional[Dict[str, Any]]:
+        """
+        Process statement for data extraction and unlock PDF.
+
+        3-tier skip logic (applied when override=False):
+          Tier 1 — CSV already in GCS?       → skip everything
+          Tier 2 — Unlocked PDF already in GCS? → download it, skip local unlock, run extraction
+          Tier 3 — Neither                    → full path: unlock locally, extract, upload both
+        When override=True all tiers are bypassed and the full path is always taken.
+        """
         try:
             temp_file_path = statement_data["temp_file_path"]
             normalized_filename = statement_data["normalized_filename"]
             sender_email = statement_data["sender_email"]
-            
+
             # Get account nickname from database
             account_nickname = await AccountOperations.get_account_nickname_by_sender(sender_email)
             if not account_nickname:
@@ -527,51 +614,73 @@ class StatementWorkflow:
                     data={"filename": normalized_filename, "sender": sender_email},
                 )
                 return None
-            
-            # Check if we already have extracted data for this statement
-            already_extracted = await self.check_statement_already_extracted(statement_data)
-            if already_extracted:
-                logger.info(f"Skipping extraction for {normalized_filename} - data already exists in cloud storage")
+
+            unlocked_path = None
+
+            if not override:
+                # Tier 1: CSV already extracted in GCS?
+                already_extracted = await self.check_statement_already_extracted(statement_data)
+                if already_extracted:
+                    logger.info(f"Skipping extraction for {normalized_filename} - data already exists in cloud storage")
+                    self._emit(
+                        "extraction_skipped", "extraction",
+                        f"Skipping {normalized_filename} — already extracted in GCS",
+                        level="info",
+                        data={"filename": normalized_filename, "account": account_nickname},
+                    )
+                    return {
+                        "success": True,
+                        "skipped": True,
+                        "reason": "Data already extracted",
+                        "extraction_schema": "skipped",
+                        "csv_cloud_path": "already_exists",
+                    }
+
+                # Tier 2: Unlocked PDF already in GCS?
+                unlocked_gcs_path = await self._check_unlocked_pdf_in_gcs(statement_data)
+                if unlocked_gcs_path:
+                    unlocked_filename = normalized_filename.replace("_locked.pdf", "_unlocked.pdf")
+                    temp_unlocked = self.temp_dir / unlocked_filename
+                    download_result = self.cloud_storage.download_file(unlocked_gcs_path, str(temp_unlocked))
+                    if download_result.get("success"):
+                        unlocked_path = str(temp_unlocked)
+                        logger.info(f"Resuming extraction from existing GCS unlocked PDF: {unlocked_gcs_path}")
+                        self._emit(
+                            "pdf_resume_from_gcs", "pdf_unlock",
+                            f"Using existing unlocked PDF from GCS for {normalized_filename}",
+                            level="info",
+                            data={"filename": normalized_filename, "account": account_nickname, "gcs_path": unlocked_gcs_path},
+                        )
+                    else:
+                        logger.warning(f"Failed to download unlocked PDF from GCS ({unlocked_gcs_path}), falling back to local unlock")
+
+            # Tier 3 (or override, or Tier 2 download failed): unlock locally
+            if unlocked_path is None:
                 self._emit(
-                    "extraction_skipped", "extraction",
-                    f"Skipping {normalized_filename} — already extracted in GCS",
-                    level="info",
+                    "pdf_unlock_started", "pdf_unlock",
+                    f"Unlocking {normalized_filename}",
                     data={"filename": normalized_filename, "account": account_nickname},
                 )
-                return {
-                    "success": True,
-                    "skipped": True,
-                    "reason": "Data already extracted",
-                    "extraction_schema": "skipped",
-                    "csv_cloud_path": "already_exists"
-                }
-            
-            # Unlock PDF
-            self._emit(
-                "pdf_unlock_started", "pdf_unlock",
-                f"Unlocking {normalized_filename}",
-                data={"filename": normalized_filename, "account": account_nickname},
-            )
-            unlock_result = await self._unlock_pdf_async(temp_file_path, sender_email)
-            if not unlock_result.get("success"):
-                logger.warning(f"Could not unlock PDF: {normalized_filename}")
-                self._emit(
-                    "pdf_unlock_failed", "pdf_unlock",
-                    f"Could not unlock {normalized_filename}: {unlock_result.get('error', 'unknown error')}",
-                    level="warning",
-                    data={"filename": normalized_filename, "error": unlock_result.get("error")},
-                )
-                unlocked_path = temp_file_path
-            else:
-                unlocked_path = unlock_result.get("unlocked_path")
-                logger.info(f"Successfully unlocked PDF: {normalized_filename}")
-                self._emit(
-                    "pdf_unlocked", "pdf_unlock",
-                    f"Unlocked {normalized_filename}",
-                    level="success",
-                    data={"filename": normalized_filename, "account": account_nickname},
-                )
-            
+                unlock_result = await self._unlock_pdf_async(temp_file_path, sender_email)
+                if not unlock_result.get("success"):
+                    logger.warning(f"Could not unlock PDF: {normalized_filename}")
+                    self._emit(
+                        "pdf_unlock_failed", "pdf_unlock",
+                        f"Could not unlock {normalized_filename}: {unlock_result.get('error', 'unknown error')}",
+                        level="warning",
+                        data={"filename": normalized_filename, "error": unlock_result.get("error")},
+                    )
+                    unlocked_path = temp_file_path
+                else:
+                    unlocked_path = unlock_result.get("unlocked_path")
+                    logger.info(f"Successfully unlocked PDF: {normalized_filename}")
+                    self._emit(
+                        "pdf_unlocked", "pdf_unlock",
+                        f"Unlocked {normalized_filename}",
+                        level="success",
+                        data={"filename": normalized_filename, "account": account_nickname},
+                    )
+
             # Extract data from unlocked PDF
             self._emit(
                 "extraction_started", "extraction",
@@ -584,7 +693,7 @@ class StatementWorkflow:
                 save_results=True,
                 email_date=statement_data.get("email_date")
             )
-            
+
             # Clean up local CSV file after successful cloud upload
             if extraction_result.get("success") and extraction_result.get("csv_file"):
                 try:
@@ -594,7 +703,7 @@ class StatementWorkflow:
                         logger.info(f"Cleaned up local CSV file: {csv_file_path.name}")
                 except Exception as e:
                     logger.warning(f"Failed to clean up local CSV file: {e}")
-            
+
             if extraction_result.get("success"):
                 logger.info(f"Extracted data from: {normalized_filename}")
                 self._emit(
@@ -617,7 +726,7 @@ class StatementWorkflow:
                     data={"filename": normalized_filename, "account": account_nickname},
                 )
                 return None
-                
+
         except Exception as e:
             logger.error("Error processing statement extraction", exc_info=True)
             self._emit(
@@ -931,12 +1040,14 @@ class StatementWorkflow:
         custom_end_date: Optional[str] = None,
         custom_splitwise_start_date: Optional[datetime] = None,
         custom_splitwise_end_date: Optional[datetime] = None,
+        override: bool = False,
     ) -> Dict[str, Any]:
         """
         Run the complete statement processing workflow
-        
+
         Args:
             resume_from_standardization: If True, skip document extraction and start from standardization
+            override: If True, bypass all GCS resume checks and re-extract every statement from scratch
         """
         if resume_from_standardization:
             logger.info("Resuming workflow from standardization step (skipping document extraction)")
@@ -1028,26 +1139,27 @@ class StatementWorkflow:
                         for statement_data in statements:
                             try:
                                 # Extract data from statement
-                                extraction_result = await self._process_statement_extraction(statement_data)
+                                extraction_result = await self._process_statement_extraction(statement_data, override=override)
                                 if extraction_result:
                                     workflow_results["total_statements_processed"] += 1
-                                    
+
                                     # Track if extraction was skipped
                                     if extraction_result.get("skipped"):
                                         workflow_results["total_statements_skipped"] = workflow_results.get("total_statements_skipped", 0) + 1
                                         logger.info(f"Skipped extraction for {statement_data['normalized_filename']}")
-                                    
+
                                     # Upload unlocked statement to cloud storage (only if not skipped)
+                                    cloud_path = None
                                     if not extraction_result.get("skipped"):
                                         cloud_path = await self._upload_unlocked_statement_to_cloud(statement_data, extraction_result)
                                         if cloud_path:
                                             workflow_results["total_statements_uploaded"] += 1
-                                    
+
                                     # Standardize and store
                                     standardized_data = await self._standardize_and_store_data(extraction_result, statement_data)
                                     if standardized_data:
                                         workflow_results["all_standardized_data"].extend(standardized_data)
-                                    
+
                                     workflow_results["processed_statements"].append({
                                         "sender_email": statement_data["sender_email"],
                                         "filename": statement_data["normalized_filename"],
@@ -1057,6 +1169,28 @@ class StatementWorkflow:
                                         "extraction_skipped": extraction_result.get("skipped", False),
                                         "standardization_success": len(standardized_data) > 0 if standardized_data else False
                                     })
+
+                                    # Update last_statement_date and last_processed_at for this account
+                                    try:
+                                        account = await AccountOperations.get_account_by_statement_sender(
+                                            statement_data["sender_email"]
+                                        )
+                                        if account:
+                                            stmt_month = self._get_previous_month_folder(statement_data["email_date"])
+                                            year_num = int(stmt_month[:4])
+                                            month_num = int(stmt_month[5:])
+                                            last_day = calendar.monthrange(year_num, month_num)[1]
+                                            last_day_iso = f"{year_num}-{month_num:02d}-{last_day:02d}"
+                                            await AccountOperations.update_last_statement_date(str(account["id"]), last_day_iso)
+                                            await AccountOperations.update_last_processed_at(str(account["id"]))
+                                            logger.info(
+                                                f"Updated account {account.get('nickname', statement_data['sender_email'])}: "
+                                                f"last_statement_date={last_day_iso}"
+                                            )
+                                        else:
+                                            logger.warning(f"Could not find account for sender {statement_data['sender_email']} — skipping date update")
+                                    except Exception as e:
+                                        logger.warning(f"Failed to update account dates for {statement_data['sender_email']}: {e}")
                                 else:
                                     workflow_results["errors"].append(f"Failed to extract data from {statement_data['normalized_filename']}")
                             
@@ -1662,6 +1796,7 @@ async def run_statement_workflow(
     custom_splitwise_start_date: Optional[datetime] = None,
     custom_splitwise_end_date: Optional[datetime] = None,
     event_callback: Optional[Callable[[dict], None]] = None,
+    override: bool = False,
 ) -> Dict[str, Any]:
     """Run the complete statement processing workflow."""
     workflow = StatementWorkflow(
@@ -1675,6 +1810,7 @@ async def run_statement_workflow(
         custom_end_date=custom_end_date,
         custom_splitwise_start_date=custom_splitwise_start_date,
         custom_splitwise_end_date=custom_splitwise_end_date,
+        override=override,
     )
 
 
@@ -1687,6 +1823,7 @@ async def run_resume_workflow(
     custom_splitwise_start_date: Optional[datetime] = None,
     custom_splitwise_end_date: Optional[datetime] = None,
     event_callback: Optional[Callable[[dict], None]] = None,
+    override: bool = False,
 ) -> Dict[str, Any]:
     """Run workflow resuming from standardization step (skip document extraction)."""
     workflow = StatementWorkflow(
@@ -1700,6 +1837,7 @@ async def run_resume_workflow(
         custom_end_date=custom_end_date,
         custom_splitwise_start_date=custom_splitwise_start_date,
         custom_splitwise_end_date=custom_splitwise_end_date,
+        override=override,
     )
 
 

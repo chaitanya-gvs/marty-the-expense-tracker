@@ -35,6 +35,7 @@ class WorkflowRunRequest(BaseModel):
     splitwise_start_date: Optional[str] = None
     splitwise_end_date: Optional[str] = None
     enable_secondary_account: Optional[bool] = None
+    override: bool = False
 
 
 class WorkflowRunResponse(BaseModel):

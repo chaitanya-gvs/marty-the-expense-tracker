@@ -170,6 +170,7 @@ async def _run_workflow_task(job_id: str, req: WorkflowRunRequest) -> None:
                 custom_end_date=req.end_date,
                 custom_splitwise_start_date=sw_start,
                 custom_splitwise_end_date=sw_end,
+                override=req.override,
             )
         elif req.mode == WorkflowMode.resume:
             result = await workflow.run_complete_workflow(
@@ -178,6 +179,7 @@ async def _run_workflow_task(job_id: str, req: WorkflowRunRequest) -> None:
                 custom_end_date=req.end_date,
                 custom_splitwise_start_date=sw_start,
                 custom_splitwise_end_date=sw_end,
+                override=req.override,
             )
         elif req.mode == WorkflowMode.splitwise_only:
             result = await workflow.run_splitwise_only_workflow(
