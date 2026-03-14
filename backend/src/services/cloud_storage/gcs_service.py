@@ -237,6 +237,25 @@ class GoogleCloudStorageService:
             logger.error(f"Failed to delete file {cloud_path}", exc_info=True)
             return {"success": False, "error": str(e)}
     
+    def copy_file(self, source_path: str, destination_path: str) -> Dict[str, any]:
+        """Copy a file within the same bucket.
+
+        Args:
+            source_path: Blob path of the source file inside the bucket.
+            destination_path: Blob path for the copy inside the same bucket.
+
+        Returns:
+            Dictionary with copy result.
+        """
+        try:
+            source_blob = self.bucket.blob(source_path)
+            self.bucket.copy_blob(source_blob, self.bucket, destination_path)
+            logger.info(f"Copied {source_path} → {destination_path}")
+            return {"success": True}
+        except Exception:
+            logger.error(f"Failed to copy {source_path} → {destination_path}", exc_info=True)
+            return {"success": False, "error": f"Copy failed: {source_path} → {destination_path}"}
+
     def file_exists(self, cloud_path: str) -> bool:
         """
         Check if a file exists in the bucket
