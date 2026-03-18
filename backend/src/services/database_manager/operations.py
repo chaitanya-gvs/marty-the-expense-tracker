@@ -270,7 +270,10 @@ class AccountOperations:
     
     @staticmethod
     async def get_account_nickname_by_pattern(search_pattern: str) -> Optional[str]:
-        """Get account nickname by search pattern (partial match)"""
+        """Get account nickname by search pattern (partial match).
+        Tries exact pattern first, then pattern with underscores as wildcards for flexibility
+        with {account}_{date} filenames (e.g. yes_bank matches 'Yes Bank Savings').
+        """
         session_factory = get_session_factory()
         session = session_factory()
         try:
@@ -281,6 +284,19 @@ class AccountOperations:
                     AND is_active = true
                     LIMIT 1
                 """), {"pattern": f"%{search_pattern}%"}
+            )
+            row = result.fetchone()
+            if row:
+                return row[0]
+            # Fallback: try with underscores as space/wildcard (yes_bank -> %yes%bank%)
+            alt_pattern = "%".join(search_pattern.split("_"))
+            result = await session.execute(
+                text("""
+                    SELECT nickname FROM accounts 
+                    WHERE LOWER(nickname) LIKE LOWER(:pattern)
+                    AND is_active = true
+                    LIMIT 1
+                """), {"pattern": f"%{alt_pattern}%"}
             )
             row = result.fetchone()
             return row[0] if row else None
@@ -995,7 +1011,34 @@ class TransactionOperations:
             }
         finally:
             await session.close()
-    
+
+    @staticmethod
+    async def get_splitwise_cursor() -> Optional[datetime]:
+        """
+        Get the cursor for Splitwise incremental sync.
+        Returns MAX(updated_at) from transactions where account = 'Splitwise'.
+        Used as updated_after for the Splitwise API to fetch only new/updated expenses.
+        """
+        session_factory = get_session_factory()
+        session = session_factory()
+        try:
+            result = await session.execute(
+                text("""
+                    SELECT MAX(updated_at)
+                    FROM transactions
+                    WHERE account = 'Splitwise'
+                """)
+            )
+            row = result.fetchone()
+            if row and row[0] is not None:
+                return row[0]
+            return None
+        except Exception as e:
+            logger.error("Error getting Splitwise cursor", exc_info=True)
+            raise
+        finally:
+            await session.close()
+
     @staticmethod
     async def bulk_insert_transactions(
         transactions: List[Dict[str, Any]],
@@ -3038,6 +3081,36 @@ class StatementLogOperations:
             return {"success": False, "error": str(e)}
         finally:
             await session.close()
+
+    @staticmethod
+    async def register_csv_upload(
+        normalized_filename: str,
+        statement_month: str,
+        account_nickname: str,
+        csv_cloud_path: Optional[str] = None,
+        transaction_count: Optional[int] = None,
+    ) -> dict:
+        """
+        Register a CSV upload in statement_processing_log. Call this after any script
+        uploads a CSV to GCS so the workflow skip logic will exclude it on future runs.
+
+        Example (from scripts that upload CSVs):
+            await StatementLogOperations.register_csv_upload(
+                normalized_filename="sbi_20260312",
+                statement_month="2026-02",
+                account_nickname="SBI Savings",
+                csv_cloud_path="2026-02/extracted_data/sbi_20260312.csv",
+                transaction_count=45,
+            )
+        """
+        return await StatementLogOperations.upsert_log({
+            "normalized_filename": normalized_filename,
+            "statement_month": statement_month,
+            "account_nickname": account_nickname,
+            "status": "db_inserted",
+            "csv_cloud_path": csv_cloud_path,
+            "transaction_count": transaction_count,
+        })
 
     @staticmethod
     async def update_status(normalized_filename: str, status: str, **extra_fields) -> bool:
