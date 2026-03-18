@@ -13,8 +13,10 @@ import {
   Download,
   BarChart3,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  Play,
 } from "lucide-react";
+import { WorkflowSheet } from "@/components/workflow/workflow-sheet";
 
 // Get default date range (This Month)
 function getDefaultDateRange() {
@@ -49,6 +51,7 @@ export function TransactionsPage() {
   const [filters, setFilters] = useState<TransactionFiltersType>(getInitialFilters);
   const [sort, setSort] = useState<TransactionSort | undefined>();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isWorkflowOpen, setIsWorkflowOpen] = useState(false);
 
   // Persist filters to localStorage whenever they change
   useEffect(() => {
@@ -207,6 +210,15 @@ export function TransactionsPage() {
             </Button>
             <Button
               size="sm"
+              variant="outline"
+              className="gap-2"
+              onClick={() => setIsWorkflowOpen(true)}
+            >
+              <Play className="h-4 w-4 fill-current" />
+              Run Workflow
+            </Button>
+            <Button
+              size="sm"
               className="gap-2"
               onClick={() => setIsAddModalOpen(true)}
             >
@@ -230,6 +242,8 @@ export function TransactionsPage() {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
       />
+
+      <WorkflowSheet open={isWorkflowOpen} onOpenChange={setIsWorkflowOpen} />
     </div>
   );
 }

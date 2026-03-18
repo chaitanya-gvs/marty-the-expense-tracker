@@ -14,7 +14,7 @@ import {
   ChevronRight,
   Menu,
   Users,
-  BarChart3
+  BarChart3,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -146,6 +146,7 @@ export function Navigation({ isCollapsed, onToggle }: NavigationProps) {
             })}
           </ul>
         </div>
+
       </nav>
     </TooltipProvider>
   );
