@@ -574,6 +574,63 @@ class TransactionStandardizer:
         
         return pd.DataFrame(standardized_data)
     
+    def standardize_splitwise_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Standardize Splitwise CSV data into the canonical transaction format."""
+        standardized_data = []
+
+        for _, row in df.iterrows():
+            date_val = row.get("date")
+            description = str(row.get("description", "")).strip()
+            if not date_val or not description:
+                continue
+
+            # Total transaction amount
+            try:
+                amount = float(row.get("amount", 0) or 0)
+            except (ValueError, TypeError):
+                amount = 0.0
+
+            # User's personal share of the expense
+            try:
+                my_share = float(row.get("my_share", 0) or 0)
+            except (ValueError, TypeError):
+                my_share = amount
+
+            if amount <= 0:
+                continue
+
+            # Splitwise entries are always outgoing expenses (debits) unless explicitly a payment
+            is_payment = str(row.get("is_payment", "False")).lower() in ("true", "1", "yes")
+            transaction_type = "credit" if is_payment else "debit"
+
+            # Parse split_breakdown JSON string if present
+            split_breakdown_raw = row.get("split_breakdown")
+            split_breakdown = None
+            if split_breakdown_raw and str(split_breakdown_raw) not in ("", "None", "nan"):
+                try:
+                    split_breakdown = split_breakdown_raw if isinstance(split_breakdown_raw, dict) else __import__("json").loads(str(split_breakdown_raw))
+                except Exception:
+                    split_breakdown = None
+
+            standardized_data.append({
+                "transaction_date": self.parse_date(date_val),
+                "transaction_time": None,
+                "description": description,
+                "amount": amount,
+                "my_share": my_share,
+                "transaction_type": transaction_type,
+                "is_shared": True,
+                "split_breakdown": split_breakdown,
+                "account": str(row.get("source", "splitwise")),
+                "category": str(row.get("category", "")).strip() or None,
+                "sub_category": str(row.get("group_name", "")).strip() or None,
+                "reference_number": str(row.get("external_id", "")).strip() or None,
+                "source_file": "splitwise",
+                "raw_data": row.to_dict(),
+            })
+
+        return pd.DataFrame(standardized_data)
+
     def process_csv_file(self, csv_path: Path) -> pd.DataFrame:
         """Process a single CSV file based on its content"""
         filename = csv_path.name
