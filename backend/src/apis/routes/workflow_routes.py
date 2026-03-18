@@ -5,17 +5,20 @@ Exposes the full statement + Splitwise processing pipeline as HTTP endpoints,
 with real-time status streaming via Server-Sent Events (SSE).
 
 Endpoints:
-  POST /workflow/run          → start a workflow job, returns {job_id}
-  GET  /workflow/{job_id}/stream  → SSE stream of WorkflowEvent objects
-  GET  /workflow/{job_id}/status  → accumulated event log + final summary
-  GET  /workflow/active        → currently running job info (or null)
+  POST /workflow/run               → start a workflow job, returns {job_id}
+  POST /workflow/{job_id}/cancel   → cancel a running job
+  GET  /workflow/period-check      → completeness check for the default run period
+  GET  /workflow/{job_id}/stream   → SSE stream of WorkflowEvent objects
+  GET  /workflow/{job_id}/status   → accumulated event log + final summary
+  GET  /workflow/active            → currently running job info (or null)
 """
 
 import asyncio
 import json
 import uuid
+from calendar import monthrange
 from datetime import datetime, date
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -31,6 +34,7 @@ from src.apis.schemas.workflow import (
     WorkflowEventLevel,
 )
 from src.services.database_manager.connection import get_session_factory
+from src.services.database_manager.operations import StatementLogOperations
 from src.services.orchestrator.statement_workflow import StatementWorkflow
 from src.utils.logger import get_logger
 
@@ -46,7 +50,7 @@ router = APIRouter(prefix="/workflow", tags=["workflow"])
 class _JobState:
     __slots__ = (
         "job_id", "mode", "status", "started_at", "completed_at",
-        "events", "summary", "error", "queue",
+        "events", "summary", "error", "queue", "task",
     )
 
     def __init__(self, job_id: str, mode: WorkflowMode):
@@ -59,6 +63,7 @@ class _JobState:
         self.summary: Optional[Dict[str, Any]] = None
         self.error: Optional[str] = None
         self.queue: asyncio.Queue = asyncio.Queue()
+        self.task: Optional[asyncio.Task] = None
 
 
 _jobs: Dict[str, _JobState] = {}
@@ -119,6 +124,7 @@ def _build_splitwise_date_range(
 
 async def _resolve_splitwise_dates(
     req: WorkflowRunRequest,
+    job_id: Optional[str] = None,
 ) -> tuple[Optional[datetime], Optional[datetime]]:
     """
     Resolve Splitwise date range, auto-detecting last DB date when not supplied.
@@ -134,7 +140,10 @@ async def _resolve_splitwise_dates(
         # Day after the last Splitwise transaction → today
         start = datetime(last_date.year, last_date.month, last_date.day)
         end = datetime.utcnow().replace(hour=23, minute=59, second=59, microsecond=0)
-        logger.info(f"Auto-detected Splitwise range: {start.date()} → {end.date()}")
+        logger.info(
+            f"Auto-detected Splitwise range: {start.date()} → {end.date()}",
+            extra={"job_id": job_id} if job_id else {},
+        )
         return start, end
 
     # No DB records yet — let the workflow use its default (previous calendar month)
@@ -156,7 +165,7 @@ async def _run_workflow_task(job_id: str, req: WorkflowRunRequest) -> None:
         job.queue.put_nowait(event)
 
     try:
-        sw_start, sw_end = await _resolve_splitwise_dates(req)
+        sw_start, sw_end = await _resolve_splitwise_dates(req, job_id=job_id)
 
         workflow = StatementWorkflow(
             enable_secondary_account=req.enable_secondary_account,
@@ -171,6 +180,7 @@ async def _run_workflow_task(job_id: str, req: WorkflowRunRequest) -> None:
                 custom_splitwise_start_date=sw_start,
                 custom_splitwise_end_date=sw_end,
                 override=req.override,
+                job_id=job_id,
             )
         elif req.mode == WorkflowMode.resume:
             result = await workflow.run_complete_workflow(
@@ -180,11 +190,13 @@ async def _run_workflow_task(job_id: str, req: WorkflowRunRequest) -> None:
                 custom_splitwise_start_date=sw_start,
                 custom_splitwise_end_date=sw_end,
                 override=req.override,
+                job_id=job_id,
             )
         elif req.mode == WorkflowMode.splitwise_only:
             result = await workflow.run_splitwise_only_workflow(
                 custom_start_date=sw_start,
                 custom_end_date=sw_end,
+                job_id=job_id,
             )
         else:
             raise ValueError(f"Unknown workflow mode: {req.mode}")
@@ -192,8 +204,23 @@ async def _run_workflow_task(job_id: str, req: WorkflowRunRequest) -> None:
         job.summary = {k: v for k, v in result.items() if k != "all_standardized_data"}
         job.status = WorkflowJobStatus.completed
 
+    except asyncio.CancelledError:
+        logger.info(f"Workflow job {job_id} was cancelled", extra={"job_id": job_id})
+        job.status = WorkflowJobStatus.cancelled
+        cancelled_event = {
+            "event": "workflow_cancelled",
+            "step": "workflow",
+            "message": "Workflow was cancelled by user",
+            "account": None,
+            "level": "warning",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "data": {},
+        }
+        job.events.append(cancelled_event)
+        job.queue.put_nowait(cancelled_event)
+        raise
     except Exception as exc:
-        logger.error(f"Workflow job {job_id} failed: {exc}", exc_info=True)
+        logger.error(f"Workflow job {job_id} failed: {exc}", exc_info=True, extra={"job_id": job_id})
         job.error = str(exc)
         job.status = WorkflowJobStatus.failed
         error_event = {
@@ -277,15 +304,82 @@ async def start_workflow(req: WorkflowRunRequest):
     _jobs[job_id] = job
     _active_job_id = job_id
 
-    # Launch workflow as a background asyncio task
-    asyncio.create_task(_run_workflow_task(job_id, req))
+    # Launch workflow as a background asyncio task; store handle for cancellation
+    job.task = asyncio.create_task(_run_workflow_task(job_id, req))
 
-    logger.info(f"Started workflow job {job_id} (mode={req.mode})")
+    logger.info(f"Started workflow job {job_id} (mode={req.mode})", extra={"job_id": job_id})
     return WorkflowRunResponse(
         job_id=job_id,
         mode=req.mode,
         started_at=job.started_at,
     )
+
+
+@router.post("/{job_id}/cancel", status_code=200)
+async def cancel_workflow(job_id: str):
+    """
+    Cancel a running workflow job.
+
+    Requests cancellation of the background asyncio task. The job status will
+    transition to `cancelled` shortly after. Returns 404 if the job is not
+    found or is not currently running.
+    """
+    job = _jobs.get(job_id)
+    if not job or job.status != WorkflowJobStatus.running:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Job '{job_id}' is not currently running (status: {job.status if job else 'not found'})",
+        )
+    if job.task and not job.task.done():
+        job.task.cancel()
+    logger.info(f"Cancel requested for workflow job {job_id}", extra={"job_id": job_id})
+    return {"job_id": job_id, "status": "cancelling"}
+
+
+@router.get("/period-check")
+async def get_period_check(month: Optional[str] = None):
+    """
+    Returns completeness stats for a statement month.
+
+    Defaults to the previous calendar month, which is the target period for
+    the default workflow run (emails received this month are for last month's
+    statements). Pass `?month=YYYY-MM` to check a specific month.
+    """
+    if month is None:
+        today = date.today()
+        if today.month == 1:
+            month = f"{today.year - 1}-12"
+        else:
+            month = f"{today.year}-{today.month - 1:02d}"
+
+    try:
+        rows = await StatementLogOperations.get_by_month(month)
+    except Exception as exc:
+        logger.error(f"Error fetching period check for {month}: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to query statement log: {exc}")
+
+    complete = [r for r in rows if r.get("status") == "db_inserted"]
+    incomplete = [
+        {
+            "normalized_filename": r.get("normalized_filename"),
+            "status": r.get("status"),
+            "account_nickname": r.get("account_nickname"),
+        }
+        for r in rows
+        if r.get("status") != "db_inserted"
+    ]
+
+    total = len(rows)
+    complete_count = len(complete)
+
+    return {
+        "month": month,
+        "total": total,
+        "complete": complete_count,
+        "incomplete": incomplete,
+        "all_done": total > 0 and complete_count == total,
+        "has_partial": total > 0 and 0 < complete_count < total,
+    }
 
 
 @router.get("/active")

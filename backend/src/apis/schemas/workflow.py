@@ -49,6 +49,7 @@ class WorkflowJobStatus(str, Enum):
     running = "running"
     completed = "completed"
     failed = "failed"
+    cancelled = "cancelled"
 
 
 class WorkflowJobStatusResponse(BaseModel):
