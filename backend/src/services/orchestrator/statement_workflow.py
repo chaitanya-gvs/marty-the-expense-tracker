@@ -29,7 +29,7 @@ from src.services.email_ingestion.token_manager import TokenManager
 from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
 from src.services.statement_processor.document_extractor import DocumentExtractor
 from .transaction_standardizer import TransactionStandardizer
-from src.services.statement_processor.filename_utils import nickname_to_filename_prefix
+from src.utils.filename_utils import nickname_to_filename_prefix
 from src.services.statement_processor.pdf_unlocker import PDFUnlocker
 from src.services.splitwise_processor.service import SplitwiseService
 from src.utils.logger import get_logger
