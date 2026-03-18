@@ -3,7 +3,7 @@ Splitwise service for processing and filtering transactions.
 """
 
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 
 from src.utils.logger import get_logger
 from src.services.splitwise_processor.schemas import (
@@ -85,7 +85,50 @@ class SplitwiseService:
         
         logger.info(f"Processed {len(processed_transactions)} transactions for user {current_user.first_name}")
         return processed_transactions
-    
+
+    def get_transactions_updated_since(
+        self,
+        updated_after: datetime,
+        updated_before: Optional[datetime] = None,
+        exclude_created_by_me: bool = True,
+        include_only_my_transactions: bool = True,
+    ) -> Tuple[List[ProcessedSplitwiseTransaction], Optional[datetime]]:
+        """
+        Fetch only expenses updated after/before the given timestamps (incremental sync).
+        Uses updated_after/updated_before API params; no date range.
+        Returns (transactions, max_updated_at) where max_updated_at is for logging.
+        """
+        current_user = self.get_current_user()
+        logger.info(
+            f"Fetching Splitwise transactions updated after {updated_after.isoformat()}"
+            + (f" and before {updated_before.isoformat()}" if updated_before else "")
+        )
+
+        expenses = self.client.get_expenses(
+            updated_after=updated_after,
+            updated_before=updated_before,
+        )
+
+        processed_transactions = []
+        max_updated_at: Optional[datetime] = None
+
+        for expense in expenses:
+            if expense.deleted_at:
+                continue
+            if include_only_my_transactions and not self._is_user_involved(expense, current_user.id):
+                continue
+            if exclude_created_by_me and expense.created_by and expense.created_by.id == current_user.id:
+                continue
+
+            processed = self._process_transaction(expense, current_user)
+            if processed:
+                processed_transactions.append(processed)
+                if processed.updated_at and (max_updated_at is None or processed.updated_at > max_updated_at):
+                    max_updated_at = processed.updated_at
+
+        logger.info(f"Found {len(processed_transactions)} transactions updated since {updated_after.isoformat()}")
+        return processed_transactions, max_updated_at
+
     def _is_user_involved(self, expense: SplitwiseExpense, user_id: int) -> bool:
         """Check if a user is involved in an expense."""
         for expense_user in expense.users:
@@ -162,6 +205,11 @@ class SplitwiseService:
             if expense.created_by:
                 created_by_name = f"{expense.created_by.first_name} {expense.created_by.last_name}".strip()
             
+            # Build raw_data including updated_at for future cursor use (store Splitwise's timestamp)
+            raw_data = {**expense.dict(), "split_breakdown": split_breakdown}
+            if expense.updated_at is not None:
+                raw_data["updated_at"] = expense.updated_at.isoformat()
+
             # Create processed transaction with enhanced data
             processed_transaction = ProcessedSplitwiseTransaction(
                 splitwise_id=expense.id,
@@ -178,10 +226,8 @@ class SplitwiseService:
                 participants=participants,
                 paid_by=paid_by,  # Who actually paid for this transaction
                 is_payment=is_payment,
-                raw_data={
-                    **expense.dict(),
-                    "split_breakdown": split_breakdown  # Include enhanced split breakdown
-                }
+                updated_at=expense.updated_at,
+                raw_data=raw_data,
             )
             
             return processed_transaction

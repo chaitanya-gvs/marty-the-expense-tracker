@@ -89,23 +89,30 @@ class SplitwiseAPIClient:
             raise
     
     def get_expenses(
-        self, 
+        self,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
+        updated_after: Optional[datetime] = None,
+        updated_before: Optional[datetime] = None,
         limit: int = 100,
-        offset: int = 0
+        offset: int = 0,
     ) -> List[SplitwiseExpense]:
         """Fetch expenses from Splitwise API."""
         params = {
             "limit": limit,
-            "offset": offset
+            "offset": offset,
         }
-        
+
         if start_date:
             params["dated_after"] = start_date.strftime("%Y-%m-%d")
-        
+
         if end_date:
             params["dated_before"] = end_date.strftime("%Y-%m-%d")
+
+        if updated_after:
+            params["updated_after"] = updated_after.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if updated_before:
+            params["updated_before"] = updated_before.strftime("%Y-%m-%dT%H:%M:%SZ")
         
         all_expenses = []
         

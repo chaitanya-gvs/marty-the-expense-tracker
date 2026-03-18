@@ -46,7 +46,7 @@ class SplitwiseExpense(BaseModel):
     currency_code: str
     date: datetime
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
     category: Optional[SplitwiseCategory] = None
     group: Optional[SplitwiseGroup] = None
     users: List[SplitwiseExpenseUser] = Field(default_factory=list)
@@ -84,6 +84,7 @@ class ProcessedSplitwiseTransaction(BaseModel):
     participants: List[str] = Field(default_factory=list)
     paid_by: Optional[str] = None  # Who actually paid for this transaction
     is_payment: bool = False
+    updated_at: Optional[datetime] = None  # From Splitwise API; used for cursor/logging
     raw_data: Dict[str, Any] = Field(default_factory=dict)
 
 
