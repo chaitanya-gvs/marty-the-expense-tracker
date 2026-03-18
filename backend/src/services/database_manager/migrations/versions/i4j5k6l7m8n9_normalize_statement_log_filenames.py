@@ -20,7 +20,7 @@ _backend = Path(__file__).resolve().parents[5]
 if str(_backend) not in sys.path:
     sys.path.insert(0, str(_backend))
 
-from src.services.statement_processor.filename_utils import nickname_to_filename_prefix
+from src.utils.filename_utils import nickname_to_filename_prefix
 
 revision: str = "i4j5k6l7m8n9"
 down_revision: str = "h3i4j5k6l7m8"
