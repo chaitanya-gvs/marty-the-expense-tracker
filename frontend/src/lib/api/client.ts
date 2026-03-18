@@ -1,4 +1,11 @@
 import { ApiResponse, Transaction, Budget, Category, Tag, TransactionFilters, TransactionSort, PaginationParams, TransferSuggestion, RefundSuggestion, SplitBreakdown, EmailMetadata, EmailDetails, EmailSearchFilters, ExpenseAnalytics, ExpenseAnalyticsFilters } from "@/lib/types";
+import type {
+  WorkflowRunRequest,
+  WorkflowRunResponse,
+  WorkflowJobStatusResponse,
+  WorkflowCancelResponse,
+  WorkflowPeriodCheck,
+} from "@/lib/api/types/workflow";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
@@ -668,6 +675,39 @@ class ApiClient {
     }
 
     return this.request<ExpenseAnalytics>(`/transactions/analytics?${params.toString()}`);
+  }
+
+  // Workflow
+  async startWorkflow(req: WorkflowRunRequest): Promise<WorkflowRunResponse> {
+    return this.request<WorkflowRunResponse>("/workflow/run", {
+      method: "POST",
+      body: JSON.stringify(req),
+    }) as Promise<WorkflowRunResponse>;
+  }
+
+  async cancelWorkflow(jobId: string): Promise<WorkflowCancelResponse> {
+    return this.request<WorkflowCancelResponse>(`/workflow/${jobId}/cancel`, {
+      method: "POST",
+    }) as Promise<WorkflowCancelResponse>;
+  }
+
+  async getWorkflowStatus(jobId: string): Promise<WorkflowJobStatusResponse> {
+    return this.request<WorkflowJobStatusResponse>(
+      `/workflow/${jobId}/status`
+    ) as Promise<WorkflowJobStatusResponse>;
+  }
+
+  streamWorkflowEvents(jobId: string): EventSource {
+    return new EventSource(
+      `${this.baseUrl}/workflow/${jobId}/stream`
+    );
+  }
+
+  async getWorkflowPeriodCheck(month?: string): Promise<WorkflowPeriodCheck> {
+    const params = month ? `?month=${month}` : "";
+    return this.request<WorkflowPeriodCheck>(
+      `/workflow/period-check${params}`
+    ) as Promise<WorkflowPeriodCheck>;
   }
 }
 
