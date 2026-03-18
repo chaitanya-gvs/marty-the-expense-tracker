@@ -13,7 +13,6 @@ from typing import Dict, Any, Optional
 
 import fitz
 
-from src.services.database_manager.operations import AccountOperations
 from src.utils.logger import get_logger
 from src.utils.password_manager import get_password_manager
 
@@ -59,7 +58,7 @@ class PDFUnlocker:
             logger.error(f"Error unlocking PDF {pdf_path}", exc_info=True)
             return {"success": False, "error": str(e)}
 
-    def unlock_pdf_with_password(self, pdf_path: Path, password: str) -> Dict[str, Any]:
+    def unlock_pdf_with_password(self, pdf_path: Path, password: str, account_nickname: Optional[str] = None) -> Dict[str, Any]:
         """
         Unlock a password-protected PDF with a provided password.
 
@@ -73,7 +72,7 @@ class PDFUnlocker:
             logger.info(f"Unlocking PDF with provided password: {pdf_path.name}")
 
             if self._unlock_pdf_with_password(pdf_path, password):
-                saved_path = self._save_unlocked_pdf(pdf_path)
+                saved_path = self._save_unlocked_pdf(pdf_path, account_nickname=account_nickname)
                 if saved_path:
                     logger.info(f"Unlocked PDF saved to: {saved_path}")
                     return {"success": True, "unlocked_path": saved_path}
@@ -135,14 +134,14 @@ class PDFUnlocker:
             logger.error("PyMuPDF unlock failed", exc_info=True)
             return False
 
-    def _save_unlocked_pdf(self, original_path: Path) -> Optional[str]:
+    def _save_unlocked_pdf(self, original_path: Path, account_nickname: Optional[str] = None) -> Optional[str]:
         """Move the temporary unlocked PDF to the final output directory."""
         try:
             if not hasattr(self, "_temp_unlocked_path") or not self._temp_unlocked_path.exists():
                 logger.error("No temporary unlocked PDF found")
                 return None
 
-            normalized_filename = self._generate_normalized_unlocked_filename(original_path.name)
+            normalized_filename = self._generate_normalized_unlocked_filename(original_path.name, account_nickname=account_nickname)
             output_file = self.unlocked_dir / normalized_filename
             shutil.move(str(self._temp_unlocked_path), str(output_file))
             self._temp_unlocked_path = None
@@ -152,29 +151,21 @@ class PDFUnlocker:
             logger.error("Error saving unlocked PDF", exc_info=True)
             return None
 
-    def _generate_normalized_unlocked_filename(self, original_filename: str) -> str:
+    def _generate_normalized_unlocked_filename(self, original_filename: str, account_nickname: Optional[str] = None) -> str:
         """Generate a normalized output filename using the account nickname."""
         try:
-            sender_email = self._get_sender_email_from_filename(original_filename)
-            if not sender_email:
-                return f"{Path(original_filename).stem}_unlocked.pdf"
-
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                nickname = loop.run_until_complete(
-                    AccountOperations.get_account_nickname_by_sender(sender_email)
-                )
-            finally:
-                loop.close()
-
-            if nickname:
-                base_name = nickname.lower().replace(" ", "_")
-            else:
-                base_name = sender_email.split("@")[1].split(".")[0].lower()
-
             formatted_date = self._extract_date_from_filename(original_filename)
-            return f"{base_name}_{formatted_date}_unlocked.pdf"
+
+            if account_nickname:
+                base_name = account_nickname.lower().replace(" ", "_")
+                return f"{base_name}_{formatted_date}_unlocked.pdf"
+
+            sender_email = self._get_sender_email_from_filename(original_filename)
+            if sender_email:
+                base_name = sender_email.split("@")[1].split(".")[0].lower()
+                return f"{base_name}_{formatted_date}_unlocked.pdf"
+
+            return f"{Path(original_filename).stem}_unlocked.pdf"
 
         except Exception:
             logger.error("Error generating normalized unlocked filename", exc_info=True)

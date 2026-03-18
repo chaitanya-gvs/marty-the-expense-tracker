@@ -292,7 +292,9 @@ class DocumentExtractor:
                     "success": True,
                     "table_data": table_data,
                     "raw_result": doc_result,
-                    "extraction_schema": extraction_schema.__name__
+                    "extraction_schema": extraction_schema.__name__,
+                    "kept_pages": kept_pages,
+                    "page_filter_fallback": kept_pages == [],
                 }
             else:
                 logger.warning("No extraction data found in agentic-doc result")
@@ -347,8 +349,9 @@ class DocumentExtractor:
                     else:
                         logger.warning(f"Failed to upload CSV to GCS: {csv_filename}")
                     
-                    # Add file path to result
+                    # Add file path and row count to result
                     extraction_result["csv_file"] = str(csv_file)
+                    extraction_result["row_count"] = len(df)
                     return str(csv_file)
             
             return None

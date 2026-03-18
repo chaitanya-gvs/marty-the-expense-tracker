@@ -7,7 +7,7 @@ This package provides essential services for processing bank and credit card sta
 """
 
 from .document_extractor import get_document_extractor, DocumentExtractor
-from .pdf_unlocker import get_pdf_unlocker, PDFUnlocker
+from .pdf_unlocker import PDFUnlocker
 
 __all__ = [
     # Document Extraction
@@ -15,6 +15,5 @@ __all__ = [
     "DocumentExtractor",
     
     # PDF Unlocking
-    "get_pdf_unlocker",
     "PDFUnlocker",
 ]
