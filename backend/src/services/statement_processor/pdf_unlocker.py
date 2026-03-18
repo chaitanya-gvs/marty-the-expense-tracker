@@ -13,6 +13,7 @@ from typing import Dict, Any, Optional
 
 import fitz
 
+from src.services.statement_processor.filename_utils import nickname_to_filename_prefix
 from src.utils.logger import get_logger
 from src.utils.password_manager import get_password_manager
 
@@ -157,19 +158,19 @@ class PDFUnlocker:
             formatted_date = self._extract_date_from_filename(original_filename)
 
             if account_nickname:
-                base_name = account_nickname.lower().replace(" ", "_")
-                return f"{base_name}_{formatted_date}_unlocked.pdf"
+                base_name = nickname_to_filename_prefix(account_nickname)
+                return f"{base_name}_{formatted_date}.pdf"
 
             sender_email = self._get_sender_email_from_filename(original_filename)
             if sender_email:
                 base_name = sender_email.split("@")[1].split(".")[0].lower()
-                return f"{base_name}_{formatted_date}_unlocked.pdf"
+                return f"{base_name}_{formatted_date}.pdf"
 
-            return f"{Path(original_filename).stem}_unlocked.pdf"
+            return f"{Path(original_filename).stem}.pdf"
 
         except Exception:
             logger.error("Error generating normalized unlocked filename", exc_info=True)
-            return f"{Path(original_filename).stem}_unlocked.pdf"
+            return f"{Path(original_filename).stem}.pdf"
 
     def _extract_date_from_filename(self, filename: str) -> str:
         """Extract date from filename or fall back to today."""

@@ -23,6 +23,7 @@ from dotenv import load_dotenv
 backend_path = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(backend_path))
 
+from src.services.statement_processor.filename_utils import nickname_to_filename_prefix
 from src.services.statement_processor.schemas import BANK_STATEMENT_MODELS
 from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
 from src.services.statement_processor.pdf_page_filter import PDFPageFilter
@@ -122,7 +123,10 @@ class DocumentExtractor:
         if schema_key in BANK_STATEMENT_MODELS:
             logger.info(f"Mapped nickname '{nickname}' to schema key '{schema_key}'")
             return BANK_STATEMENT_MODELS[schema_key]
-        
+        # Alias: "sbi" (from nickname "SBI") -> sbi_savings
+        if schema_key == "sbi":
+            return BANK_STATEMENT_MODELS["sbi_savings"]
+
         logger.warning(f"No schema found for nickname '{nickname}' (derived key: '{schema_key}')")
         return None
 
@@ -140,7 +144,11 @@ class DocumentExtractor:
         elif key.endswith(" account"):
             key = key[:-8]
         key = key.replace(" ", "_")
-        return key if key in BANK_STATEMENT_MODELS else None
+        if key in BANK_STATEMENT_MODELS:
+            return key
+        if key == "sbi":
+            return "sbi_savings"
+        return None
 
     def _parse_html_table_to_dataframe(self, html_table: str) -> pd.DataFrame:
         """
@@ -320,8 +328,8 @@ class DocumentExtractor:
             
             # Generate output filename using account nickname if available
             if account_nickname:
-                # Convert nickname to filename format (lowercase, replace spaces with underscores)
-                nickname_clean = account_nickname.lower().replace(" ", "_").replace("_credit_card", "").replace("_account", "")
+                # {account}_{date} convention (no savings, credit card, account suffix)
+                nickname_clean = nickname_to_filename_prefix(account_nickname)
                 
                 # Extract date from PDF filename or use current date
                 date_str = self._extract_date_from_pdf_filename(pdf_path)
