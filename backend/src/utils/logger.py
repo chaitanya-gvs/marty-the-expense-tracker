@@ -12,6 +12,33 @@ _raw_log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 LOG_LEVEL = getattr(logging, _raw_log_level, logging.INFO)
 
 
+class CustomLogger(logging.Logger):
+    def _log(
+        self,
+        level,
+        msg,
+        args,
+        exc_info=None,
+        extra=None,
+        stack_info=False,
+        stacklevel=1,
+    ):
+        if extra is None:
+            extra = {}
+        extra.setdefault("job_id", "N/A")
+        super()._log(level, msg, args, exc_info, extra, stack_info, stacklevel)
+
+
+class SafeFormatter(logging.Formatter):
+    def format(self, record):
+        record.job_id = getattr(record, "job_id", "N/A")
+        return super().format(record)
+
+
+# Register the custom logger class
+logging.setLoggerClass(CustomLogger)
+
+
 def setup_logging(
     log_dir=LOG_DIRECTORY,
     log_level=LOG_LEVEL,
