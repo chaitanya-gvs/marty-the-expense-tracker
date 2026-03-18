@@ -29,6 +29,7 @@ from src.services.email_ingestion.token_manager import TokenManager
 from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
 from src.services.statement_processor.document_extractor import DocumentExtractor
 from .transaction_standardizer import TransactionStandardizer
+from src.services.statement_processor.filename_utils import nickname_to_filename_prefix
 from src.services.statement_processor.pdf_unlocker import PDFUnlocker
 from src.services.splitwise_processor.service import SplitwiseService
 from src.utils.logger import get_logger
@@ -374,23 +375,35 @@ class StatementWorkflow:
                             try:
                                 attachment_id = attachment.get("attachment_id")
                                 original_filename = attachment.get("filename", "statement.pdf")
-                                
+
+                                # Early skip: don't download if already extracted/db_inserted
+                                normalized_filename = await self._generate_normalized_filename(
+                                    sender_email, email_date, original_filename
+                                )
+                                log_key = normalized_filename.replace("_locked.pdf", "")
+                                if await StatementLogOperations.check_already_extracted(log_key):
+                                    logger.info(
+                                        f"Skipping download of {original_filename} — already processed ({log_key})",
+                                        extra=self._log_extra(),
+                                    )
+                                    self._emit(
+                                        "pdf_skipped_already_processed", "pdf_download",
+                                        f"Skipped {original_filename} — already processed",
+                                        data={"filename": original_filename, "log_key": log_key},
+                                    )
+                                    continue
+
                                 self._emit(
                                     "pdf_download_started", "pdf_download",
                                     f"Downloading attachment: {original_filename}",
                                     data={"filename": original_filename, "subject": subject},
                                 )
-                                
+
                                 # Download attachment data
                                 attachment_data = email_client.download_attachment(email_id, attachment_id)
                                 if not attachment_data:
                                     continue
-                                
-                                # Generate normalized filename (no secondary suffix)
-                                normalized_filename = await self._generate_normalized_filename(
-                                    sender_email, email_date, original_filename
-                                )
-                                
+
                                 # Save to temp directory
                                 temp_file_path = self.temp_dir / normalized_filename
                                 with open(temp_file_path, "wb") as f:
@@ -404,8 +417,7 @@ class StatementWorkflow:
                                     account=account_id, level="success",
                                     data={"filename": normalized_filename, "file_size_bytes": file_size},
                                 )
-                                
-                                log_key = normalized_filename.replace("_locked.pdf", "")
+
                                 statement_month = self._get_previous_month_folder(email_date)
                                 all_downloaded_statements.append({
                                     "sender_email": sender_email,
@@ -558,8 +570,8 @@ class StatementWorkflow:
                 account_nickname = sender_email.replace("@", "_").replace(".", "_")
                 logger.warning(f"No account nickname found, using fallback: {account_nickname}", extra=self._log_extra())
             
-            # Process nickname: convert to lowercase and replace spaces with underscores
-            processed_nickname = account_nickname.lower().replace(" ", "_")
+            # Process nickname: {account}_{date} convention (no savings, credit card, account suffix)
+            processed_nickname = nickname_to_filename_prefix(account_nickname)
             
             # Parse email date (handle Gmail format)
             try:
@@ -599,7 +611,7 @@ class StatementWorkflow:
             normalized_filename = statement_data["normalized_filename"]
             email_date = statement_data["email_date"]
 
-            unlocked_filename = normalized_filename.replace("_locked.pdf", "_unlocked.pdf")
+            unlocked_filename = normalized_filename.replace("_locked.pdf", ".pdf")
             statement_month = self._get_previous_month_folder(email_date)
             prefix = f"{statement_month}/unlocked_statements/"
 
@@ -668,7 +680,7 @@ class StatementWorkflow:
                 # Tier 2: Unlocked PDF already in GCS?
                 unlocked_gcs_path = await self._check_unlocked_pdf_in_gcs(statement_data)
                 if unlocked_gcs_path:
-                    unlocked_filename = normalized_filename.replace("_locked.pdf", "_unlocked.pdf")
+                    unlocked_filename = normalized_filename.replace("_locked.pdf", ".pdf")
                     temp_unlocked = self.temp_dir / unlocked_filename
                     download_result = self.cloud_storage.download_file(unlocked_gcs_path, str(temp_unlocked))
                     if download_result.get("success"):
@@ -840,19 +852,11 @@ class StatementWorkflow:
             
             unlocked_path = unlock_result.get("unlocked_path")
             
-            # Generate cloud path for unlocked statement using truncated nickname
-            # (same convention as CSVs: no _credit_card/_account suffix, no _unlocked tag)
+            # Generate cloud path for unlocked statement: {account}_{date}.pdf
             _date_match = re.search(r"_(\d{8})(?:_locked)?\.pdf$", normalized_filename)
             _date_str = _date_match.group(1) if _date_match else datetime.now().strftime("%Y%m%d")
             if account_nickname:
-                _nick_clean = (
-                    account_nickname.lower()
-                    .replace(" ", "_")
-                    .replace("_credit_card", "")
-                    .replace("_savings_account", "")
-                    .replace("_account", "")
-                    .replace("_credit", "")
-                )
+                _nick_clean = nickname_to_filename_prefix(account_nickname)
                 unlocked_filename = f"{_nick_clean}_{_date_str}.pdf"
             else:
                 # Fallback: strip _locked suffix from normalized filename
@@ -923,49 +927,89 @@ class StatementWorkflow:
             return None
     
     async def _process_splitwise_data(
-        self, 
+        self,
         continue_on_error: bool = True,
         custom_start_date: Optional[datetime] = None,
-        custom_end_date: Optional[datetime] = None
+        custom_end_date: Optional[datetime] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Process Splitwise data and upload to cloud storage"""
+        """Process Splitwise data and upload to cloud storage. Uses incremental sync when cursor exists."""
         try:
             logger.info("Processing Splitwise data", extra=self._log_extra())
-            
-            # Calculate date range for previous month, or use custom dates
+
+            # Transaction date range: use custom or default
             if custom_start_date and custom_end_date:
-                logger.info(
-                    f"Using custom Splitwise date range: {custom_start_date.strftime('%Y-%m-%d')} to {custom_end_date.strftime('%Y-%m-%d')}"
-                )
                 start_date = custom_start_date
                 end_date = custom_end_date
             else:
                 start_date, end_date = self._calculate_splitwise_date_range()
-            
-            self._emit(
-                "splitwise_sync_started", "splitwise",
-                f"Fetching Splitwise transactions ({start_date.strftime('%Y-%m-%d')} → {end_date.strftime('%Y-%m-%d')})",
-                data={"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
-            )
-            
-            # Get Splitwise transactions for the date range
-            splitwise_transactions = self.splitwise_service.get_transactions_for_past_month(
-                exclude_created_by_me=True,
-                include_only_my_transactions=True,
-                start_date=start_date,
-                end_date=end_date
-            )
-            
-            if not splitwise_transactions:
-                logger.info("No Splitwise transactions found for the date range", extra=self._log_extra())
+
+            # GCS folder: always previous month (align with standardization)
+            cloud_month = self._calculate_splitwise_date_range()[0].strftime("%Y-%m")
+
+            override = getattr(self, "override", False)
+            cursor = await TransactionOperations.get_splitwise_cursor()
+
+            # Full sync: override, no cursor, or explicit custom dates
+            use_full_sync = override or cursor is None or (custom_start_date is not None and custom_end_date is not None)
+
+            if use_full_sync:
                 self._emit(
-                    "splitwise_sync_complete", "splitwise",
-                    "No Splitwise transactions found for the date range",
-                    level="warning",
-                    data={"transaction_count": 0},
+                    "splitwise_sync_started", "splitwise",
+                    f"Fetching Splitwise transactions ({start_date.strftime('%Y-%m-%d')} → {end_date.strftime('%Y-%m-%d')})",
+                    data={"start_date": start_date.isoformat(), "end_date": end_date.isoformat(), "mode": "full"},
                 )
+                splitwise_transactions = self.splitwise_service.get_transactions_for_past_month(
+                    exclude_created_by_me=True,
+                    include_only_my_transactions=True,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+            else:
+                self._emit(
+                    "splitwise_sync_started", "splitwise",
+                    f"Incremental sync: fetching transactions updated after {cursor.isoformat()}",
+                    data={"cursor": cursor.isoformat(), "mode": "incremental"},
+                )
+                splitwise_transactions, _ = self.splitwise_service.get_transactions_updated_since(
+                    updated_after=cursor,
+                    updated_before=datetime.now(),
+                    exclude_created_by_me=True,
+                    include_only_my_transactions=True,
+                )
+
+            # When 0 transactions (incremental): upload empty CSV to overwrite stale file, return success
+            if not splitwise_transactions:
+                logger.info("No Splitwise transactions to sync", extra=self._log_extra())
+                csv_filename = "splitwise.csv"
+                cloud_path = f"{cloud_month}/extracted_data/{csv_filename}"
+                empty_df = pd.DataFrame(columns=[
+                    "date", "description", "amount", "my_share", "category", "group_name",
+                    "source", "created_by", "total_participants", "participants",
+                    "paid_by", "split_breakdown", "is_payment", "external_id", "raw_data",
+                ])
+                temp_csv_path = self.temp_dir / csv_filename
+                empty_df.to_csv(temp_csv_path, index=False)
+                upload_result = self.cloud_storage.upload_file(
+                    local_file_path=str(temp_csv_path),
+                    cloud_path=cloud_path,
+                    content_type="text/csv",
+                    metadata={
+                        "source": "splitwise",
+                        "transaction_count": 0,
+                        "upload_timestamp": datetime.now().isoformat(),
+                        "mode": "incremental_empty",
+                    },
+                )
+                if upload_result.get("success"):
+                    self._emit(
+                        "splitwise_sync_complete", "splitwise",
+                        "No new Splitwise transactions (empty file uploaded)",
+                        level="info",
+                        data={"transaction_count": 0, "cloud_path": cloud_path},
+                    )
+                    return {"success": True, "cloud_path": cloud_path, "transaction_count": 0}
                 return None
-            
+
             logger.info(f"Found {len(splitwise_transactions)} Splitwise transactions", extra=self._log_extra())
             
             # Convert to DataFrame
@@ -1023,31 +1067,28 @@ class StatementWorkflow:
             
             # Create DataFrame
             df = pd.DataFrame(splitwise_data)
-            
-            # Generate filename using the end date
-            end_date_str = end_date.strftime("%Y%m%d")
-            csv_filename = f"splitwise_{end_date_str}_extracted.csv"
-            
-            # Save to temp directory first
+
+            # Stable path: single file per month, overwritten each run
+            csv_filename = "splitwise.csv"
             temp_csv_path = self.temp_dir / csv_filename
             df.to_csv(temp_csv_path, index=False)
-            
-            # Generate cloud path using the start date's month
-            cloud_month = start_date.strftime("%Y-%m")
             cloud_path = f"{cloud_month}/extracted_data/{csv_filename}"
             
             # Upload to cloud storage
+            metadata = {
+                "source": "splitwise",
+                "transaction_count": len(splitwise_transactions),
+                "upload_timestamp": datetime.now().isoformat(),
+                "mode": "full" if use_full_sync else "incremental",
+            }
+            if use_full_sync:
+                metadata["date_range_start"] = start_date.isoformat()
+                metadata["date_range_end"] = end_date.isoformat()
             upload_result = self.cloud_storage.upload_file(
                 local_file_path=str(temp_csv_path),
                 cloud_path=cloud_path,
                 content_type="text/csv",
-                metadata={
-                    "source": "splitwise",
-                    "date_range_start": start_date.isoformat(),
-                    "date_range_end": end_date.isoformat(),
-                    "transaction_count": len(splitwise_transactions),
-                    "upload_timestamp": datetime.now().isoformat()
-                }
+                metadata=metadata,
             )
             
             if upload_result.get("success"):
@@ -1116,7 +1157,7 @@ class StatementWorkflow:
                 await StatementLogOperations.update_status(
                     log_key, "csv_stored",
                     transaction_count=len(df),
-                    workflow_run_id=self.job_id,
+                    job_id=self.job_id,
                 )
             except Exception:
                 logger.warning(f"Failed to update transaction_count in log for {csv_file_path.name}", exc_info=True, extra=self._log_extra())
@@ -1559,8 +1600,7 @@ class StatementWorkflow:
 
                     # Skip CSVs whose statements are already fully inserted (rerun guard)
                     csv_stem = Path(cloud_file).stem  # e.g. "swiggy_hdfc_20260306"
-                    # Strip _extracted suffix if present (some CSVs use it)
-                    csv_key = csv_stem.removesuffix("_extracted")
+                    csv_key = csv_stem
                     if db_inserted_keys and csv_key in db_inserted_keys:
                         logger.info(
                             f"Skipping {csv_key} — already db_inserted",
@@ -1572,6 +1612,20 @@ class StatementWorkflow:
                             data={"cloud_file": cloud_file, "reason": "already_db_inserted"},
                         )
                         continue
+
+                    # Only process canonical splitwise.csv; skip legacy splitwise_* files
+                    if "splitwise" in cloud_file.lower():
+                        if Path(cloud_file).name != "splitwise.csv":
+                            logger.info(
+                                f"Skipping legacy Splitwise file {Path(cloud_file).name}",
+                                extra=self._log_extra(),
+                            )
+                            self._emit(
+                                "standardization_file_skipped", "standardization",
+                                f"Skipping {Path(cloud_file).name} — legacy Splitwise file (only splitwise.csv)",
+                                data={"cloud_file": cloud_file, "reason": "legacy_splitwise"},
+                            )
+                            continue
 
                     logger.info(f"Processing cloud CSV: {cloud_file}", extra=self._log_extra())
                     self._emit(
@@ -1779,12 +1833,13 @@ class StatementWorkflow:
                 logger.warning(f"No account nickname found for sender: {sender_email}", extra=self._log_extra())
                 return False
             
-            # Generate expected CSV filename pattern
-            nickname_clean = account_nickname.lower().replace(" ", "_").replace("_credit_card", "").replace("_account", "")
+            # Generate expected CSV filename pattern (matches document_extractor: {account}_{date}.csv)
+            nickname_clean = nickname_to_filename_prefix(account_nickname)
             
             # Extract date from normalized filename or use email date
             date_str = self._extract_date_from_filename(normalized_filename) or self._extract_date_from_email_date(email_date)
-            expected_csv_pattern = f"{nickname_clean}_{date_str}_extracted.csv"
+            # Match {account}_{date}.csv or legacy {account}_{date}_extracted.csv
+            expected_prefix = f"{nickname_clean}_{date_str}"
             
             # Calculate the month directory for cloud storage (use previous month logic)
             start_date, end_date = self._calculate_splitwise_date_range()
@@ -1800,7 +1855,10 @@ class StatementWorkflow:
             # Check if any CSV file matches our expected pattern
             for cloud_file_info in cloud_csv_files:
                 cloud_filename = cloud_file_info.get("name", "")
-                if cloud_filename.endswith('.csv') and expected_csv_pattern in cloud_filename:
+                if not cloud_filename.endswith('.csv'):
+                    continue
+                stem = Path(cloud_filename).stem
+                if stem == expected_prefix:
                     logger.info(f"Found existing extracted data for {normalized_filename}: {cloud_filename}", extra=self._log_extra())
                     return True
             

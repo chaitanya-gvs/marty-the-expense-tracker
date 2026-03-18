@@ -653,7 +653,7 @@ class TransactionStandardizer:
                 return self.process_cashback_sbi(df, filename)
             elif "sbi" in filename.lower():
                 return self.process_sbi_savings(df, filename)
-            elif "yes" in filename.lower() and "savings" in filename.lower():
+            elif "yes" in filename.lower() and ("savings" in filename.lower() or "bank" in filename.lower()):
                 return self.process_yes_bank_savings(df, filename)
             else:
                 logger.warning(f"Unknown file type: {filename}")
