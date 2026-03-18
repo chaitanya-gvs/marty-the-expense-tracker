@@ -30,7 +30,7 @@ class StatementProcessingLog(Base):
     transaction_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     db_inserted_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    workflow_run_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    job_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
