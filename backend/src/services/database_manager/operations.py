@@ -169,7 +169,7 @@ class AccountOperations:
             await session.close()
     
     @staticmethod
-    async def update_last_statement_date(account_id: str, statement_date: str) -> bool:
+    async def update_last_statement_date(account_id: str, statement_date) -> bool:
         """Update the last statement date for an account"""
         session_factory = get_session_factory()
         session = session_factory()
@@ -212,29 +212,38 @@ class AccountOperations:
     @staticmethod
     async def get_account_nickname_by_sender(sender_email: str) -> Optional[str]:
         """Get account nickname by statement sender email (handles comma-separated senders)"""
+        info = await AccountOperations.get_account_by_sender_email(sender_email)
+        return info.get("nickname") if info else None
+
+    @staticmethod
+    async def get_account_by_sender_email(sender_email: str) -> Optional[dict]:
+        """Get account id and nickname by statement sender email (handles comma-separated senders).
+
+        Returns a dict with ``id`` and ``nickname`` keys, or ``None`` if not found.
+        """
         session_factory = get_session_factory()
         session = session_factory()
         try:
             # First try exact match
             result = await session.execute(
                 text("""
-                    SELECT nickname FROM accounts 
+                    SELECT id, nickname FROM accounts
                     WHERE statement_sender = :sender_email AND is_active = true
                 """), {"sender_email": sender_email}
             )
             row = result.fetchone()
             if row:
-                return row[0]
-            
+                return {"id": row[0], "nickname": row[1]}
+
             # If no exact match, try comma-separated senders
             result = await session.execute(
                 text("""
-                    SELECT nickname FROM accounts 
+                    SELECT id, nickname FROM accounts
                     WHERE statement_sender LIKE :sender_pattern AND is_active = true
                 """), {"sender_pattern": f"%{sender_email}%"}
             )
             row = result.fetchone()
-            return row[0] if row else None
+            return {"id": row[0], "nickname": row[1]} if row else None
         finally:
             await session.close()
     
@@ -2972,13 +2981,13 @@ class StatementLogOperations:
                         sender_email, email_date, statement_month,
                         status, unlocked_cloud_path, csv_cloud_path,
                         transaction_count, db_inserted_count, last_error,
-                        workflow_run_id, created_at, updated_at
+                        job_id, created_at, updated_at
                     ) VALUES (
                         :normalized_filename, :account_id, :account_nickname,
                         :sender_email, :email_date, :statement_month,
                         :status, :unlocked_cloud_path, :csv_cloud_path,
                         :transaction_count, :db_inserted_count, :last_error,
-                        :workflow_run_id, now(), now()
+                        :job_id, now(), now()
                     )
                     ON CONFLICT (normalized_filename) DO UPDATE SET
                         account_id          = COALESCE(:account_id, statement_processing_log.account_id),
@@ -3001,7 +3010,7 @@ class StatementLogOperations:
                         transaction_count   = COALESCE(:transaction_count, statement_processing_log.transaction_count),
                         db_inserted_count   = COALESCE(:db_inserted_count, statement_processing_log.db_inserted_count),
                         last_error          = COALESCE(:last_error, statement_processing_log.last_error),
-                        workflow_run_id     = COALESCE(:workflow_run_id, statement_processing_log.workflow_run_id),
+                        job_id              = COALESCE(:job_id, statement_processing_log.job_id),
                         updated_at          = now()
                 """),
                 {
@@ -3017,7 +3026,7 @@ class StatementLogOperations:
                     "transaction_count": data.get("transaction_count"),
                     "db_inserted_count": data.get("db_inserted_count"),
                     "last_error": data.get("last_error"),
-                    "workflow_run_id": data.get("workflow_run_id"),
+                    "job_id": data.get("job_id"),
                 },
             )
             await session.commit()
@@ -3041,7 +3050,7 @@ class StatementLogOperations:
         try:
             allowed_extra = {
                 "unlocked_cloud_path", "csv_cloud_path",
-                "transaction_count", "db_inserted_count", "workflow_run_id",
+                "transaction_count", "db_inserted_count", "job_id",
             }
             set_clauses = [
                 """
@@ -3107,6 +3116,37 @@ class StatementLogOperations:
             await session.close()
 
     @staticmethod
+    async def check_sender_fully_complete(sender_email: str, statement_month: str) -> bool:
+        """Return True if every known statement for a sender in a month has status db_inserted."""
+        session_factory = get_session_factory()
+        session = session_factory()
+        try:
+            result = await session.execute(
+                text("""
+                    SELECT
+                        COUNT(*) AS total,
+                        COUNT(*) FILTER (WHERE status = 'db_inserted') AS done
+                    FROM statement_processing_log
+                    WHERE sender_email = :sender_email
+                      AND statement_month = :statement_month
+                """),
+                {"sender_email": sender_email, "statement_month": statement_month},
+            )
+            row = result.fetchone()
+            if row is None or row.total == 0:
+                return False
+            return row.total == row.done
+
+        except Exception:
+            logger.error(
+                f"Error checking sender completion for {sender_email} / {statement_month}",
+                exc_info=True,
+            )
+            return False
+        finally:
+            await session.close()
+
+    @staticmethod
     async def check_already_extracted(normalized_filename: str) -> bool:
         """Return True if the statement has already reached csv_extracted or beyond."""
         session_factory = get_session_factory()
@@ -3143,7 +3183,7 @@ class StatementLogOperations:
                         sender_email, email_date, statement_month,
                         status, unlocked_cloud_path, csv_cloud_path,
                         transaction_count, db_inserted_count, last_error,
-                        workflow_run_id, created_at, updated_at
+                        job_id, created_at, updated_at
                     FROM statement_processing_log
                     WHERE statement_month = :statement_month
                       AND status != 'db_inserted'
@@ -3173,7 +3213,7 @@ class StatementLogOperations:
                         sender_email, email_date, statement_month,
                         status, unlocked_cloud_path, csv_cloud_path,
                         transaction_count, db_inserted_count, last_error,
-                        workflow_run_id, created_at, updated_at
+                        job_id, created_at, updated_at
                     FROM statement_processing_log
                     WHERE statement_month = :statement_month
                     ORDER BY created_at
@@ -3186,6 +3226,35 @@ class StatementLogOperations:
         except Exception:
             logger.error(f"Error fetching statements for month {statement_month}", exc_info=True)
             return []
+        finally:
+            await session.close()
+
+    @staticmethod
+    async def get_db_inserted_filenames(statement_month: str) -> set:
+        """Return the set of normalized_filenames that are already at db_inserted for a given month.
+
+        Used by the standardization step to skip CSVs whose transactions have already been
+        inserted into the database, preventing duplicate insertions on workflow reruns.
+        """
+        session_factory = get_session_factory()
+        session = session_factory()
+        try:
+            result = await session.execute(
+                text("""
+                    SELECT normalized_filename
+                    FROM statement_processing_log
+                    WHERE statement_month = :statement_month
+                      AND status = 'db_inserted'
+                """),
+                {"statement_month": statement_month},
+            )
+            rows = result.fetchall()
+            return {row[0] for row in rows}
+        except Exception:
+            logger.error(
+                f"Error fetching db_inserted filenames for {statement_month}", exc_info=True
+            )
+            return set()
         finally:
             await session.close()
 
