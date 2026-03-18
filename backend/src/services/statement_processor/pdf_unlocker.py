@@ -13,7 +13,7 @@ from typing import Dict, Any, Optional
 
 import fitz
 
-from src.services.statement_processor.filename_utils import nickname_to_filename_prefix
+from src.utils.filename_utils import nickname_to_filename_prefix
 from src.utils.logger import get_logger
 from src.utils.password_manager import get_password_manager
 

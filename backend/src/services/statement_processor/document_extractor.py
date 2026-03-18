@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 backend_path = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(backend_path))
 
-from src.services.statement_processor.filename_utils import nickname_to_filename_prefix
+from src.utils.filename_utils import nickname_to_filename_prefix
 from src.services.statement_processor.schemas import BANK_STATEMENT_MODELS
 from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
 from src.services.statement_processor.pdf_page_filter import PDFPageFilter
