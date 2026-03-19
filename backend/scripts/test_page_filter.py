@@ -21,7 +21,7 @@ from pathlib import Path
 backend_path = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_path))
 
-from src.schemas.extraction import BANK_STATEMENT_MODELS, PAGE_FILTER_CONFIGS
+from src.services.statement_processor.schemas import BANK_STATEMENT_MODELS, PAGE_FILTER_CONFIGS
 from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
 from src.services.statement_processor.pdf_page_filter import PDFPageFilter
 from src.utils.logger import get_logger
