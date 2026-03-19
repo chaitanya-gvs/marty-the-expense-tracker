@@ -18,6 +18,18 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _splitwise_ref_from_external_id(ext_id: Any) -> Optional[str]:
+    """Extract valid reference_number from Splitwise external_id, guarding against pandas NaN."""
+    if ext_id is None:
+        return None
+    if pd.isna(ext_id):
+        return None
+    s = str(ext_id).strip()
+    if not s or s.lower() in ("nan", "none"):
+        return None
+    return s
+
+
 class TransactionStandardizer:
     """Standardize transaction data from multiple CSV files into a unified format"""
     
@@ -621,10 +633,10 @@ class TransactionStandardizer:
                 "transaction_type": transaction_type,
                 "is_shared": True,
                 "split_breakdown": split_breakdown,
-                "account": str(row.get("source", "splitwise")),
+                "account": "Splitwise",  # Normalize to title case; source column may be "splitwise"
                 "category": str(row.get("category", "")).strip() or None,
                 "sub_category": str(row.get("group_name", "")).strip() or None,
-                "reference_number": str(row.get("external_id", "")).strip() or None,
+                "reference_number": _splitwise_ref_from_external_id(row.get("external_id")),
                 "source_file": "splitwise",
                 "raw_data": row.to_dict(),
             })
