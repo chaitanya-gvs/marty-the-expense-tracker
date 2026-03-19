@@ -92,7 +92,7 @@ async def list_participants(
             )
     
     except Exception as e:
-        logger.error(f"Error listing participants: {e}")
+        logger.error("Error listing participants", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to list participants: {str(e)}")
 
 
@@ -116,7 +116,7 @@ async def get_participant(participant_id: UUID):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting participant {participant_id}: {e}")
+        logger.error(f"Error getting participant {participant_id}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get participant: {str(e)}")
 
 
@@ -161,7 +161,7 @@ async def create_participant(participant: ParticipantCreate):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error creating participant: {e}")
+        logger.error("Error creating participant", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to create participant: {str(e)}")
 
 
@@ -220,7 +220,7 @@ async def update_participant(participant_id: UUID, participant_update: Participa
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating participant {participant_id}: {e}")
+        logger.error(f"Error updating participant {participant_id}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to update participant: {str(e)}")
 
 
@@ -253,6 +253,6 @@ async def delete_participant(participant_id: UUID):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting participant {participant_id}: {e}")
+        logger.error(f"Error deleting participant {participant_id}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to delete participant: {str(e)}")
 

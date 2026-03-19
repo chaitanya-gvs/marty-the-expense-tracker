@@ -48,8 +48,8 @@ def setup_logging(
 ):
     os.makedirs(log_dir, exist_ok=True)
 
-    log_format = logging.Formatter(
-        "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+    log_format = SafeFormatter(
+        "%(asctime)s - %(levelname)s - %(name)s [%(job_id)s] - %(message)s"
     )
 
     file_handler = RotatingFileHandler(
@@ -64,6 +64,10 @@ def setup_logging(
 
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
+
+    # Prevent duplicate handlers when module is imported multiple times
+    root_logger.handlers.clear()
+
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
 

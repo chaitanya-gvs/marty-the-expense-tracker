@@ -96,7 +96,7 @@ class EmailAuthHandler:
             logger.info("Generated Gmail OAuth authorization URL")
             return authorization_url
         except Exception as e:
-            logger.error(f"Error generating authorization URL: {e}")
+            logger.error("Error generating authorization URL", exc_info=True)
             raise
 
     def exchange_code_for_tokens(self, authorization_code: str) -> dict:
@@ -125,7 +125,7 @@ class EmailAuthHandler:
             logger.info("Successfully exchanged authorization code for tokens")
             return token_info
         except Exception as e:
-            logger.error(f"Error exchanging authorization code for tokens: {e}")
+            logger.error("Error exchanging authorization code for tokens", exc_info=True)
             raise
 
     def refresh_access_token(self, refresh_token: str) -> dict:
@@ -162,7 +162,7 @@ class EmailAuthHandler:
             logger.info(f"Successfully refreshed access token for {self.account_id} account")
             return token_info
         except Exception as e:
-            logger.error(f"Error refreshing access token for {self.account_id} account: {e}")
+            logger.error(f"Error refreshing access token for {self.account_id} account", exc_info=True)
             raise
 
     def validate_credentials(self, access_token: str, refresh_token: str) -> bool:
@@ -189,7 +189,7 @@ class EmailAuthHandler:
             logger.info(f"Credentials validation successful for {self.account_id} account")
             return True
         except Exception as e:
-            logger.error(f"Credentials validation failed for {self.account_id} account: {e}")
+            logger.error(f"Credentials validation failed for {self.account_id} account", exc_info=True)
             return False
 
     def save_tokens_to_env(self, token_info: dict) -> None:
@@ -253,5 +253,5 @@ class EmailAuthHandler:
             
             logger.info(f"Successfully saved tokens for {self.account_id} account to secrets environment file")
         except Exception as e:
-            logger.error(f"Error saving tokens to secrets environment file: {e}")
+            logger.error("Error saving tokens to secrets environment file", exc_info=True)
             raise

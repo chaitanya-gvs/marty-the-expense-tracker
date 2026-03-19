@@ -233,7 +233,7 @@ class SplitwiseService:
             return processed_transaction
             
         except Exception as e:
-            logger.error(f"Failed to process transaction {expense.id}: {e}")
+            logger.error(f"Failed to process transaction {expense.id}", exc_info=True)
             return None
     
     def get_transactions_with_filter(self, filter_criteria: SplitwiseTransactionFilter) -> List[ProcessedSplitwiseTransaction]:

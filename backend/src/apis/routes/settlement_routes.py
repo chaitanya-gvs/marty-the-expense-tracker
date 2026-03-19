@@ -338,7 +338,7 @@ async def get_settlement_summary(
         )
         
     except Exception as e:
-        logger.error(f"Error getting settlement summary: {e}")
+        logger.error("Error getting settlement summary", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -435,7 +435,7 @@ async def get_participant_settlement(
         )
         
     except Exception as e:
-        logger.error(f"Error getting participant settlement for {participant}: {e}")
+        logger.error(f"Error getting participant settlement for {participant}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -474,5 +474,5 @@ async def get_all_participants(
         )
         
     except Exception as e:
-        logger.error(f"Error getting participants list: {e}")
+        logger.error("Error getting participants list", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

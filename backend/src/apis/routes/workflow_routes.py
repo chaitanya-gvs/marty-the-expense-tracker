@@ -220,7 +220,7 @@ async def _run_workflow_task(job_id: str, req: WorkflowRunRequest) -> None:
         job.queue.put_nowait(cancelled_event)
         raise
     except Exception as exc:
-        logger.error(f"Workflow job {job_id} failed: {exc}", exc_info=True, extra={"job_id": job_id})
+        logger.error(f"Workflow job {job_id} failed", exc_info=True, extra={"job_id": job_id})
         job.error = str(exc)
         job.status = WorkflowJobStatus.failed
         error_event = {
@@ -355,7 +355,7 @@ async def get_period_check(month: Optional[str] = None):
     try:
         rows = await StatementLogOperations.get_by_month(month)
     except Exception as exc:
-        logger.error(f"Error fetching period check for {month}: {exc}", exc_info=True)
+        logger.error(f"Error fetching period check for {month}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to query statement log: {exc}")
 
     complete = [r for r in rows if r.get("status") == "db_inserted"]

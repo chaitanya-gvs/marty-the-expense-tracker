@@ -27,7 +27,7 @@ class BankPasswordManager:
             logger.warning(f"No account found for sender: {sender_email}")
             return None
         except Exception as e:
-            logger.error(f"Error looking up password for sender {sender_email}: {e}", exc_info=True)
+            logger.error(f"Error looking up password for sender {sender_email}", exc_info=True)
             return None
 
 

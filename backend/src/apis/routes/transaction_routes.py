@@ -8,7 +8,6 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import List, Optional, Dict, Any
 import json
-import traceback
 from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
@@ -48,7 +47,7 @@ async def handle_database_operation(operation_func, *args, **kwargs):
                 continue
             else:
                 # Final attempt failed
-                logger.error(f"Database operation failed after {max_retries} attempts")
+                logger.error(f"Database operation failed after {max_retries} attempts", exc_info=True)
                 raise e
         except Exception as e:
             # For other exceptions, don't retry
@@ -769,7 +768,7 @@ async def get_transactions(
         )
         
     except Exception as e:
-        logger.error(f"Failed to get transactions: {e}")
+        logger.error("Failed to get transactions", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -787,7 +786,7 @@ async def get_tags():
         return ApiResponse(data=response_tags)
         
     except Exception as e:
-        logger.error(f"Failed to get tags: {e}")
+        logger.error("Failed to get tags", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -804,7 +803,7 @@ async def search_tags(
         return ApiResponse(data=response_tags)
         
     except Exception as e:
-        logger.error(f"Failed to search tags: {e}")
+        logger.error("Failed to search tags", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -822,7 +821,7 @@ async def get_tag(tag_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get tag: {e}")
+        logger.error("Failed to get tag", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -857,9 +856,7 @@ async def create_tag(tag_data: TagCreate):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Failed to create tag: {e}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
+        logger.error("Failed to create tag", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to create tag: {str(e)}")
 
 
@@ -881,7 +878,7 @@ async def update_tag(tag_id: str, tag_data: TagUpdate):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to update tag: {e}")
+        logger.error("Failed to update tag", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -896,7 +893,7 @@ async def delete_tag(tag_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to delete tag: {e}")
+        logger.error("Failed to delete tag", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -912,7 +909,7 @@ async def upsert_tag(tag_data: TagCreate):
         return ApiResponse(data={"id": tag_id}, message="Tag upserted successfully")
         
     except Exception as e:
-        logger.error(f"Failed to upsert tag: {e}")
+        logger.error("Failed to upsert tag", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -936,7 +933,7 @@ async def search_transactions(
         return ApiResponse(data=response_transactions)
         
     except Exception as e:
-        logger.error(f"Failed to search transactions: {e}")
+        logger.error("Failed to search transactions", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1043,7 +1040,7 @@ async def get_unique_field_values(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get unique field values for {field_name}: {e}")
+        logger.error(f"Failed to get unique field values for {field_name}", exc_info=True)
 
 @router.get("/predict-category", response_model=ApiResponse)
 async def predict_category(
@@ -1054,7 +1051,7 @@ async def predict_category(
         prediction = await TransactionOperations.predict_category(description)
         return ApiResponse(data=prediction)
     except Exception as e:
-        logger.error(f"Failed to predict category: {e}")
+        logger.error("Failed to predict category", exc_info=True)
         # Return null data instead of error for prediction
         return ApiResponse(data=None, message=str(e))
 
@@ -1118,7 +1115,7 @@ async def get_expense_analytics(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get expense analytics: {e}")
+        logger.error("Failed to get expense analytics", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1148,7 +1145,7 @@ async def get_transfer_suggestions(
         return ApiResponse(data=response_suggestions)
         
     except Exception as e:
-        logger.error(f"Failed to get transfer suggestions: {e}")
+        logger.error("Failed to get transfer suggestions", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1165,7 +1162,7 @@ async def get_refund_suggestions(
         return ApiResponse(data=suggestions)
         
     except Exception as e:
-        logger.error(f"Failed to get refund suggestions: {e}")
+        logger.error("Failed to get refund suggestions", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1198,7 +1195,7 @@ async def get_suggestions_summary():
         return ApiResponse(data=summary)
         
     except Exception as e:
-        logger.error(f"Failed to get suggestions summary: {e}")
+        logger.error("Failed to get suggestions summary", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1224,7 +1221,7 @@ async def get_transaction(transaction_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get transaction {transaction_id}: {e}")
+        logger.error(f"Failed to get transaction {transaction_id}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1260,7 +1257,7 @@ async def get_related_transactions(transaction_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get related transactions for {transaction_id}: {e}")
+        logger.error(f"Failed to get related transactions for {transaction_id}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1278,7 +1275,7 @@ async def get_child_transactions(transaction_id: str):
         return ApiResponse(data=response_transactions)
         
     except Exception as e:
-        logger.error(f"Failed to get child transactions for {transaction_id}: {e}")
+        logger.error(f"Failed to get child transactions for {transaction_id}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1314,7 +1311,7 @@ async def get_group_transactions(transaction_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get group transactions for {transaction_id}: {e}")
+        logger.error(f"Failed to get group transactions for {transaction_id}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1356,7 +1353,7 @@ async def create_transaction(transaction_data: TransactionCreate):
         return ApiResponse(data=response_transaction, message="Transaction created successfully")
         
     except Exception as e:
-        logger.error(f"Failed to create transaction: {e}")
+        logger.error("Failed to create transaction")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1480,9 +1477,7 @@ async def bulk_update_transactions(request: BulkTransactionUpdate):
                                     if tag:
                                         tag_ids.append(tag["id"])
                                 except Exception as e:
-                                    logger.error(f"Failed to create tag '{tag_name}': {e}")
-                                    import traceback
-                                    logger.error(f"Traceback: {traceback.format_exc()}")
+                                    logger.error(f"Failed to create tag '{tag_name}'", exc_info=True)
                                     # Continue with other tags even if one fails
                         
                         # Set tags for the transaction (even if empty list - this clears tags)
@@ -1502,7 +1497,7 @@ async def bulk_update_transactions(request: BulkTransactionUpdate):
                     failed_updates.append(transaction_id)
                     
             except Exception as e:
-                logger.error(f"Failed to update transaction {transaction_id}: {e}")
+                logger.error(f"Failed to update transaction {transaction_id}")
                 failed_updates.append(transaction_id)
         
         if failed_updates:
@@ -1522,7 +1517,7 @@ async def bulk_update_transactions(request: BulkTransactionUpdate):
             )
         
     except Exception as e:
-        logger.error(f"Failed to bulk update transactions: {e}")
+        logger.error("Failed to bulk update transactions")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1618,7 +1613,7 @@ async def update_transaction(transaction_id: str, updates: TransactionUpdate):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to update transaction {transaction_id}: {e}")
+        logger.error(f"Failed to update transaction {transaction_id}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1636,7 +1631,7 @@ async def delete_transaction(transaction_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to delete transaction {transaction_id}: {e}")
+        logger.error(f"Failed to delete transaction {transaction_id}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1660,10 +1655,11 @@ async def group_transfer(request: GroupTransferRequest):
                 transaction = await TransactionOperations.get_transaction_by_id(transaction_id)
                 updated_transactions.append(_convert_db_transaction_to_response(transaction))
         
+        logger.info(f"Grouped transfer, transaction_group_id={transaction_group_id}")
         return ApiResponse(data=updated_transactions, message="Transfer grouped successfully")
         
     except Exception as e:
-        logger.error(f"Failed to group transfer: {e}")
+        logger.error(f"Failed to group transfer (transaction_group_id={transaction_group_id})", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1681,6 +1677,8 @@ async def group_expense(request: GroupExpenseRequest):
     try:
         import uuid
         from decimal import Decimal
+        
+        transaction_group_id = str(uuid.uuid4())
         
         # Validate all transactions exist
         transactions = []
@@ -1703,9 +1701,6 @@ async def group_expense(request: GroupExpenseRequest):
         
         if not transactions:
             raise HTTPException(status_code=400, detail="No valid transactions to group")
-        
-        # Generate a group ID
-        transaction_group_id = str(uuid.uuid4())
         
         # Calculate net amount
         # Credits are positive, debits are negative (algebraic sum)
@@ -1797,6 +1792,7 @@ async def group_expense(request: GroupExpenseRequest):
             collapsed_transaction_id
         )
         
+        logger.info(f"Grouped {len(transactions)} transactions, transaction_group_id={transaction_group_id}")
         return ApiResponse(
             data={
                 "collapsed_transaction": _convert_db_transaction_to_response(collapsed_transaction),
@@ -1810,8 +1806,7 @@ async def group_expense(request: GroupExpenseRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to group expense: {e}")
-        logger.error(traceback.format_exc())
+        logger.error(f"Failed to group expense (transaction_group_id={transaction_group_id})", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1881,6 +1876,7 @@ async def ungroup_expense(request: UngroupExpenseRequest):
                     if restored is not None:
                         restored_transactions.append(_convert_db_transaction_to_response(restored))
             
+            logger.info(f"Ungrouped expense, transaction_group_id={request.transaction_group_id}")
             return ApiResponse(
                 data={
                     "restored_transactions": restored_transactions,
@@ -1895,8 +1891,7 @@ async def ungroup_expense(request: UngroupExpenseRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to ungroup expense: {e}")
-        logger.error(traceback.format_exc())
+        logger.error(f"Failed to ungroup expense (transaction_group_id={request.transaction_group_id})", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1969,11 +1964,13 @@ async def ungroup_split_transactions(request: UngroupSplitRequest):
                     str(original_transaction.id)
                 )
                 
+                logger.info(f"Ungrouped split transactions, transaction_group_id={request.transaction_group_id}")
                 return ApiResponse(
                     data=_convert_db_transaction_to_response(restored),
                     message=f"Split removed. Original transaction restored. {len(split_parts)} split parts deleted."
                 )
             else:
+                logger.info(f"Ungrouped split transactions, transaction_group_id={request.transaction_group_id}")
                 return ApiResponse(
                     data={"deleted_count": len(split_parts)},
                     message=f"Split removed. {len(split_parts)} split parts deleted. Original was not in the group."
@@ -1985,7 +1982,7 @@ async def ungroup_split_transactions(request: UngroupSplitRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to ungroup split transactions: {e}")
+        logger.error(f"Failed to ungroup split transactions (transaction_group_id={request.transaction_group_id})", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1994,6 +1991,9 @@ async def split_transaction(request: SplitTransactionRequest):
     """Split a transaction into multiple parts."""
     try:
         import uuid
+        
+        # Generate transaction group ID early so it's available for error logging
+        split_group_id = str(uuid.uuid4())
         
         # Get the original transaction
         original_transaction = await handle_database_operation(
@@ -2023,9 +2023,6 @@ async def split_transaction(request: SplitTransactionRequest):
                 status_code=400, 
                 detail=f"Sum of split parts ({total_parts_amount}) does not equal expected amount ({expected_amount})"
             )
-        
-        # Generate a transaction group ID for the split
-        split_group_id = str(uuid.uuid4())
         
         # Create new transactions for each split part
         created_transactions = []
@@ -2100,7 +2097,11 @@ async def split_transaction(request: SplitTransactionRequest):
                 created_transactions.append(_convert_db_transaction_to_response(created_transaction))
                 
             except Exception as e:
-                logger.error(f"Failed to create split part {part.description} (amount: {part.amount}): {e}")
+                logger.error(
+                    f"Failed to create split part {part.description} (amount: {part.amount}) "
+                    f"(transaction_group_id={split_group_id})",
+                    exc_info=True,
+                )
                 # Continue with other parts even if one fails
                 continue
         
@@ -2127,6 +2128,10 @@ async def split_transaction(request: SplitTransactionRequest):
             )
             created_transactions.insert(0, _convert_db_transaction_to_response(updated_original))
         
+        logger.info(
+            f"Split transaction into {len(created_transactions)} parts, "
+            f"transaction_group_id={split_group_id}"
+        )
         return ApiResponse(
             data={
                 "split_group_id": split_group_id,
@@ -2138,7 +2143,10 @@ async def split_transaction(request: SplitTransactionRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to split transaction: {e}")
+        logger.error(
+            f"Failed to split transaction (transaction_group_id={split_group_id})",
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2158,7 +2166,7 @@ async def get_categories(
         return ApiResponse(data=categories)
         
     except Exception as e:
-        logger.error(f"Failed to get categories: {e}")
+        logger.error("Failed to get categories")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2174,7 +2182,7 @@ async def search_categories(
         return ApiResponse(data=categories)
         
     except Exception as e:
-        logger.error(f"Failed to search categories: {e}")
+        logger.error("Failed to search categories")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2191,7 +2199,7 @@ async def get_category(category_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get category: {e}")
+        logger.error("Failed to get category")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2212,7 +2220,7 @@ async def create_category(category_data: CategoryCreate):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Failed to create category: {e}")
+        logger.error("Failed to create category")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2252,7 +2260,7 @@ async def update_category(category_id: str, category_data: CategoryUpdate):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to update category: {e}")
+        logger.error("Failed to update category")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2267,7 +2275,7 @@ async def delete_category(category_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to delete category: {e}")
+        logger.error("Failed to delete category")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2295,7 +2303,7 @@ async def upsert_category(category_data: CategoryCreate):
         return ApiResponse(data={"id": category_id}, message="Category upserted successfully")
         
     except Exception as e:
-        logger.error(f"Failed to upsert category: {e}")
+        logger.error("Failed to upsert category")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2359,7 +2367,7 @@ async def search_transaction_emails(
             all_emails.extend(primary_emails)
             logger.info(f"Found {len(primary_emails)} emails in primary account")
         except Exception as e:
-            logger.error(f"Error searching primary account: {e}")
+            logger.error("Error searching primary account", exc_info=True)
             # Continue to secondary account even if primary fails
         
         # Search secondary account if configured
@@ -2385,7 +2393,7 @@ async def search_transaction_emails(
             else:
                 logger.info("Secondary account not configured, skipping")
         except Exception as e:
-            logger.error(f"Error searching secondary account: {e}")
+            logger.error("Error searching secondary account", exc_info=True)
             # Continue even if secondary fails
         
         # Sort by date (most recent first)
@@ -2396,7 +2404,7 @@ async def search_transaction_emails(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to search emails for transaction {transaction_id}: {e}")
+        logger.error(f"Failed to search emails for transaction {transaction_id}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2448,7 +2456,7 @@ async def get_email_details(transaction_id: str, message_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get email {message_id} for transaction {transaction_id}: {e}")
+        logger.error(f"Failed to get email {message_id} for transaction {transaction_id}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2495,7 +2503,7 @@ async def link_email_to_transaction(transaction_id: str, request: EmailLinkReque
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to link email to transaction {transaction_id}: {e}")
+        logger.error(f"Failed to link email to transaction {transaction_id}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2542,7 +2550,7 @@ async def unlink_email_from_transaction(transaction_id: str, message_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to unlink email from transaction {transaction_id}: {e}")
+        logger.error(f"Failed to unlink email from transaction {transaction_id}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2597,7 +2605,7 @@ async def get_transaction_source_pdf(transaction_id: str):
                     transaction_date_obj = transaction_date
                 month_year = transaction_date_obj.strftime("%Y-%m")
             except Exception as e:
-                logger.error(f"Failed to parse transaction date: {e}")
+                logger.error("Failed to parse transaction date", exc_info=True)
                 raise HTTPException(status_code=400, detail=f"Invalid transaction date format: {transaction_date}")
         
         # Initialize GCS service
@@ -2679,5 +2687,5 @@ async def get_transaction_source_pdf(transaction_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get source PDF for transaction {transaction_id}: {e}")
+        logger.error(f"Failed to get source PDF for transaction {transaction_id}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

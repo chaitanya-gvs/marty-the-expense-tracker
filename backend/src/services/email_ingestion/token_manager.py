@@ -87,10 +87,10 @@ class TokenManager:
                 return True
             return True
         except RefreshError as e:
-            logger.error(f"Failed to refresh token for {self.account_id}: {e}")
+            logger.error(f"Failed to refresh token for {self.account_id}", exc_info=True)
             return False
         except Exception as e:
-            logger.error(f"Unexpected error refreshing token for {self.account_id}: {e}")
+            logger.error(f"Unexpected error refreshing token for {self.account_id}", exc_info=True)
             return False
     
     def get_valid_credentials(self) -> Optional[Credentials]:
@@ -106,7 +106,7 @@ class TokenManager:
             return credentials
             
         except Exception as e:
-            logger.error(f"Error getting credentials for {self.account_id}: {e}")
+            logger.error(f"Error getting credentials for {self.account_id}", exc_info=True)
             return None
     
     def validate_token_health(self) -> Dict[str, any]:
@@ -213,7 +213,7 @@ class TokenManager:
             return True
             
         except Exception as e:
-            logger.error(f"Error saving refreshed tokens for {self.account_id}: {e}")
+            logger.error(f"Error saving refreshed tokens for {self.account_id}", exc_info=True)
             return False
 
 

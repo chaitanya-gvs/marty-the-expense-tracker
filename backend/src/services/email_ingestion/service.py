@@ -58,7 +58,7 @@ class EmailIngestionService:
                         
                 except Exception as e:
                     error_count += 1
-                    logger.error(f"Error processing email {message.get('id')}: {e}")
+                    logger.error(f"Error processing email {message.get('id')}", exc_info=True)
                     continue
             
             logger.info(f"Email ingestion completed. Processed: {processed_count}, Extracted: {extracted_count}, Errors: {error_count}")
@@ -71,7 +71,7 @@ class EmailIngestionService:
             }
             
         except Exception as e:
-            logger.error(f"Error in email ingestion: {e}")
+            logger.error("Error in email ingestion", exc_info=True)
             raise
 
     async def _extract_expense_from_email(self, email_content: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -105,7 +105,7 @@ class EmailIngestionService:
             return None
             
         except Exception as e:
-            logger.error(f"Error extracting expense from email: {e}")
+            logger.error("Error extracting expense from email", exc_info=True)
             return None
 
     async def search_and_ingest_emails(self, query: str, start_date: str, end_date: str) -> Dict[str, Any]:
@@ -144,7 +144,7 @@ class EmailIngestionService:
                     
                 except Exception as e:
                     error_count += 1
-                    logger.error(f"Error processing search result {message.get('id')}: {e}")
+                    logger.error(f"Error processing search result {message.get('id')}")
                     continue
             
             logger.info(f"Search and ingestion completed. Processed: {processed_count}, Extracted: {extracted_count}, Errors: {error_count}")
@@ -157,7 +157,7 @@ class EmailIngestionService:
             }
             
         except Exception as e:
-            logger.error(f"Error in search and ingestion: {e}")
+            logger.error("Error in search and ingestion")
             raise
 
     async def process_email_attachments(self, email_content: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -190,13 +190,13 @@ class EmailIngestionService:
                             processed_attachments.append(processed_data)
                     
                 except Exception as e:
-                    logger.error(f"Error processing attachment {attachment.get('filename')}: {e}")
+                    logger.error(f"Error processing attachment {attachment.get('filename')}")
                     continue
             
             return processed_attachments
             
         except Exception as e:
-            logger.error(f"Error processing email attachments: {e}")
+            logger.error("Error processing email attachments")
             return []
 
     async def _process_attachment_file(self, file_data: bytes, filename: str, mime_type: str) -> Optional[Dict[str, Any]]:
@@ -224,7 +224,7 @@ class EmailIngestionService:
             return None
             
         except Exception as e:
-            logger.error(f"Error processing attachment file {filename}: {e}")
+            logger.error(f"Error processing attachment file {filename}")
             return None
 
     def get_email_statistics(self, days_back: int = 30) -> Dict[str, Any]:
@@ -246,7 +246,7 @@ class EmailIngestionService:
                         domain = domain_match.group(1)
                         sender_stats[domain] = sender_stats.get(domain, 0) + 1
                 except Exception as e:
-                    logger.error(f"Error getting email content for stats: {e}")
+                    logger.error("Error getting email content for stats")
                     continue
             
             return {
@@ -256,7 +256,7 @@ class EmailIngestionService:
             }
             
         except Exception as e:
-            logger.error(f"Error getting email statistics: {e}")
+            logger.error("Error getting email statistics")
             raise
 
     async def ingest_from_all_accounts(self, max_results: int = 25, days_back: int = 7) -> Dict[str, Any]:
@@ -303,7 +303,7 @@ class EmailIngestionService:
                     logger.info(f"Account {account_id}: {account_result['processed']} processed, {account_result['extracted']} extracted")
                     
                 except Exception as e:
-                    logger.error(f"Error processing account {account_id}: {e}")
+                    logger.error(f"Error processing account {account_id}")
                     all_results["account_results"][account_id] = {
                         "processed": 0,
                         "extracted": 0,
@@ -318,5 +318,5 @@ class EmailIngestionService:
             return all_results
             
         except Exception as e:
-            logger.error(f"Error in multi-account email ingestion: {e}")
+            logger.error("Error in multi-account email ingestion")
             raise
