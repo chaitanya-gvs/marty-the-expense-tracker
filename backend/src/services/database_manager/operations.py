@@ -34,6 +34,16 @@ _TRANSACTION_VISIBILITY_FILTER = """
 """
 
 
+def _normalize_reference_number(ref: Any) -> Optional[str]:
+    """Normalize reference_number: map invalid values (nan, empty) to None."""
+    if ref is None:
+        return None
+    s = str(ref).strip()
+    if not s or s.lower() in ('nan', 'none'):
+        return None
+    return s
+
+
 class AccountOperations:
     """Operations for managing bank accounts"""
     
@@ -1012,7 +1022,7 @@ class TransactionOperations:
     async def get_splitwise_cursor() -> Optional[datetime]:
         """
         Get the cursor for Splitwise incremental sync.
-        Returns MAX(updated_at) from transactions where account = 'Splitwise'.
+        Returns MAX(updated_at) from transactions where LOWER(account) = 'splitwise'.
         Used as updated_after for the Splitwise API to fetch only new/updated expenses.
         """
         session_factory = get_session_factory()
@@ -1022,7 +1032,7 @@ class TransactionOperations:
                 text("""
                     SELECT MAX(updated_at)
                     FROM transactions
-                    WHERE account = 'Splitwise'
+                    WHERE LOWER(account) = 'splitwise'
                 """)
             )
             row = result.fetchone()
@@ -1221,7 +1231,7 @@ class TransactionOperations:
                 splitwise_query = text("""
                     SELECT reference_number, raw_data, is_split, transaction_date, amount, description
                     FROM transactions 
-                    WHERE account = 'Splitwise'
+                    WHERE LOWER(account) = 'splitwise'
                       AND is_deleted = false
                 """)
                 
@@ -1245,12 +1255,15 @@ class TransactionOperations:
                         # For non-split transactions, use reference_number for duplicate checking
                         existing_splitwise_ids.add(str(row.reference_number))
                     
-                    # Also check raw_data for id field as fallback (only for non-split)
+                    # Also check raw_data for id/external_id as fallback (only for non-split)
                     if not row.is_split and row.raw_data:
                         try:
                             raw_data = row.raw_data if isinstance(row.raw_data, dict) else json.loads(row.raw_data)
-                            if isinstance(raw_data, dict) and 'id' in raw_data:
-                                existing_splitwise_ids.add(str(raw_data['id']))
+                            if isinstance(raw_data, dict):
+                                if 'id' in raw_data:
+                                    existing_splitwise_ids.add(str(raw_data['id']))
+                                elif 'external_id' in raw_data:
+                                    existing_splitwise_ids.add(str(raw_data['external_id']))
                         except (json.JSONDecodeError, TypeError):
                             pass
             
@@ -1261,7 +1274,7 @@ class TransactionOperations:
                     SELECT transaction_date, amount, account, description, source_file, raw_data
                     FROM transactions 
                     WHERE transaction_date BETWEEN :min_date AND :max_date
-                          AND account != 'Splitwise'
+                          AND LOWER(account) != 'splitwise'
                       AND is_deleted = false
                 """)
                 
@@ -1383,11 +1396,12 @@ class TransactionOperations:
             query = text(f"""
                 SELECT id, reference_number, raw_data
                 FROM transactions 
-                WHERE account = 'Splitwise'
+                WHERE LOWER(account) = 'splitwise'
                   AND is_deleted = false
                   AND (
                     reference_number IN ({placeholders})
                     OR raw_data::jsonb->>'id' IN ({placeholders})
+                    OR raw_data::jsonb->>'external_id' IN ({placeholders})
                   )
             """)
             
@@ -1419,6 +1433,8 @@ class TransactionOperations:
                                 splitwise_id = str(int(raw_data['id']))
                             elif 'splitwise_id' in raw_data:
                                 splitwise_id = str(int(raw_data['splitwise_id']))
+                            elif 'external_id' in raw_data:
+                                splitwise_id = str(int(raw_data['external_id']))
                     except (json.JSONDecodeError, TypeError, ValueError, KeyError):
                         pass
                 
@@ -1495,9 +1511,10 @@ class TransactionOperations:
         try:
             # First, try reference_number (most reliable - set during standardization)
             reference_number = transaction.get('reference_number', '')
-            if reference_number and str(reference_number).strip():
+            ref_str = str(reference_number).strip() if reference_number else ''
+            if ref_str and ref_str.lower() not in ('', 'nan', 'none'):
                 try:
-                    return int(str(reference_number).strip())
+                    return int(ref_str)
                 except (ValueError, TypeError):
                     pass
             
@@ -1523,6 +1540,13 @@ class TransactionOperations:
                     if 'splitwise_id' in raw_data:
                         try:
                             return int(raw_data['splitwise_id'])
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    # For CSV-sourced data, ID is in external_id
+                    if 'external_id' in raw_data:
+                        try:
+                            return int(raw_data['external_id'])
                         except (ValueError, TypeError):
                             pass
             
@@ -1561,9 +1585,9 @@ class TransactionOperations:
             # Split transactions can legitimately share the same splitwise_id (from parent)
             # and should never be considered duplicates
             query = text("""
-                SELECT id, reference_number, raw_data, transaction_date, created_at, is_split
+                SELECT id, reference_number, raw_data, transaction_date, created_at, is_split, amount, description
                 FROM transactions 
-                WHERE account = 'Splitwise'
+                WHERE LOWER(account) = 'splitwise'
                   AND is_deleted = false
                 ORDER BY transaction_date ASC, created_at ASC
             """)
@@ -1586,8 +1610,9 @@ class TransactionOperations:
             logger.info(f"Found {len(split_transactions)} split transactions (excluded from duplicate detection)")
             logger.info(f"Found {len(regular_transactions)} regular transactions (checked for duplicates)")
             
-            # Group only REGULAR (non-split) transactions by splitwise_id
-            transactions_by_id: Dict[str, List[Dict[str, Any]]] = {}
+            # Group by (reference_number, amount, description) - only EXACT duplicates are re-inserts.
+            # Same reference_number with different amounts/descriptions = legitimate splits (user split in UI), keep all.
+            transactions_by_composite_key: Dict[str, List[Dict[str, Any]]] = {}
             
             for row in regular_transactions:
                 splitwise_id = None
@@ -1608,21 +1633,29 @@ class TransactionOperations:
                                 splitwise_id = str(int(raw_data['id']))
                             elif 'splitwise_id' in raw_data:
                                 splitwise_id = str(int(raw_data['splitwise_id']))
+                            elif 'external_id' in raw_data:
+                                splitwise_id = str(int(raw_data['external_id']))
                     except (json.JSONDecodeError, TypeError, ValueError, KeyError):
                         pass
                 
                 if splitwise_id:
-                    if splitwise_id not in transactions_by_id:
-                        transactions_by_id[splitwise_id] = []
-                    transactions_by_id[splitwise_id].append({
+                    amount_val = float(row.amount) if row.amount else 0
+                    desc_val = (row.description or "").strip()
+                    composite_key = f"{splitwise_id}|{amount_val}|{desc_val}"
+                    
+                    if composite_key not in transactions_by_composite_key:
+                        transactions_by_composite_key[composite_key] = []
+                    transactions_by_composite_key[composite_key].append({
                         'id': str(row.id),
                         'reference_number': row.reference_number,
                         'transaction_date': row.transaction_date,
-                        'created_at': row.created_at
+                        'created_at': row.created_at,
+                        'amount': amount_val,
+                        'description': desc_val
                     })
             
-            # Find duplicates (groups with more than 1 transaction)
-            duplicate_groups = {k: v for k, v in transactions_by_id.items() if len(v) > 1}
+            # Find duplicates: only groups where ref+amount+description are identical (true re-inserts)
+            duplicate_groups = {k: v for k, v in transactions_by_composite_key.items() if len(v) > 1}
             result["duplicate_groups"] = len(duplicate_groups)
             
             # Calculate total duplicates (excluding the one we'll keep)
@@ -1659,12 +1692,8 @@ class TransactionOperations:
                 # Build parameterized IN clause
                 placeholders = ','.join([f':id_{i}' for i in range(len(uuid_ids))])
                 delete_query = text(f"""
-                    UPDATE transactions
-                    SET is_deleted = true,
-                        deleted_at = COALESCE(deleted_at, NOW()),
-                        updated_at = NOW()
+                    DELETE FROM transactions
                     WHERE id IN ({placeholders})
-                      AND is_deleted = false
                 """)
                 
                 # Build parameters dict
@@ -1678,6 +1707,26 @@ class TransactionOperations:
                 logger.info(f"Successfully soft-deleted {deleted_count} duplicate Splitwise transactions")
             else:
                 logger.info(f"DRY RUN: Would delete {len(transaction_ids_to_delete)} duplicate transactions")
+                # Include transaction details in dry_run result for review
+                if transaction_ids_to_delete:
+                    placeholders = ','.join([f':id_{i}' for i in range(len(transaction_ids_to_delete))])
+                    detail_query = text(f"""
+                        SELECT id, transaction_date, description, amount, reference_number
+                        FROM transactions
+                        WHERE id IN ({placeholders})
+                    """)
+                    params = {f'id_{i}': UUID(tid) for i, tid in enumerate(transaction_ids_to_delete)}
+                    detail_rows = await session.execute(detail_query, params)
+                    result["transactions_to_remove"] = [
+                        {
+                            "id": str(r.id),
+                            "transaction_date": str(r.transaction_date),
+                            "description": r.description,
+                            "amount": float(r.amount) if r.amount else 0,
+                            "reference_number": r.reference_number,
+                        }
+                        for r in detail_rows.fetchall()
+                    ]
             
             return result
             
@@ -1902,7 +1951,7 @@ class TransactionOperations:
             "tags": [],
             "description": transaction.get('description', ''),
             "notes": None,
-            "reference_number": str(transaction.get('reference_number', '')),
+            "reference_number": _normalize_reference_number(transaction.get('reference_number')),
             "related_mails": [],
             "source_file": transaction.get('source_file', ''),
             "raw_data": TransactionOperations._prepare_raw_data_for_json(transaction.get('raw_data')),
