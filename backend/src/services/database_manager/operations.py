@@ -20,21 +20,17 @@ logger = get_logger(__name__)
 # SQL fragment for filtering transactions to only those visible in the UI:
 # - ungrouped transactions
 # - the representative row in a group (is_grouped_expense = TRUE)
-# - split parts of a transaction (is_split = TRUE)
-# - grouped rows where no representative row exists yet
+# - grouped rows where no representative row exists yet (splits, transfers, orphaned groups)
+# Note: Split parts (is_split=TRUE) in a group expense should be hidden when a collapsed row exists
 _TRANSACTION_VISIBILITY_FILTER = """
   AND (t.transaction_group_id IS NULL
        OR t.is_grouped_expense = TRUE
-       OR t.is_split = TRUE
-       OR (t.transaction_group_id IS NOT NULL
-           AND COALESCE(t.is_grouped_expense, false) = false
-           AND COALESCE(t.is_split, false) = false
-           AND NOT EXISTS (
-             SELECT 1 FROM transactions t2
-             WHERE t2.transaction_group_id = t.transaction_group_id
-               AND t2.is_grouped_expense = true
-               AND t2.is_deleted = false
-           )))
+       OR NOT EXISTS (
+         SELECT 1 FROM transactions t2
+         WHERE t2.transaction_group_id = t.transaction_group_id
+           AND t2.is_grouped_expense = true
+           AND t2.is_deleted = false
+       ))
 """
 
 
