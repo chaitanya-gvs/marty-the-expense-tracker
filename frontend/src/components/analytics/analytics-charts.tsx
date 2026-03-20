@@ -20,16 +20,16 @@ import {
 import { formatCurrency } from "@/lib/format-utils";
 
 const COLORS = [
-  "#3b82f6", // blue-500
-  "#10b981", // emerald-500
-  "#f59e0b", // amber-500
-  "#ef4444", // red-500
-  "#8b5cf6", // violet-500
-  "#ec4899", // pink-500
-  "#06b6d4", // cyan-500
-  "#f97316", // orange-500
-  "#6366f1", // violet-500
-  "#14b8a6", // teal-500
+  "#DC2626", // red (primary)
+  "#D97706", // amber (accent)
+  "#0D9488", // teal
+  "#7C3AED", // violet
+  "#64748B", // slate
+  "#EC4899", // pink
+  "#0EA5E9", // sky
+  "#F97316", // orange
+  "#22C55E", // green
+  "#A855F7", // purple
 ];
 
 interface AnalyticsChartsProps {
@@ -133,28 +133,26 @@ export function AnalyticsCharts({ analytics }: AnalyticsChartsProps) {
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-white dark:bg-gray-800 p-3 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50">
-          <p className="font-semibold mb-2">{label}</p>
+        <div className="bg-card border border-border p-3 rounded-md shadow-lg z-50 text-sm">
+          <p className="font-medium text-foreground mb-1.5">{label}</p>
           {payload.map((entry: any, index: number) => (
-            <div key={index} className="flex items-center gap-2 text-sm">
-              <div 
-                className="w-2 h-2 rounded-full" 
+            <div key={index} className="flex items-center gap-2">
+              <div
+                className="w-2 h-2 rounded-full flex-shrink-0"
                 style={{ backgroundColor: entry.color }}
               />
-              <span className="text-gray-600 dark:text-gray-300">
-                {entry.name}:
-              </span>
-              <span className="font-medium text-gray-900 dark:text-white">
+              <span className="text-muted-foreground">{entry.name}:</span>
+              <span className="font-mono font-medium text-foreground">
                 {formatCurrency(entry.value)}
               </span>
             </div>
           ))}
           {payload[0].payload.count !== undefined && (
-             <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
-               <p className="text-xs text-gray-500">
-                 Total Transactions: {payload[0].payload.count}
-               </p>
-             </div>
+            <div className="mt-2 pt-2 border-t border-border">
+              <p className="text-xs text-muted-foreground">
+                {payload[0].payload.count} transactions
+              </p>
+            </div>
           )}
         </div>
       );
@@ -212,7 +210,7 @@ export function AnalyticsCharts({ analytics }: AnalyticsChartsProps) {
             <CardContent>
               <ResponsiveContainer width="100%" height={350}>
                 <BarChart data={chartData} layout="vertical" margin={{ left: 20, right: 10, top: 5, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(255,255,255,0.06)" />
                   <XAxis type="number" tickFormatter={(value) => `₹${value/1000}k`} />
                   <YAxis 
                     dataKey="name" 
@@ -246,7 +244,7 @@ export function AnalyticsCharts({ analytics }: AnalyticsChartsProps) {
           <CardContent>
             <ResponsiveContainer width="100%" height={450}>
               <BarChart data={stackedBarData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.06)" />
                 <XAxis dataKey="name" />
                 <YAxis tickFormatter={(value) => `₹${value/1000}k`} />
                 <Tooltip content={<CustomTooltip />} />
@@ -274,7 +272,7 @@ export function AnalyticsCharts({ analytics }: AnalyticsChartsProps) {
           <CardContent>
             <ResponsiveContainer width="100%" height={400}>
               <LineChart data={lineChartData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.06)" />
                 <XAxis dataKey="month" />
                 <YAxis tickFormatter={(value) => `₹${value/1000}k`} />
                 <Tooltip content={<CustomTooltip />} />
@@ -283,10 +281,10 @@ export function AnalyticsCharts({ analytics }: AnalyticsChartsProps) {
                   <Line
                     type="monotone"
                     dataKey="amount"
-                    stroke="#3b82f6"
-                    strokeWidth={3}
-                    dot={{ r: 4 }}
-                    activeDot={{ r: 6 }}
+                    stroke="#D97706"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                    activeDot={{ r: 5 }}
                     name="Amount"
                   />
                 ) : (
@@ -319,11 +317,11 @@ export function AnalyticsCharts({ analytics }: AnalyticsChartsProps) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b bg-gray-50/50 dark:bg-gray-900/50">
-                  <th className="text-left p-3 font-medium text-gray-500">Name</th>
-                  <th className="text-right p-3 font-medium text-gray-500">Amount</th>
-                  <th className="text-right p-3 font-medium text-gray-500">Count</th>
-                  <th className="text-right p-3 font-medium text-gray-500">Percentage</th>
+                <tr className="border-b border-border bg-muted/30">
+                  <th className="text-left p-3 font-medium text-muted-foreground">Name</th>
+                  <th className="text-right p-3 font-medium text-muted-foreground">Amount</th>
+                  <th className="text-right p-3 font-medium text-muted-foreground">Count</th>
+                  <th className="text-right p-3 font-medium text-muted-foreground">Share</th>
                 </tr>
               </thead>
               <tbody>
@@ -335,35 +333,35 @@ export function AnalyticsCharts({ analytics }: AnalyticsChartsProps) {
                         ? (item.amount / analytics.summary.total_amount) * 100
                         : 0;
                     return (
-                      <tr key={index} className="border-b hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                      <tr key={index} className="border-b border-border hover:bg-muted/20 transition-colors">
                         <td className="p-3">
                           <div className="flex items-center gap-3">
                             <div
                               className="w-2 h-2 rounded-full flex-shrink-0"
-                              style={{ 
-                                backgroundColor: item.color || COLORS[index % COLORS.length] 
+                              style={{
+                                backgroundColor: item.color || COLORS[index % COLORS.length]
                               }}
                             />
-                            <span className="font-medium text-gray-900 dark:text-gray-100">
+                            <span className="font-medium text-foreground">
                               {item.group_key}
                             </span>
                           </div>
                         </td>
-                        <td className="text-right p-3 font-medium">
+                        <td className="text-right p-3 font-mono font-medium text-foreground">
                           {formatCurrency(item.amount)}
                         </td>
-                        <td className="text-right p-3 text-gray-500">
+                        <td className="text-right p-3 text-muted-foreground font-mono">
                           {item.count}
                         </td>
                         <td className="text-right p-3">
                           <div className="flex items-center justify-end gap-2">
-                            <span className="text-gray-600 dark:text-gray-400 w-12">
+                            <span className="text-muted-foreground w-12 text-right font-mono">
                               {percentage.toFixed(1)}%
                             </span>
-                            <div className="w-16 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                              <div 
+                            <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div
                                 className="h-full rounded-full"
-                                style={{ 
+                                style={{
                                   width: `${percentage}%`,
                                   backgroundColor: item.color || COLORS[index % COLORS.length]
                                 }}

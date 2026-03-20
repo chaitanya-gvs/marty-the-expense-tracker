@@ -4,14 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { 
-  Receipt, 
-  PieChart, 
-  CheckCircle, 
-  Settings, 
+import {
+  Receipt,
+  PieChart,
+  CheckCircle,
+  Settings,
   CreditCard,
   ChevronLeft,
-  ChevronRight,
   Menu,
   Users,
   BarChart3,
@@ -45,29 +44,29 @@ export function Navigation({ isCollapsed, onToggle }: NavigationProps) {
 
   return (
     <TooltipProvider>
-      <nav 
+      <nav
         className={cn(
-          "flex flex-col bg-slate-900 dark:bg-slate-900 border-r border-slate-700 h-full transition-all duration-300 z-10 relative",
-          isCollapsed ? "w-16" : "w-64"
+          "flex flex-col bg-sidebar border-r border-sidebar-border h-full transition-all duration-200 z-10 relative",
+          isCollapsed ? "w-14" : "w-56"
         )}
       >
         <div className={cn(
-          "flex items-center border-b border-slate-700 transition-all duration-300",
-          isCollapsed ? "justify-center p-4" : "justify-between p-6"
+          "flex items-center border-b border-sidebar-border transition-all duration-200",
+          isCollapsed ? "justify-center p-3" : "justify-between px-4 py-3"
         )}>
           {isCollapsed ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <div 
-                  className="flex items-center justify-center cursor-pointer p-2 rounded-lg hover:bg-slate-800 transition-colors"
+                <div
+                  className="flex items-center justify-center cursor-pointer p-2 rounded-md hover:bg-sidebar-accent transition-colors"
                   onClick={onToggle}
                   onMouseEnter={() => setIsHeaderHovered(true)}
                   onMouseLeave={() => setIsHeaderHovered(false)}
                 >
                   {isHeaderHovered ? (
-                    <Menu className="h-8 w-8 text-blue-400" />
+                    <Menu className="h-5 w-5 text-primary" />
                   ) : (
-                    <CreditCard className="h-8 w-8 text-blue-400" />
+                    <CreditCard className="h-5 w-5 text-primary" />
                   )}
                 </div>
               </TooltipTrigger>
@@ -78,16 +77,16 @@ export function Navigation({ isCollapsed, onToggle }: NavigationProps) {
           ) : (
             <>
               <div className="flex items-center gap-2">
-                <CreditCard className="h-8 w-8 text-blue-400" />
-                <h1 className="text-xl font-bold text-white">Expense Tracker</h1>
+                <CreditCard className="h-5 w-5 text-primary" />
+                <h1 className="text-sm font-semibold text-sidebar-foreground tracking-tight">Expense Tracker</h1>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
                 <ThemeToggle />
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={onToggle}
-                  className="h-8 w-8 p-0 text-slate-400 hover:text-white hover:bg-slate-800"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
@@ -95,9 +94,9 @@ export function Navigation({ isCollapsed, onToggle }: NavigationProps) {
             </>
           )}
         </div>
-        
-        <div className="flex-1 p-4">
-          <ul className="space-y-1">
+
+        <div className="flex-1 p-2">
+          <ul className="space-y-0.5">
             {navigation.map((item) => {
               const isActive = pathname === item.href;
               return (
@@ -108,15 +107,15 @@ export function Navigation({ isCollapsed, onToggle }: NavigationProps) {
                         <Link
                           href={item.href}
                           className={cn(
-                            "flex items-center justify-center px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200",
+                            "flex items-center justify-center p-2.5 rounded-md text-sm font-medium transition-all duration-150",
                             isActive
-                              ? "bg-slate-800 text-white border-r-2 border-blue-400 shadow-sm"
-                              : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                              ? "bg-sidebar-accent text-primary border-l-2 border-primary"
+                              : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
                           )}
                         >
                           <item.icon className={cn(
-                            "h-5 w-5 flex-shrink-0",
-                            isActive ? "text-blue-400" : "text-slate-400"
+                            "h-4 w-4 flex-shrink-0",
+                            isActive ? "text-primary" : "text-muted-foreground"
                           )} />
                         </Link>
                       </TooltipTrigger>
@@ -128,15 +127,15 @@ export function Navigation({ isCollapsed, onToggle }: NavigationProps) {
                     <Link
                       href={item.href}
                       className={cn(
-                        "flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200",
+                        "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-all duration-150",
                         isActive
-                          ? "bg-slate-800 text-white border-r-2 border-blue-400 shadow-sm"
-                          : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                          ? "bg-sidebar-accent text-primary border-l-2 border-primary pl-[10px]"
+                          : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
                       )}
                     >
                       <item.icon className={cn(
-                        "h-5 w-5 flex-shrink-0",
-                        isActive ? "text-blue-400" : "text-slate-400"
+                        "h-4 w-4 flex-shrink-0",
+                        isActive ? "text-primary" : "text-muted-foreground"
                       )} />
                       {item.name}
                     </Link>
@@ -146,7 +145,6 @@ export function Navigation({ isCollapsed, onToggle }: NavigationProps) {
             })}
           </ul>
         </div>
-
       </nav>
     </TooltipProvider>
   );
