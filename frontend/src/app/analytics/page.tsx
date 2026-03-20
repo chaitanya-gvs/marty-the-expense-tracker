@@ -6,8 +6,8 @@ export default function AnalyticsPage() {
     <MainLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Analytics</h1>
-          <p className="text-gray-600 dark:text-gray-300 mt-2">
+          <h1 className="text-2xl font-semibold text-foreground tracking-tight">Analytics</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             Analyze your expenses by category, tag, month, and more
           </p>
         </div>

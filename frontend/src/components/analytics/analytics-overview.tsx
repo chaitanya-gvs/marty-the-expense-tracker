@@ -45,9 +45,6 @@ export function AnalyticsOverview() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <h1 className="text-2xl font-semibold text-foreground tracking-tight">Analytics</h1>
-
       {/* Summary Cards */}
       {analytics && (
         <div className="grid grid-cols-3 divide-x divide-border rounded-lg border border-border bg-card overflow-hidden">

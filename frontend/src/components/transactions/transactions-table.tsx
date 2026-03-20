@@ -1158,20 +1158,20 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             return (
               <div className="flex flex-col items-end whitespace-nowrap">
                 <div className={cn(
-                  "font-semibold text-sm inline-flex items-center px-3 py-1 rounded-full",
+                  "font-mono font-semibold text-sm inline-flex items-center px-2.5 py-0.5 rounded-md tabular-nums",
                   direction === "debit"
-                    ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-                    : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                    ? "bg-primary/10 text-primary"
+                    : "bg-emerald-500/10 text-emerald-500"
                 )}>
                   {direction === "debit" ? "↓" : "↑"} {formatCurrency(displayAmount)}
                 </div>
                 {showTotal && (
-                  <div className="text-xs text-gray-500 mt-1 text-right">
+                  <div className="text-xs text-muted-foreground mt-1 text-right font-mono">
                     Total: {formatCurrency(totalAmount)}
                   </div>
                 )}
                 {showNet && (
-                  <div className="text-xs text-gray-500 mt-0.5 text-right">
+                  <div className="text-xs text-muted-foreground mt-0.5 text-right font-mono">
                     Net: {formatCurrency(netAmount)}
                   </div>
                 )}
@@ -1807,10 +1807,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
   if (isLoading) {
     return (
-      <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-8">
+      <div className="bg-card rounded-lg border border-border p-8">
         <div className="flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400"></div>
-          <span className="ml-2 text-gray-900 dark:text-white">Loading transactions...</span>
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+          <span className="ml-2 text-muted-foreground text-sm">Loading transactions...</span>
         </div>
       </div>
     );
@@ -1818,8 +1818,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
   if (error) {
     return (
-      <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-8">
-        <div className="text-center text-red-600 dark:text-red-400">
+      <div className="bg-card rounded-lg border border-border p-8">
+        <div className="text-center text-destructive text-sm">
           Error loading transactions: {error.message}
         </div>
       </div>
@@ -1827,12 +1827,12 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   }
 
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+    <div className="bg-card rounded-lg border border-border">
+      <div className="p-4 border-b border-border">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+              <h3 className="text-sm font-medium text-foreground">
                 Transactions ({allTransactions.length} loaded{data?.pages?.[0]?.pagination?.total ? ` of ${data.pages[0].pagination.total}` : ''})
               </h3>
               {isKeyboardNavigationMode && (
@@ -1840,7 +1840,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   <Badge variant="outline" className="text-xs">
                     ⌨️ Keyboard Navigation Active
                   </Badge>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                  <span className="text-xs text-muted-foreground">
                     Tab: Save & move right • Enter: Edit • Arrow keys: Navigate • Esc: Exit
                   </span>
                 </div>
@@ -1934,8 +1934,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             </div>
           </div>
           {isFetchingNextPage && (
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary"></div>
               Loading more...
             </div>
           )}
@@ -1946,7 +1946,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         {/* Sticky Header */}
         <div
           ref={headerScrollRef}
-          className="flex-shrink-0 w-full overflow-x-auto bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-md z-50"
+          className="flex-shrink-0 w-full overflow-x-auto bg-card border-b border-border z-50"
           onScroll={handleHeaderScroll}
         >
           <table
@@ -1971,7 +1971,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   {headerGroup.headers.map((header) => (
                     <th
                       key={header.id}
-                      className="relative px-3 py-2 text-left font-semibold text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-800 h-12 align-middle text-foreground whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]"
+                      className="relative px-3 py-2 text-left font-medium text-xs text-muted-foreground bg-muted/40 h-10 align-middle uppercase tracking-wide whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]"
                       style={{
                         width: header.getSize(),
                         ...(header.column.columnDef.minSize != null && { minWidth: header.column.columnDef.minSize }),
@@ -1988,7 +1988,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                         <div
                           onMouseDown={header.getResizeHandler()}
                           onTouchStart={header.getResizeHandler()}
-                          className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none touch-none hover:bg-blue-400 active:bg-blue-500 rounded transition-colors"
+                          className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none touch-none hover:bg-primary active:bg-primary rounded transition-colors"
                           style={{ touchAction: "none" }}
                           title="Drag to resize column"
                         />
@@ -2028,24 +2028,56 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               ))}
             </colgroup>
             <tbody className="[&_tr:last-child]:border-0">
-              {rows.map((row, rowIndex) => {
-                const isFocusedRow = isKeyboardNavigationMode && focusedRowIndex === rowIndex;
-                const isGroupedExpense = row.original.is_grouped_expense;
-                const isExpanded = row.original.transaction_group_id 
-                  ? expandedGroupedExpenses.has(row.original.transaction_group_id)
-                  : false;
-                const members = row.original.transaction_group_id 
-                  ? groupMembers.get(row.original.transaction_group_id) || []
-                  : [];
-                
-                return (
-                  <React.Fragment key={row.id}>
+              {(() => {
+                // Date-grouped rendering
+                let lastDate = "";
+                const colCount = table.getHeaderGroups()[0].headers.length;
+                return rows.map((row, rowIndex) => {
+                  const isFocusedRow = isKeyboardNavigationMode && focusedRowIndex === rowIndex;
+                  const isGroupedExpense = row.original.is_grouped_expense;
+                  const isExpanded = row.original.transaction_group_id
+                    ? expandedGroupedExpenses.has(row.original.transaction_group_id)
+                    : false;
+                  const members = row.original.transaction_group_id
+                    ? groupMembers.get(row.original.transaction_group_id) || []
+                    : [];
+
+                  const rowDate = row.original.date ? row.original.date.split("T")[0] : "";
+                  const showDateHeader = rowDate !== lastDate;
+                  if (showDateHeader) lastDate = rowDate;
+
+                  // Daily debit total for the date group
+                  const dailyTotal = showDateHeader
+                    ? rows
+                        .filter(r => (r.original.date || "").split("T")[0] === rowDate && r.original.direction === "debit")
+                        .reduce((sum, r) => sum + (r.original.is_shared && r.original.split_share_amount ? r.original.split_share_amount : r.original.amount || 0), 0)
+                    : 0;
+
+                  const dateLabel = rowDate
+                    ? new Date(rowDate + "T12:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+                    : "";
+
+                  return (
+                    <React.Fragment key={row.id}>
+                      {showDateHeader && (
+                        <tr className="border-b border-border bg-muted/20">
+                          <td colSpan={colCount} className="px-4 py-1.5">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-medium text-muted-foreground">{dateLabel}</span>
+                              <div className="flex-1 h-px bg-border" />
+                              {dailyTotal > 0 && (
+                                <span className="text-xs font-mono text-muted-foreground">{formatCurrency(dailyTotal)}</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
                     <tr
                       className={cn(
-                        "group hover:bg-gray-50 dark:hover:bg-gray-800 border-b border-gray-100 dark:border-gray-800 transition-colors duration-150 h-12 cursor-pointer",
-                        editingRow === row.original.id && "bg-blue-50 dark:bg-blue-900/20",
-                        highlightedTransactionIds.has(row.original.id) && "bg-blue-50 dark:bg-blue-900/10 border-l-2 border-l-blue-500",
-                        isFocusedRow && "bg-blue-100 dark:bg-blue-900/30 border-l-2 border-l-blue-500"
+                        "group hover:bg-muted/20 border-b border-border transition-colors duration-150 h-12 cursor-pointer",
+                        editingRow === row.original.id && "bg-primary/5",
+                        highlightedTransactionIds.has(row.original.id) && "bg-primary/5 border-l-2 border-l-primary",
+                        isFocusedRow && "bg-primary/10 border-l-2 border-l-primary"
                       )}
                     // onClick={() => handleRowClick(row.original)}
                     >
@@ -2058,7 +2090,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                               "px-3 py-2 text-sm align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
                               editingTagsForTransaction === row.original.id && cell.column.id === "tags" && "relative",
                               editingCategoryForTransaction === row.original.id && cell.column.id === "category" && "relative",
-                              isFocusedCell && "ring-2 ring-blue-500 ring-inset bg-blue-50 dark:bg-blue-900/20"
+                              isFocusedCell && "ring-2 ring-primary ring-inset bg-primary/5"
                             )}
                           >
                             {flexRender(
@@ -2074,49 +2106,50 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     {isGroupedExpense && isExpanded && members.length > 0 && members.map((member) => (
                       <tr
                         key={`member-${member.id}`}
-                        className="bg-purple-50/50 dark:bg-purple-950/10 border-l-2 border-purple-300 dark:border-purple-700 hover:bg-purple-100/50 dark:hover:bg-purple-900/20"
+                        className="bg-muted/10 border-l-2 border-l-chart-4 hover:bg-muted/20 border-b border-border"
                       >
                         {isMultiSelectMode && <td className="px-3 py-2"></td>}
-                        <td className="px-3 py-2 text-xs text-gray-600 dark:text-gray-400 pl-8">
+                        <td className="px-3 py-2 text-xs text-muted-foreground pl-8">
                           {format(new Date(member.date), "dd MMM yy")}
                         </td>
                         <td className="px-3 py-2 pl-12 min-w-0">
                           <div className="text-sm truncate">{member.description}</div>
                           {member.notes && (
-                            <div className="text-xs text-gray-500 truncate">{member.notes}</div>
+                            <div className="text-xs text-muted-foreground truncate">{member.notes}</div>
                           )}
                         </td>
                         <td className="px-3 py-2 text-sm">
                           <Badge
                             variant="outline"
                             className={cn(
-                              "text-xs",
+                              "text-xs font-mono",
                               member.direction === "debit"
-                                ? "border-red-500 text-red-600 dark:text-red-400"
-                                : "border-green-500 text-green-600 dark:text-green-400"
+                                ? "border-primary/50 text-primary"
+                                : "border-emerald-500/50 text-emerald-500"
                             )}
                           >
                             {formatCurrency(member.amount)}
                           </Badge>
                         </td>
-                        <td className="px-3 py-2 text-xs">{member.account.split(" ").slice(0, -2).join(" ")}</td>
-                        <td className="px-3 py-2 text-xs">{member.category || "Uncategorized"}</td>
+                        <td className="px-3 py-2 text-xs text-muted-foreground">{member.account.split(" ").slice(0, -2).join(" ")}</td>
+                        <td className="px-3 py-2 text-xs text-muted-foreground">{member.category || "Uncategorized"}</td>
                         <td className="px-3 py-2"></td>
                         <td className="px-3 py-2"></td>
                       </tr>
                     ))}
                   </React.Fragment>
                 );
-              })}
+              });
+              })()}
             </tbody>
           </table>
         </div>
       </div>
 
       {!hasNextPage && allTransactions.length > 0 && (
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700 text-center">
-          <div className="text-sm text-gray-500 dark:text-gray-400">
-            All transactions loaded ({allTransactions.length} total)
+        <div className="p-3 border-t border-border text-center">
+          <div className="text-xs text-muted-foreground">
+            All {allTransactions.length} transactions loaded
           </div>
         </div>
       )}
