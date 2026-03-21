@@ -129,7 +129,8 @@ export function MultiTagSelector({
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setShowCreateDialog(true)}
+          onClick={(e) => { e.stopPropagation(); setShowCreateDialog(true); }}
+          onPointerDown={(e) => e.stopPropagation()}
           className="px-1.5 h-8 flex-shrink-0"
         >
           <Plus className="h-2.5 w-2.5" />
@@ -225,7 +226,8 @@ export function MultiTagSelector({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setShowCreateDialog(true)}
+            onClick={(e) => { e.stopPropagation(); setShowCreateDialog(true); }}
+            onPointerDown={(e) => e.stopPropagation()}
             className="px-1.5 h-8 flex-shrink-0"
           >
             <Plus className="h-2.5 w-2.5" />
