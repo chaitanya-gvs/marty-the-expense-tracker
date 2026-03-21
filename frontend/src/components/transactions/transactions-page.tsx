@@ -171,7 +171,7 @@ export function TransactionsPage() {
           </Button>
           <Button
             size="sm"
-            className="gap-1.5 text-xs h-8 bg-primary hover:bg-primary/90 text-primary-foreground"
+            className="gap-1.5 text-xs h-8 bg-primary hover:bg-primary/90 text-primary-foreground border border-transparent"
             onClick={() => setIsAddModalOpen(true)}
           >
             <Plus className="h-3.5 w-3.5" />

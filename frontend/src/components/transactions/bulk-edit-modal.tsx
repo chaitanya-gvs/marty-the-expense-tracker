@@ -185,19 +185,19 @@ export function BulkEditModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent 
-        className="!max-w-2xl sm:!max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col rounded-2xl bg-slate-900 p-0"
+      <DialogContent
+        className="!max-w-2xl sm:!max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col rounded-2xl bg-card p-0"
         showCloseButton={false}
       >
         {/* Header */}
-        <DialogHeader className="px-6 pt-6 pb-4">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
           <div className="flex items-start justify-between">
             <div>
-              <DialogTitle className="flex items-center gap-2 text-xl font-semibold text-white">
-                <Users className="h-5 w-5" />
+              <DialogTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                <Users className="h-5 w-5 text-primary" />
                 Bulk Edit Transactions ({selectedTransactions.length} selected)
               </DialogTitle>
-              <p className="text-sm text-slate-400 mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 Choose which fields to update. Others stay unchanged.
               </p>
             </div>
@@ -205,48 +205,48 @@ export function BulkEditModal({
               variant="ghost"
               size="sm"
               onClick={onClose}
-              className="h-8 w-8 p-0 hover:bg-slate-800"
+              className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted/60"
             >
-              <X className="h-4 w-4 text-slate-400" />
+              <X className="h-4 w-4" />
             </Button>
           </div>
         </DialogHeader>
 
         {/* Body - Scrollable */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 space-y-4">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
           {/* Update Fields Section */}
-          <div className="space-y-3">
+          <div className="space-y-2">
             {/* Description Field */}
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/60">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/40 border border-border/50">
               <Switch
                 checked={updateFields.has("description")}
                 onCheckedChange={() => handleFieldToggle("description")}
-                className="data-[state=checked]:bg-blue-600"
+                className="data-[state=checked]:bg-primary"
               />
               <div className="flex-1">
-                <label className="text-sm font-medium text-white">Description</label>
+                <label className="text-sm font-medium text-foreground">Description</label>
                 {updateFields.has("description") ? (
                   <Input
                     value={formData.description || ""}
                     onChange={(e) => handleInputChange("description", e.target.value)}
                     placeholder="Enter new description"
-                    className="mt-2 flex-1 rounded-lg bg-slate-800 border-slate-700 px-3 py-2 text-white placeholder:text-slate-500 focus:ring-2 focus:ring-slate-600"
+                    className="mt-2"
                   />
                 ) : (
-                  <p className="text-xs text-slate-500 mt-1">Click to enable</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Click to enable</p>
                 )}
               </div>
             </div>
 
             {/* Category Field */}
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/60">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/40 border border-border/50">
               <Switch
                 checked={updateFields.has("category")}
                 onCheckedChange={() => handleFieldToggle("category")}
-                className="data-[state=checked]:bg-blue-600"
+                className="data-[state=checked]:bg-primary"
               />
               <div className="flex-1">
-                <label className="text-sm font-medium text-white">Category</label>
+                <label className="text-sm font-medium text-foreground">Category</label>
                 {updateFields.has("category") ? (
                   <div className="mt-2">
                     <CategorySelector
@@ -256,20 +256,20 @@ export function BulkEditModal({
                     />
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500 mt-1">Click to enable</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Click to enable</p>
                 )}
               </div>
             </div>
 
             {/* Tags Field */}
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/60">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/40 border border-border/50">
               <Switch
                 checked={updateFields.has("tags")}
                 onCheckedChange={() => handleFieldToggle("tags")}
-                className="data-[state=checked]:bg-blue-600"
+                className="data-[state=checked]:bg-primary"
               />
               <div className="flex-1">
-                <label className="text-sm font-medium text-white">Tags</label>
+                <label className="text-sm font-medium text-foreground">Tags</label>
                 {updateFields.has("tags") ? (
                   <div className="mt-2">
                     <MultiTagSelector
@@ -279,18 +279,18 @@ export function BulkEditModal({
                     />
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500 mt-1">Click to enable</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Click to enable</p>
                 )}
               </div>
             </div>
           </div>
 
           {/* Collapsible Selected Transactions */}
-          <div className="mt-4">
+          <div className="pt-1">
             <button
               type="button"
               onClick={() => setIsTransactionsExpanded(!isTransactionsExpanded)}
-              className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-300 transition-colors"
+              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               {isTransactionsExpanded ? (
                 <ChevronDown className="h-4 w-4" />
@@ -299,16 +299,16 @@ export function BulkEditModal({
               )}
               <span>{selectedTransactions.length} selected transactions</span>
             </button>
-            
+
             {isTransactionsExpanded && (
               <div className="max-h-48 overflow-y-auto space-y-1 mt-2">
                 {selectedTransactions.map((transaction) => (
                   <div
                     key={transaction.id}
-                    className="p-2 rounded bg-slate-800/40 text-xs text-slate-300"
+                    className="p-2 rounded-md bg-muted/30 border border-border/40 text-xs"
                   >
-                    <span className="font-medium">{transaction.description}</span>
-                    <span className="text-slate-500"> · {transaction.date} · ₹{transaction.amount}</span>
+                    <span className="font-medium text-foreground">{transaction.description}</span>
+                    <span className="text-muted-foreground font-mono"> · {transaction.date} · ₹{transaction.amount}</span>
                   </div>
                 ))}
               </div>
@@ -317,19 +317,18 @@ export function BulkEditModal({
 
           {/* Preview */}
           {getUpdatePreview() && (
-            <div className="text-xs text-slate-400 mt-2 pt-3 border-t border-slate-800">
+            <div className="text-xs text-muted-foreground pt-3 border-t border-border">
               {getUpdatePreview()}
             </div>
           )}
         </form>
 
         {/* Footer - Sticky */}
-        <DialogFooter className="sticky bottom-0 bg-slate-900 px-6 py-4 border-t border-slate-800 flex justify-between items-center">
+        <DialogFooter className="px-6 py-4 border-t border-border flex justify-between items-center">
           <Button
             type="button"
             variant="outline"
             onClick={onClose}
-            className="bg-transparent border-slate-700 text-slate-300 hover:bg-slate-800"
           >
             Cancel
           </Button>
@@ -337,7 +336,7 @@ export function BulkEditModal({
             type="submit"
             onClick={handleSubmit}
             disabled={bulkUpdateTransactions.isPending || updateFields.size === 0}
-            className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
           >
             {bulkUpdateTransactions.isPending ? (
               <>
