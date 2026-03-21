@@ -113,6 +113,9 @@ class ApiClient {
       if (filters.is_split !== undefined) {
         params.append("is_split", String(filters.is_split));
       }
+      if (filters.is_grouped_expense !== undefined) {
+        params.append("is_grouped_expense", String(filters.is_grouped_expense));
+      }
     }
 
     if (sort) {

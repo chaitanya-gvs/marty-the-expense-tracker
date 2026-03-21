@@ -96,6 +96,7 @@ export function TransactionFilters({
   const [splitFilter, setSplitFilter] = useState<string>(
     filters.is_split === false ? "exclude" : filters.is_split === true ? "only" : "all"
   );
+  const [groupedFilter, setGroupedFilter] = useState<boolean>(filters.is_grouped_expense === true);
   const [accountSearchQuery, setAccountSearchQuery] = useState("");
   const [categorySearchQuery, setCategorySearchQuery] = useState("");
   const [participantSearchQuery, setParticipantSearchQuery] = useState("");
@@ -249,6 +250,9 @@ export function TransactionFilters({
       newFilters.is_split = undefined; // Show all
     }
 
+    // Apply is_grouped_expense filter
+    newFilters.is_grouped_expense = groupedFilter ? true : undefined;
+
     // Check if filters have actually changed
     const filtersChanged =
       newFilters.search !== filters.search ||
@@ -268,7 +272,8 @@ export function TransactionFilters({
       newFilters.include_uncategorized !== filters.include_uncategorized ||
       newFilters.flagged !== filters.flagged ||
       newFilters.is_shared !== filters.is_shared ||
-      newFilters.is_split !== filters.is_split;
+      newFilters.is_split !== filters.is_split ||
+      newFilters.is_grouped_expense !== filters.is_grouped_expense;
 
     if (filtersChanged) {
       onFiltersChange(newFilters);
@@ -298,6 +303,7 @@ export function TransactionFilters({
     setFlaggedFilter("all");
     setHideShared(false);
     setSplitFilter("all");
+    setGroupedFilter(false);
     onClearFilters();
 
     // Collapse panel after reset
@@ -370,6 +376,9 @@ export function TransactionFilters({
 
     const newSplitFilter = filters.is_split === false ? "exclude" : filters.is_split === true ? "only" : "all";
     if (newSplitFilter !== splitFilter) setSplitFilter(newSplitFilter);
+
+    const newGroupedFilter = filters.is_grouped_expense === true;
+    if (newGroupedFilter !== groupedFilter) setGroupedFilter(newGroupedFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
@@ -403,6 +412,7 @@ export function TransactionFilters({
     flaggedFilter,
     hideShared,
     splitFilter,
+    groupedFilter,
     // Explicitly exclude non-filter state like popover open states
   ]);
 
@@ -456,6 +466,7 @@ export function TransactionFilters({
     else if (key === "flagged") setFlaggedFilter("all");
     else if (key === "is_shared") setHideShared(false);
     else if (key === "is_split") setSplitFilter("all");
+    else if (key === "is_grouped_expense") setGroupedFilter(false);
 
     onFiltersChange(newFilters);
   };
@@ -560,6 +571,9 @@ export function TransactionFilters({
     }
     if (filters.is_split === true) {
       badges.push({ key: "is_split", label: "Split transactions only", value: true });
+    }
+    if (filters.is_grouped_expense === true) {
+      badges.push({ key: "is_grouped_expense", label: "Grouped transactions only", value: true });
     }
 
     return badges;
@@ -1314,6 +1328,11 @@ export function TransactionFilters({
                 label: "Split",
                 active: splitFilter === "only",
                 onClick: () => setSplitFilter(splitFilter === "only" ? "all" : "only"),
+              },
+              {
+                label: "Grouped",
+                active: groupedFilter,
+                onClick: () => setGroupedFilter(v => !v),
               },
             ].map(({ label, active, onClick }) => (
               <button
