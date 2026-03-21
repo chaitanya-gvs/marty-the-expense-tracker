@@ -42,7 +42,7 @@ export function TransactionDetailsDrawer({
                     <div className="flex flex-col gap-2">
                         <h2 className="text-2xl font-bold">{transaction.description}</h2>
                         <div className="flex items-center gap-2">
-                            <span className={`text-xl font-semibold ${transaction.direction === 'debit' ? 'text-red-500' : 'text-green-500'
+                            <span className={`text-xl font-semibold ${transaction.direction === 'debit' ? 'text-destructive' : 'text-emerald-500'
                                 }`}>
                                 {transaction.direction === 'debit' ? '-' : '+'}{formatCurrency(transaction.amount)}
                             </span>
@@ -75,7 +75,7 @@ export function TransactionDetailsDrawer({
                                 {transaction.is_shared && <Badge variant="secondary">Shared</Badge>}
                                 {transaction.is_split && <Badge variant="secondary">Split</Badge>}
                                 {transaction.is_grouped_expense && (
-                                    <Badge variant="outline" className="bg-purple-50 dark:bg-purple-950/20 border-purple-300 dark:border-purple-700">
+                                    <Badge variant="outline" className="bg-[#7C3AED]/10 border-[#7C3AED]/30">
                                         <Layers className="h-3 w-3 mr-1" />
                                         Grouped
                                     </Badge>
@@ -88,20 +88,20 @@ export function TransactionDetailsDrawer({
 
                     {/* Grouped Expense Info */}
                     {transaction.is_grouped_expense && (
-                        <div className="rounded-lg bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 p-4">
+                        <div className="rounded-lg bg-[#7C3AED]/10 border border-[#7C3AED]/20 p-4">
                             <div className="flex items-start gap-2">
-                                <Layers className="h-5 w-5 text-purple-600 dark:text-purple-400 flex-shrink-0 mt-0.5" />
+                                <Layers className="h-5 w-5 text-[#7C3AED] flex-shrink-0 mt-0.5" />
                                 <div className="flex-1">
-                                    <h3 className="text-sm font-semibold text-purple-900 dark:text-purple-100 mb-1">
+                                    <h3 className="text-sm font-semibold text-[#7C3AED] mb-1">
                                         Grouped Expense
                                     </h3>
-                                    <p className="text-xs text-purple-800 dark:text-purple-200">
+                                    <p className="text-xs text-[#7C3AED]/80">
                                         This transaction represents multiple transactions combined into a single net amount.
                                         The amount shown is the algebraic sum of all credits (positive) and debits (negative)
                                         in the group.
                                     </p>
                                     {transaction.transaction_group_id && (
-                                        <p className="text-xs text-purple-700 dark:text-purple-300 mt-2 font-mono">
+                                        <p className="text-xs text-[#7C3AED]/70 mt-2 font-mono">
                                             Group ID: {transaction.transaction_group_id.slice(0, 8)}...
                                         </p>
                                     )}
@@ -113,7 +113,7 @@ export function TransactionDetailsDrawer({
                                                 await onUngroupExpense(transaction);
                                                 onClose();
                                             }}
-                                            className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-purple-700 dark:text-purple-300 bg-white dark:bg-purple-900/30 border border-purple-300 dark:border-purple-700 rounded-md hover:bg-purple-50 dark:hover:bg-purple-900/50 transition-colors"
+                                            className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-[#7C3AED] bg-[#7C3AED]/10 border border-[#7C3AED]/30 rounded-md hover:bg-[#7C3AED]/20 transition-colors"
                                         >
                                             <Layers className="h-4 w-4" />
                                             Ungroup Expense

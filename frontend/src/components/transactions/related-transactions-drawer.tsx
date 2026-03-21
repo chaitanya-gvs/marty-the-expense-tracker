@@ -120,10 +120,10 @@ export function RelatedTransactionsDrawer({
       return (
         <div className="space-y-6">
           <div className="text-center">
-            <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
+            <div className="text-sm font-medium text-foreground mb-4">
               Refund Relationship
             </div>
-            <div className="flex items-center justify-center gap-2 text-gray-500">
+            <div className="flex items-center justify-center gap-2 text-muted-foreground">
               <ArrowDown className="h-4 w-4" />
               <span className="text-xs">Refund of original purchase</span>
             </div>
@@ -132,18 +132,18 @@ export function RelatedTransactionsDrawer({
           {/* Parent Transaction */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="border-red-500 text-red-600 dark:text-red-400">
+              <Badge variant="outline" className="border-destructive/50 text-destructive">
                 Original Purchase
               </Badge>
             </div>
-            <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+            <div className="p-4 bg-destructive/10 rounded-lg border border-destructive/20">
               <div className="space-y-2">
                 <div className="font-medium text-sm">{parentTransaction.description}</div>
-                <div className="text-xs text-red-600 dark:text-red-400">
+                <div className="text-xs text-destructive">
                   {formatDate(parentTransaction.date)} · {formatCurrency(Math.abs(parentTransaction.amount))} · {parentTransaction.account.split(' ').slice(0, -2).join(' ')}
                 </div>
                 <div className="flex items-center gap-2 mt-2">
-                  <Badge variant="outline" className="border-red-500 text-red-600 dark:text-red-400 text-xs">
+                  <Badge variant="outline" className="border-destructive/50 text-destructive text-xs">
                     Debit
                   </Badge>
                   {parentTransaction.category && (
@@ -159,18 +159,18 @@ export function RelatedTransactionsDrawer({
           {/* Refund Transaction */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="border-green-500 text-green-600 dark:text-green-400">
+              <Badge variant="outline" className="border-emerald-500/50 text-emerald-500">
                 Refund
               </Badge>
             </div>
-            <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+            <div className="p-4 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
               <div className="space-y-2">
                 <div className="font-medium text-sm">{transaction.description}</div>
-                <div className="text-xs text-green-600 dark:text-green-400">
+                <div className="text-xs text-emerald-500">
                   {formatDate(transaction.date)} · {formatCurrency(Math.abs(transaction.amount))} · {transaction.account.split(' ').slice(0, -2).join(' ')}
                 </div>
                 <div className="flex items-center gap-2 mt-2">
-                  <Badge variant="outline" className="border-green-500 text-green-600 dark:text-green-400 text-xs">
+                  <Badge variant="outline" className="border-emerald-500/50 text-emerald-500 text-xs">
                     Credit
                   </Badge>
                   {transaction.category && (
@@ -184,15 +184,15 @@ export function RelatedTransactionsDrawer({
           </div>
 
           {/* Net Effect */}
-          <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="p-4 bg-muted/50 rounded-lg border border-border">
             <div className="text-center space-y-2">
-              <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <div className="text-sm font-medium text-foreground">
                 Net Amount Spent
               </div>
-              <div className={`text-lg font-bold ${netSpent >= 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+              <div className={`text-lg font-bold ${netSpent >= 0 ? 'text-destructive' : 'text-emerald-500'}`}>
                 {netSpent >= 0 ? '-' : '+'}{formatCurrency(Math.abs(netSpent))}
               </div>
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-muted-foreground">
                 Original: {formatCurrency(Math.abs(parentTransaction.amount))} - Refund: {formatCurrency(Math.abs(transaction.amount))}
               </div>
             </div>
@@ -203,7 +203,7 @@ export function RelatedTransactionsDrawer({
             <Button
               variant="outline"
               onClick={handleUnlink}
-              className="w-full border-red-500 text-red-600 hover:bg-red-50 dark:border-red-400 dark:text-red-400 dark:hover:bg-red-900/20"
+              className="w-full border-destructive/50 text-destructive hover:bg-destructive/10"
             >
               <Unlink className="h-4 w-4 mr-2" />
               Unlink Refund
@@ -221,10 +221,10 @@ export function RelatedTransactionsDrawer({
       return (
         <div className="space-y-6">
           <div className="text-center">
-            <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
+            <div className="text-sm font-medium text-foreground mb-4">
               Refund Relationship ({childTransactions.length} refund{childTransactions.length > 1 ? 's' : ''})
             </div>
-            <div className="flex items-center justify-center gap-2 text-gray-500">
+            <div className="flex items-center justify-center gap-2 text-muted-foreground">
               <ArrowDown className="h-4 w-4" />
               <span className="text-xs">Original purchase with refunds</span>
             </div>
@@ -233,18 +233,18 @@ export function RelatedTransactionsDrawer({
           {/* Parent Transaction (this transaction) */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="border-red-500 text-red-600 dark:text-red-400">
+              <Badge variant="outline" className="border-destructive/50 text-destructive">
                 Original Purchase
               </Badge>
             </div>
-            <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+            <div className="p-4 bg-destructive/10 rounded-lg border border-destructive/20">
               <div className="space-y-2">
                 <div className="font-medium text-sm">{transaction.description}</div>
-                <div className="text-xs text-red-600 dark:text-red-400">
+                <div className="text-xs text-destructive">
                   {formatDate(transaction.date)} · {formatCurrency(Math.abs(transaction.amount))} · {transaction.account.split(' ').slice(0, -2).join(' ')}
                 </div>
                 <div className="flex items-center gap-2 mt-2">
-                  <Badge variant="outline" className="border-red-500 text-red-600 dark:text-red-400 text-xs">
+                  <Badge variant="outline" className="border-destructive/50 text-destructive text-xs">
                     Debit
                   </Badge>
                   {transaction.category && (
@@ -260,20 +260,20 @@ export function RelatedTransactionsDrawer({
           {/* Refund Transactions (children) */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="border-green-500 text-green-600 dark:text-green-400">
+              <Badge variant="outline" className="border-emerald-500/50 text-emerald-500">
                 Refund{childTransactions.length > 1 ? 's' : ''} ({childTransactions.length})
               </Badge>
             </div>
             <div className="space-y-2">
               {childTransactions.map((child) => (
-                <div key={child.id} className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                <div key={child.id} className="p-4 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
                   <div className="space-y-2">
                     <div className="font-medium text-sm">{child.description}</div>
-                    <div className="text-xs text-green-600 dark:text-green-400">
+                    <div className="text-xs text-emerald-500">
                       {formatDate(child.date)} · {formatCurrency(Math.abs(child.amount))} · {child.account.split(' ').slice(0, -2).join(' ')}
                     </div>
                     <div className="flex items-center gap-2 mt-2">
-                      <Badge variant="outline" className="border-green-500 text-green-600 dark:text-green-400 text-xs">
+                      <Badge variant="outline" className="border-emerald-500/50 text-emerald-500 text-xs">
                         Credit
                       </Badge>
                       {child.category && (
@@ -283,12 +283,12 @@ export function RelatedTransactionsDrawer({
                       )}
                     </div>
                     {onUnlinkChild && (
-                      <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-700">
+                      <div className="mt-3 pt-3 border-t border-emerald-500/20">
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handleUnlinkChild(child.id)}
-                          className="w-full border-red-500 text-red-600 hover:bg-red-50 dark:border-red-400 dark:text-red-400 dark:hover:bg-red-900/20"
+                          className="w-full border-destructive/50 text-destructive hover:bg-destructive/10"
                         >
                           <Unlink className="h-3 w-3 mr-2" />
                           Unlink Refund
@@ -302,15 +302,15 @@ export function RelatedTransactionsDrawer({
           </div>
 
           {/* Net Effect */}
-          <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="p-4 bg-muted/50 rounded-lg border border-border">
             <div className="text-center space-y-2">
-              <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <div className="text-sm font-medium text-foreground">
                 Net Amount Spent
               </div>
-              <div className={`text-lg font-bold ${netSpent >= 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+              <div className={`text-lg font-bold ${netSpent >= 0 ? 'text-destructive' : 'text-emerald-500'}`}>
                 {netSpent >= 0 ? '-' : '+'}{formatCurrency(Math.abs(netSpent))}
               </div>
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-muted-foreground">
                 Original: {formatCurrency(Math.abs(transaction.amount))} - Total Refunded: {formatCurrency(totalRefunded)}
               </div>
             </div>
@@ -319,11 +319,11 @@ export function RelatedTransactionsDrawer({
           {/* Actions */}
           <div className="space-y-2">
             {onUnlinkChild ? (
-              <p className="text-xs text-gray-500 text-center">
+              <p className="text-xs text-muted-foreground text-center">
                 Click "Unlink Refund" on any refund above to remove the link
               </p>
             ) : (
-              <p className="text-xs text-gray-500 text-center">
+              <p className="text-xs text-muted-foreground text-center">
                 To unlink individual refunds, click on the refund transaction in the table
               </p>
             )}
@@ -348,7 +348,7 @@ export function RelatedTransactionsDrawer({
           <Button
             variant="outline"
             onClick={handleUngroup}
-            className="w-full border-purple-500 text-purple-600 hover:bg-purple-50 dark:border-purple-400 dark:text-purple-400 dark:hover:bg-purple-900/20"
+            className="w-full border-[#7C3AED]/30 text-[#7C3AED] hover:bg-[#7C3AED]/20"
           >
             <Unlink className="h-4 w-4 mr-2" />
             Ungroup expense
@@ -362,10 +362,10 @@ export function RelatedTransactionsDrawer({
     return (
       <div className="space-y-6">
         <div className="text-center">
-          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
+          <div className="text-sm font-medium text-foreground mb-4">
             Grouped expense ({members.length} transactions)
           </div>
-          <div className="flex items-center justify-center gap-2 text-gray-500">
+          <div className="flex items-center justify-center gap-2 text-muted-foreground">
             <Layers className="h-4 w-4" />
             <span className="text-xs">Combined into a single expense row</span>
           </div>
@@ -376,14 +376,14 @@ export function RelatedTransactionsDrawer({
             <div
               key={t.id}
               className={`p-4 rounded-lg border ${t.direction === "debit"
-                ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-                : "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
+                ? "bg-destructive/10 border-destructive/20"
+                : "bg-emerald-500/10 border-emerald-500/20"
               }`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-sm truncate">{t.description}</div>
-                  <div className={`text-xs ${t.direction === "debit" ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
+                  <div className={`text-xs ${t.direction === "debit" ? "text-destructive" : "text-emerald-500"}`}>
                     {formatDate(t.date)} · {formatCurrency(Math.abs(t.amount))}
                     {t.account && ` · ${t.account.split(" ").slice(0, -2).join(" ") || t.account}`}
                   </div>
@@ -398,10 +398,10 @@ export function RelatedTransactionsDrawer({
           ))}
         </div>
 
-        <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <div className="p-4 bg-muted/50 rounded-lg border border-border">
           <div className="text-center space-y-1">
-            <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Net amount</div>
-            <div className={`text-lg font-bold ${netAmount >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+            <div className="text-sm font-medium text-foreground">Net amount</div>
+            <div className={`text-lg font-bold ${netAmount >= 0 ? "text-emerald-500" : "text-destructive"}`}>
               {netAmount >= 0 ? "+" : "−"}{formatCurrency(Math.abs(netAmount))}
             </div>
           </div>
@@ -411,7 +411,7 @@ export function RelatedTransactionsDrawer({
           <Button
             variant="outline"
             onClick={handleUngroup}
-            className="w-full border-purple-500 text-purple-600 hover:bg-purple-50 dark:border-purple-400 dark:text-purple-400 dark:hover:bg-purple-900/20"
+            className="w-full border-[#7C3AED]/30 text-[#7C3AED] hover:bg-[#7C3AED]/20"
           >
             <Unlink className="h-4 w-4 mr-2" />
             Ungroup expense
@@ -427,10 +427,10 @@ export function RelatedTransactionsDrawer({
     return (
       <div className="space-y-6">
         <div className="text-center">
-          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
+          <div className="text-sm font-medium text-foreground mb-4">
             Transfer Group ({transferGroup.length} legs)
           </div>
-          <div className="flex items-center justify-center gap-2 text-gray-500">
+          <div className="flex items-center justify-center gap-2 text-muted-foreground">
             <ArrowRight className="h-4 w-4" />
             <span className="text-xs">Money movement between accounts</span>
           </div>
@@ -442,23 +442,23 @@ export function RelatedTransactionsDrawer({
             <div key={t.id} className="relative">
               {index > 0 && (
                 <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                  <ArrowDown className="h-3 w-3 text-gray-400" />
+                  <ArrowDown className="h-3 w-3 text-muted-foreground" />
                 </div>
               )}
               <div className={`p-4 rounded-lg border ${t.direction === 'debit'
-                ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-                : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                ? 'bg-destructive/10 border-destructive/20'
+                : 'bg-emerald-500/10 border-emerald-500/20'
                 }`}>
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm truncate">{t.description}</div>
-                    <div className={`text-xs ${t.direction === 'debit' ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                    <div className={`text-xs ${t.direction === 'debit' ? 'text-destructive' : 'text-emerald-500'}`}>
                       {formatDate(t.date)} · {formatCurrency(Math.abs(t.amount))} · {t.account.split(' ').slice(0, -2).join(' ')}
                     </div>
                     <div className="flex items-center gap-2 mt-2">
                       <Badge
                         variant="outline"
-                        className={`text-xs ${t.direction === 'debit' ? 'border-red-500 text-red-600 dark:text-red-400' : 'border-green-500 text-green-600 dark:text-green-400'}`}
+                        className={`text-xs ${t.direction === 'debit' ? 'border-destructive/50 text-destructive' : 'border-emerald-500/50 text-emerald-500'}`}
                       >
                         {t.direction === 'debit' ? 'Out' : 'In'}
                       </Badge>
@@ -474,7 +474,7 @@ export function RelatedTransactionsDrawer({
                       variant="ghost"
                       size="sm"
                       onClick={() => handleRemoveFromGroup(t.id)}
-                      className="ml-3 h-8 w-8 p-0 text-red-400 hover:text-red-300"
+                      className="ml-3 h-8 w-8 p-0 text-destructive/70 hover:text-destructive"
                     >
                       <Trash2 className="h-3 w-3" />
                     </Button>
@@ -486,16 +486,16 @@ export function RelatedTransactionsDrawer({
         </div>
 
         {/* Net Effect */}
-        <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <div className="p-4 bg-muted/50 rounded-lg border border-border">
           <div className="text-center space-y-2">
-            <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            <div className="text-sm font-medium text-foreground">
               Transfer Net Effect
             </div>
-            <div className={`text-lg font-bold ${Math.abs(netAmount) < 1 ? 'text-gray-600 dark:text-gray-400' : 'text-red-600 dark:text-red-400'}`}>
+            <div className={`text-lg font-bold ${Math.abs(netAmount) < 1 ? 'text-muted-foreground' : 'text-destructive'}`}>
               {formatCurrency(Math.abs(netAmount))}
               {Math.abs(netAmount) >= 1 && " ⚠️"}
             </div>
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-muted-foreground">
               Should be zero for proper transfers
             </div>
           </div>
@@ -506,7 +506,7 @@ export function RelatedTransactionsDrawer({
           <Button
             variant="outline"
             onClick={handleUngroup}
-            className="w-full border-red-500 text-red-600 hover:bg-red-50 dark:border-red-400 dark:text-red-400 dark:hover:bg-red-900/20"
+            className="w-full border-destructive/50 text-destructive hover:bg-destructive/10"
           >
             <Trash2 className="h-4 w-4 mr-2" />
             Remove Entire Group
@@ -531,10 +531,10 @@ export function RelatedTransactionsDrawer({
     return (
       <div className="space-y-6">
         <div className="text-center">
-          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
+          <div className="text-sm font-medium text-foreground mb-4">
             Split Transaction ({childTransactions.length} parts)
           </div>
-          <div className="flex items-center justify-center gap-2 text-gray-500">
+          <div className="flex items-center justify-center gap-2 text-muted-foreground">
             <span className="text-base">⚡</span>
             <span className="text-xs">One transaction split into multiple categories</span>
           </div>
@@ -544,25 +544,25 @@ export function RelatedTransactionsDrawer({
         {parentTransaction && (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="border-purple-500 text-purple-600 dark:text-purple-400">
+              <Badge variant="outline" className="border-[#7C3AED]/30 text-[#7C3AED]">
                 Original Transaction
               </Badge>
             </div>
-            <div className="p-4 rounded-lg border-2 bg-purple-100 dark:bg-purple-900/40 border-purple-300 dark:border-purple-700">
+            <div className="p-4 rounded-lg border-2 bg-[#7C3AED]/10 border-[#7C3AED]/30">
               <div className="space-y-2">
                 <div className="font-medium text-sm">{parentTransaction.description}</div>
-                <div className="text-xs text-purple-700 dark:text-purple-300">
+                <div className="text-xs text-[#7C3AED]">
                   {formatDate(parentTransaction.date)}
                 </div>
-                <div className="text-xs text-purple-700 dark:text-purple-300">
+                <div className="text-xs text-[#7C3AED]">
                   <span className="font-medium">Account:</span> {parentTransaction.account ? parentTransaction.account.split(' ').slice(0, -2).join(' ') || parentTransaction.account : '—'}
                 </div>
                 {parentTransaction.paid_by && (
-                  <div className="text-xs text-purple-700 dark:text-purple-300">
+                  <div className="text-xs text-[#7C3AED]">
                     <span className="font-medium">Paid by:</span> {parentTransaction.paid_by}
                   </div>
                 )}
-                <div className="text-xs text-purple-700 dark:text-purple-300 pt-1">
+                <div className="text-xs text-[#7C3AED] pt-1">
                   {parentTransaction.is_shared && parentTransaction.split_share_amount != null ? (
                     <>
                       <span className="font-medium">Your share:</span> {formatCurrency(Math.abs(parentTransaction.split_share_amount))}
@@ -588,7 +588,7 @@ export function RelatedTransactionsDrawer({
                   )}
                 </div>
                 {parentTransaction.notes && (
-                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-2 italic">
+                  <div className="text-xs text-muted-foreground mt-2 italic">
                     {parentTransaction.notes}
                   </div>
                 )}
@@ -600,7 +600,7 @@ export function RelatedTransactionsDrawer({
         {/* Visual Connector */}
         {parentTransaction && childTransactions.length > 0 && (
           <div className="flex justify-center">
-            <ArrowDown className="h-4 w-4 text-gray-400" />
+            <ArrowDown className="h-4 w-4 text-muted-foreground" />
           </div>
         )}
 
@@ -608,27 +608,27 @@ export function RelatedTransactionsDrawer({
         {childTransactions.length > 0 && (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="border-gray-400 text-gray-600 dark:text-gray-400">
+              <Badge variant="outline" className="border-border text-muted-foreground">
                 Split Parts ({childTransactions.length})
               </Badge>
             </div>
-            <div className="space-y-3 pl-4 border-l-2 border-gray-300 dark:border-gray-600">
+            <div className="space-y-3 pl-4 border-l-2 border-border">
               {childTransactions.map((t, index) => (
                 <div key={t.id} className="relative">
                   {index > 0 && (
                     <div className="absolute -top-3 left-0">
-                      <ArrowDown className="h-3 w-3 text-gray-400" />
+                      <ArrowDown className="h-3 w-3 text-muted-foreground" />
                     </div>
                   )}
-                  <div className="p-4 rounded-lg border bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800">
+                  <div className="p-4 rounded-lg border bg-[#7C3AED]/10 border-[#7C3AED]/20">
                     <div className="flex items-center justify-between">
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm truncate">{t.description}</div>
-                        <div className="text-xs text-purple-600 dark:text-purple-400">
+                        <div className="text-xs text-[#7C3AED]">
                           {formatDate(t.date)}
                           {t.account && ` · ${t.account.split(' ').slice(0, -2).join(' ') || t.account}`}
                         </div>
-                        <div className="text-xs text-purple-600 dark:text-purple-400 mt-0.5">
+                        <div className="text-xs text-[#7C3AED] mt-0.5">
                           {t.is_shared && t.split_share_amount != null ? (
                             <>
                               <span className="font-medium">Your share:</span> {formatCurrency(Math.abs(t.split_share_amount))}
@@ -654,7 +654,7 @@ export function RelatedTransactionsDrawer({
                           )}
                         </div>
                         {t.notes && (
-                          <div className="text-xs text-gray-500 mt-2 italic">
+                          <div className="text-xs text-muted-foreground mt-2 italic">
                             {t.notes}
                           </div>
                         )}
@@ -670,21 +670,21 @@ export function RelatedTransactionsDrawer({
         {/* Validation */}
         {parentTransaction && (
           <div className={`p-3 rounded-lg border ${isValid
-            ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-            : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+            ? 'bg-emerald-500/10 border-emerald-500/20'
+            : 'bg-destructive/10 border-destructive/20'
             }`}>
             <div className="flex items-center gap-2">
               {isValid ? (
                 <>
-                  <span className="text-green-600 dark:text-green-400">✓</span>
-                  <p className="text-xs text-green-700 dark:text-green-300">
+                  <span className="text-emerald-500">✓</span>
+                  <p className="text-xs text-emerald-500">
                     Amounts match: {formatCurrency(childrenTotal)} = {formatCurrency(parentAmount)}
                   </p>
                 </>
               ) : (
                 <>
-                  <span className="text-red-600 dark:text-red-400">⚠</span>
-                  <p className="text-xs text-red-700 dark:text-red-300">
+                  <span className="text-destructive">⚠</span>
+                  <p className="text-xs text-destructive">
                     Amount mismatch: Split parts ({formatCurrency(childrenTotal)}) ≠ Original ({formatCurrency(parentAmount)})
                   </p>
                 </>
@@ -695,8 +695,8 @@ export function RelatedTransactionsDrawer({
 
         {/* Info */}
         {parentTransaction && (
-          <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-            <p className="text-xs text-blue-700 dark:text-blue-300">
+          <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
+            <p className="text-xs text-primary">
               ✓ Original transaction is preserved in this group.
               Removing the split will restore it.
             </p>
@@ -708,7 +708,7 @@ export function RelatedTransactionsDrawer({
           <Button
             variant="outline"
             onClick={handleUngroup}
-            className="w-full border-purple-500 text-purple-600 hover:bg-purple-50 dark:border-purple-400 dark:text-purple-400 dark:hover:bg-purple-900/20"
+            className="w-full border-[#7C3AED]/30 text-[#7C3AED] hover:bg-[#7C3AED]/20"
           >
             <Trash2 className="h-4 w-4 mr-2" />
             Remove Split & Restore Original
@@ -727,10 +727,10 @@ export function RelatedTransactionsDrawer({
       />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 h-full w-96 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 shadow-xl z-50 transform transition-transform">
+      <div className="fixed right-0 top-0 h-full w-96 bg-card border-l border-border shadow-xl z-50 transform transition-transform">
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between p-4 border-b border-border">
             <div className="flex items-center gap-2">
               <span className="text-base">
                 {mode === "refund" ? "↩︎" : mode === "split" ? "⚡" : mode === "groupedExpense" ? <Layers className="h-4 w-4" /> : "⇄"}
@@ -761,7 +761,7 @@ export function RelatedTransactionsDrawer({
           </div>
 
           {/* Footer */}
-          <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="p-4 border-t border-border">
             <Button
               variant="outline"
               onClick={onClose}

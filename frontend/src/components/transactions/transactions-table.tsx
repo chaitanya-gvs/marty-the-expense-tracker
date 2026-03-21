@@ -36,7 +36,6 @@ import {
   Edit3,
   CreditCard,
   Wallet,
-  Calendar,
   ShoppingCart,
   Building2,
   MoreVertical,
@@ -50,7 +49,8 @@ import {
   Trash2,
   FileText,
   Layers,
-  ChevronDown
+  ChevronDown,
+  Keyboard
 } from "lucide-react";
 import { format } from "date-fns";
 import { TransactionEditModal } from "./transaction-edit-modal";
@@ -848,9 +848,9 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 className="h-8 w-8 p-0"
               >
                 {isAllSelected ? (
-                  <CheckSquare className="h-4 w-4 text-blue-600" />
+                  <CheckSquare className="h-4 w-4 text-primary" />
                 ) : isIndeterminate ? (
-                  <div className="h-4 w-4 border-2 border-blue-400 rounded bg-blue-100" />
+                  <div className="h-4 w-4 border-2 border-primary/50 rounded bg-primary/10" />
                 ) : (
                   <Square className="h-4 w-4" />
                 )}
@@ -864,7 +864,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 className="h-8 w-8 p-0"
               >
                 {selectedTransactionIds.has(row.original.id) ? (
-                  <CheckSquare className="h-4 w-4 text-blue-600" />
+                  <CheckSquare className="h-4 w-4 text-primary" />
                 ) : (
                   <Square className="h-4 w-4" />
                 )}
@@ -879,34 +879,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         ...baseColumns,
 
         // Date column
-        columnHelper.accessor("date", {
-          header: ({ column }) => (
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              className="h-8 px-2 gap-1 text-sm font-medium"
-            >
-              <Calendar className="h-4 w-4" />
-              Date
-              {column.getIsSorted() === "asc" ? (
-                <ArrowUp className="ml-1 h-3 w-3 text-blue-600" />
-              ) : column.getIsSorted() === "desc" ? (
-                <ArrowDown className="ml-1 h-3 w-3 text-blue-600" />
-              ) : (
-                <ArrowUpDown className="ml-1 h-3 w-3" />
-              )}
-            </Button>
-          ),
-          cell: ({ getValue }) => {
-            return (
-              <div className="text-left whitespace-nowrap">
-                {formatDate(getValue())}
-              </div>
-            );
-          },
-          size: 100,
-        }),
-
         // Description column (resizable)
         columnHelper.accessor("description", {
           header: () => (
@@ -1040,7 +1012,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
             return (
               <div
-                className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded"
+                className="cursor-pointer hover:bg-muted/50 p-2 rounded"
                 onClick={(e) => {
                   e.stopPropagation();
                   setEditingRow(row.original.id);
@@ -1070,11 +1042,11 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                         {description}
                       </div>
                       {isGroupedExpense && (
-                        <Layers className="h-3 w-3 text-purple-600 dark:text-purple-400 flex-shrink-0" />
+                        <Layers className="h-3 w-3 text-[#7C3AED] flex-shrink-0" />
                       )}
                     </div>
                     {row.original.notes && (
-                      <div className="text-xs text-gray-500 truncate" title={row.original.notes}>
+                      <div className="text-xs text-muted-foreground truncate" title={row.original.notes}>
                         {row.original.notes}
                       </div>
                     )}
@@ -1096,9 +1068,9 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               <span className="text-lg font-bold">₹</span>
               Amount
               {column.getIsSorted() === "asc" ? (
-                <ArrowUp className="ml-1 h-3 w-3 text-blue-600" />
+                <ArrowUp className="ml-1 h-3 w-3 text-primary" />
               ) : column.getIsSorted() === "desc" ? (
-                <ArrowDown className="ml-1 h-3 w-3 text-blue-600" />
+                <ArrowDown className="ml-1 h-3 w-3 text-primary" />
               ) : (
                 <ArrowUpDown className="ml-1 h-3 w-3" />
               )}
@@ -1160,7 +1132,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 <div className={cn(
                   "font-mono font-semibold text-sm inline-flex items-center px-2.5 py-0.5 rounded-md tabular-nums",
                   direction === "debit"
-                    ? "bg-primary/10 text-primary"
+                    ? "bg-destructive/10 text-destructive"
                     : "bg-emerald-500/10 text-emerald-500"
                 )}>
                   {direction === "debit" ? "↓" : "↑"} {formatCurrency(displayAmount)}
@@ -1198,10 +1170,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   className={cn(
                     "text-xs font-medium inline-flex items-center max-w-[120px]",
                     isSplitwise
-                      ? "border-purple-500 text-purple-700 bg-purple-50 dark:border-purple-400 dark:text-purple-300 dark:bg-purple-900/20"
+                      ? "border-[#7C3AED]/30 text-[#7C3AED] bg-[#7C3AED]/10"
                       : isCreditCard
-                        ? "border-blue-500 text-blue-700 bg-blue-50 dark:border-blue-400 dark:text-blue-300 dark:bg-blue-900/20"
-                        : "border-green-500 text-green-700 bg-green-50 dark:border-green-400 dark:text-green-300 dark:bg-green-900/20"
+                        ? "border-primary/50 text-primary bg-primary/10"
+                        : "border-emerald-500/50 text-emerald-500 bg-emerald-500/10"
                   )}
                 >
                   {icon}
@@ -1335,7 +1307,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
             return (
               <div
-                className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded whitespace-nowrap"
+                className="cursor-pointer hover:bg-muted/50 p-2 rounded whitespace-nowrap"
                 onClick={(e) => {
                   e.stopPropagation();
                   setEditingCategoryForTransaction(transaction.id);
@@ -1356,18 +1328,18 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   </Badge>
                 ) : categoryName ? (
                   <span
-                    className="text-xs text-gray-500 italic"
+                    className="text-xs text-muted-foreground italic"
                     title={`${categoryName} (deleted)`}
                   >
                     {categoryName} (deleted)
                   </span>
                 ) : (
-                  <span className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                  <span className="text-xs text-muted-foreground hover:text-foreground">
                     Click to add category
                   </span>
                 )}
                 {row.original.subcategory && (
-                  <div className="text-xs text-gray-500 mt-1 truncate max-w-[120px]">
+                  <div className="text-xs text-muted-foreground mt-1 truncate max-w-[120px]">
                     {row.original.subcategory}
                   </div>
                 )}
@@ -1500,7 +1472,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
             return (
               <div
-                className="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-thumb]:bg-gray-700 dark:hover:[&::-webkit-scrollbar-thumb]:bg-gray-600 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-1 rounded max-w-[140px]"
+                className="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30 cursor-pointer hover:bg-muted/50 p-1 rounded max-w-[140px]"
                 onClick={(e) => {
                   e.stopPropagation();
                   setEditingTagsForTransaction(transaction.id);
@@ -1534,7 +1506,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     ))}
                   </div>
                 ) : (
-                  <span className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 whitespace-nowrap">Click to add tags</span>
+                  <span className="text-xs text-muted-foreground hover:text-foreground whitespace-nowrap">Click to add tags</span>
                 )}
               </div>
             );
@@ -1586,8 +1558,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   className={cn(
                     "h-7 w-7 p-0 rounded-full transition-all duration-200",
                     transaction.is_shared
-                      ? "bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-400 dark:hover:bg-blue-800"
-                      : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
+                      ? "bg-primary/10 text-primary hover:bg-primary/20"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80",
                     isFocusedActionsColumn && focusedActionButton === 0 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={() => {
@@ -1606,8 +1578,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   className={cn(
                     "h-7 w-7 p-0 rounded-full transition-all duration-200",
                     transaction.transaction_group_id && !transaction.is_split
-                      ? "bg-purple-100 text-purple-600 hover:bg-purple-200 dark:bg-purple-900 dark:text-purple-400 dark:hover:bg-purple-800 shadow-[0_0_12px_rgba(147,51,234,0.5)] dark:shadow-[0_0_12px_rgba(147,51,234,0.4)]"
-                      : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
+                      ? "bg-[#7C3AED]/10 text-[#7C3AED] hover:bg-[#7C3AED]/20 shadow-[0_0_12px_rgba(124,58,237,0.5)]"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80",
                     isFocusedActionsColumn && focusedActionButton === 1 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={(e) => {
@@ -1633,8 +1605,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   className={cn(
                     "h-7 w-7 p-0 rounded-full transition-all duration-200",
                     isSplitGroup
-                      ? "bg-purple-100 text-purple-600 hover:bg-purple-200 dark:bg-purple-900 dark:text-purple-400 dark:hover:bg-purple-800"
-                      : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
+                      ? "bg-[#7C3AED]/10 text-[#7C3AED] hover:bg-[#7C3AED]/20"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80",
                     isFocusedActionsColumn && focusedActionButton === 2 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={(e) => {
@@ -1661,7 +1633,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     "h-7 w-7 p-0 rounded-full transition-all duration-200",
                     transaction.related_mails && transaction.related_mails.length > 0
                       ? "bg-amber-100 text-amber-600 hover:bg-amber-200 dark:bg-amber-900 dark:text-amber-400 dark:hover:bg-amber-800"
-                      : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
+                      : "bg-muted text-muted-foreground hover:bg-muted/80",
                     isFocusedActionsColumn && focusedActionButton === 3 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={(e) => {
@@ -1686,7 +1658,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border",
                     transaction.is_flagged === true
                       ? "border-orange-500 text-orange-600 hover:border-orange-600 hover:text-orange-700 dark:border-orange-400 dark:text-orange-400 dark:hover:border-orange-300 dark:hover:text-orange-300 bg-orange-50 dark:bg-orange-950"
-                      : "border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500 dark:border-gray-600 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-400 bg-transparent",
+                      : "border border-border text-muted-foreground hover:border-border/80 hover:text-foreground bg-transparent",
                     isFocusedActionsColumn && focusedActionButton === 4 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={async (e) => {
@@ -1714,7 +1686,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:text-gray-300 bg-transparent",
+                    "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-border text-muted-foreground hover:border-border/80 hover:text-foreground bg-transparent",
                     isFocusedActionsColumn && focusedActionButton === 5 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={async (e) => {
@@ -1743,7 +1715,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500 dark:border-gray-600 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-400 bg-transparent",
+                    "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-border text-muted-foreground hover:border-border/80 hover:text-foreground bg-transparent",
                     isFocusedActionsColumn && focusedActionButton === 6 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={(e) => {
@@ -1762,7 +1734,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     variant="ghost"
                     size="sm"
                     className={cn(
-                      "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500 dark:border-gray-600 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-400 bg-transparent",
+                      "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-border text-muted-foreground hover:border-border/80 hover:text-foreground bg-transparent",
                       isFocusedActionsColumn && focusedActionButton === 7 && "ring-2 ring-blue-500 ring-inset"
                     )}
                     onClick={(e) => {
@@ -1831,47 +1803,39 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       <div className="p-4 border-b border-border">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-medium text-foreground">
-                Transactions ({allTransactions.length} loaded{data?.pages?.[0]?.pagination?.total ? ` of ${data.pages[0].pagination.total}` : ''})
-              </h3>
-              {isKeyboardNavigationMode && (
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs">
-                    ⌨️ Keyboard Navigation Active
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">
-                    Tab: Save & move right • Enter: Edit • Arrow keys: Navigate • Esc: Exit
-                  </span>
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
+            {isKeyboardNavigationMode && (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs flex items-center gap-1">
+                  <Keyboard className="h-3 w-3" />
+                  Keyboard Navigation Active
+                </Badge>
+                <span className="text-xs text-muted-foreground">
+                  Tab: Save & move right • Enter: Edit • Arrow keys: Navigate • Esc: Exit
+                </span>
+              </div>
+            )}
             {!isMultiSelectMode && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setIsMultiSelectMode(true);
-                    // Initialize focused row index when entering multi-select mode
-                    if (allTransactions.length > 0) {
-                      setFocusedRowIndex(0);
-                    }
-                  }}
-                  className="flex items-center gap-2"
-                >
-                  <CheckSquare className="h-4 w-4" />
-                  Multi-Select
-                </Button>
-              </>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsMultiSelectMode(true);
+                  if (allTransactions.length > 0) {
+                    setFocusedRowIndex(0);
+                  }
+                }}
+                className="flex items-center gap-2"
+              >
+                <CheckSquare className="h-4 w-4" />
+                Multi-Select
+              </Button>
             )}
             {isMultiSelectMode && (
               <>
                 <Badge variant="secondary" className="text-sm">
                   {selectionSummary.total} selected
                   {selectionSummary.total > 0 && (
-                    <span className="ml-1 text-xs text-gray-500">
+                    <span className="ml-1 text-xs text-muted-foreground">
                       ({selectionSummary.debits} debits, {selectionSummary.credits} credits)
                     </span>
                   )}
@@ -1931,14 +1895,18 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 </Button>
               </>
             )}
-            </div>
           </div>
-          {isFetchingNextPage && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary"></div>
-              Loading more...
-            </div>
-          )}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {isFetchingNextPage && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary"></div>
+                Loading more...
+              </div>
+            )}
+            <span className="text-xs text-muted-foreground">
+              {allTransactions.length} loaded{data?.pages?.[0]?.pagination?.total ? ` of ${data.pages[0].pagination.total}` : ''}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -2124,7 +2092,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                             className={cn(
                               "text-xs font-mono",
                               member.direction === "debit"
-                                ? "border-primary/50 text-primary"
+                                ? "border-destructive/50 text-destructive"
                                 : "border-emerald-500/50 text-emerald-500"
                             )}
                           >
