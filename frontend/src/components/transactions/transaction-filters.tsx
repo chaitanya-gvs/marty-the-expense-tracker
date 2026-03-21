@@ -391,9 +391,12 @@ export function TransactionFilters({
     debouncedDateEnd,
     selectedDatePreset, // Ensure preset changes trigger
     selectedCategories,
+    excludeCategories,
     selectedTags,
     selectedAccounts,
+    excludeAccounts,
     selectedParticipants,
+    excludeParticipants,
     selectedDirection,
     selectedTransactionType,
     includeUncategorized,
@@ -789,11 +792,11 @@ export function TransactionFilters({
                             <Badge
                               key={`include-${account}`}
                               variant="secondary"
-                              className="mr-1 mb-0.5 bg-violet-400/15 text-violet-300 border-violet-400/30"
+                              className="mr-1 mb-0.5 bg-violet-400/15 text-violet-300 border-violet-400/30 max-w-[140px]"
                             >
-                              {account}
+                              <span className="truncate min-w-0">{account}</span>
                               <X
-                                className="h-3 w-3 ml-1 cursor-pointer hover:text-violet-100"
+                                className="h-3 w-3 ml-1 cursor-pointer hover:text-violet-100 flex-shrink-0"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setSelectedAccounts(selectedAccounts.filter((a) => a !== account));
@@ -805,9 +808,9 @@ export function TransactionFilters({
                             <Badge
                               key={`exclude-${account}`}
                               variant="secondary"
-                              className="mr-1 mb-0.5 bg-red-400/15 text-red-300 border-red-400/30"
+                              className="mr-1 mb-0.5 bg-red-400/15 text-red-300 border-red-400/30 max-w-[140px]"
                             >
-                              Not {account}
+                              <span className="truncate min-w-0">Not {account}</span>
                               <X
                                 className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100"
                                 onClick={(e) => {
@@ -881,7 +884,7 @@ export function TransactionFilters({
                                   <Check className="h-4 w-4" />
                                 </div>
                                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                                  <span className="truncate">{account}</span>
+                                  <span className="truncate min-w-0">{account}</span>
                                   {inInclude && (
                                     <Badge variant="outline" className="text-[10px] px-1 py-0 border-violet-500/50 text-violet-300">
                                       Include
@@ -956,11 +959,11 @@ export function TransactionFilters({
                             <Badge
                               key={`include-${category}`}
                               variant="secondary"
-                              className="mr-1 mb-0.5 bg-violet-400/15 text-violet-300 border-violet-400/30"
+                              className="mr-1 mb-0.5 bg-violet-400/15 text-violet-300 border-violet-400/30 max-w-[140px]"
                             >
-                              {category}
+                              <span className="truncate min-w-0">{category}</span>
                               <X
-                                className="h-3 w-3 ml-1 cursor-pointer hover:text-violet-100"
+                                className="h-3 w-3 ml-1 cursor-pointer hover:text-violet-100 flex-shrink-0"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setSelectedCategories(selectedCategories.filter((c) => c !== category));
@@ -972,11 +975,11 @@ export function TransactionFilters({
                             <Badge
                               key={`exclude-${category}`}
                               variant="secondary"
-                              className="mr-1 mb-0.5 bg-red-400/15 text-red-300 border-red-400/30"
+                              className="mr-1 mb-0.5 bg-red-400/15 text-red-300 border-red-400/30 max-w-[140px]"
                             >
-                              Not {category}
+                              <span className="truncate min-w-0">Not {category}</span>
                               <X
-                                className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100"
+                                className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100 flex-shrink-0"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setExcludeCategories(excludeCategories.filter((c) => c !== category));
@@ -1181,17 +1184,17 @@ export function TransactionFilters({
                         <>
                           {selectedParticipants.map((p) => (
                             <Badge key={`include-${p}`} variant="secondary"
-                              className="mr-1 mb-0.5 bg-violet-400/15 text-violet-300 border-violet-400/30">
-                              {p}
-                              <X className="h-3 w-3 ml-1 cursor-pointer hover:text-violet-100"
+                              className="mr-1 mb-0.5 bg-violet-400/15 text-violet-300 border-violet-400/30 max-w-[140px]">
+                              <span className="truncate min-w-0">{p}</span>
+                              <X className="h-3 w-3 ml-1 cursor-pointer hover:text-violet-100 flex-shrink-0"
                                 onClick={(e) => { e.stopPropagation(); setSelectedParticipants(selectedParticipants.filter(x => x !== p)); }} />
                             </Badge>
                           ))}
                           {excludeParticipants.map((p) => (
                             <Badge key={`exclude-${p}`} variant="secondary"
-                              className="mr-1 mb-0.5 bg-red-400/15 text-red-300 border-red-400/30">
-                              Not {p}
-                              <X className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100"
+                              className="mr-1 mb-0.5 bg-red-400/15 text-red-300 border-red-400/30 max-w-[140px]">
+                              <span className="truncate min-w-0">Not {p}</span>
+                              <X className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100 flex-shrink-0"
                                 onClick={(e) => { e.stopPropagation(); setExcludeParticipants(excludeParticipants.filter(x => x !== p)); }} />
                             </Badge>
                           ))}
