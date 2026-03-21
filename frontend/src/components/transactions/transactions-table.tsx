@@ -2098,8 +2098,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                         </td>
                         <td className="px-3 py-2 text-xs text-muted-foreground">{member.account.split(" ").slice(0, -2).join(" ")}</td>
                         <td className="px-3 py-2 text-xs text-muted-foreground">{member.category || "Uncategorized"}</td>
-                        <td className="px-3 py-2"></td>
-                        <td className="px-3 py-2"></td>
+                        <td colSpan={colCount - (isMultiSelectMode ? 6 : 5)} className="px-3 py-2"></td>
                       </tr>
                     ))}
                   </React.Fragment>
