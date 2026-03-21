@@ -306,34 +306,34 @@ export function EmailLinksDrawer({
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
+      <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto bg-card border-border">
         <SheetHeader>
-          <SheetTitle>Email Links</SheetTitle>
-          <SheetDescription>
+          <SheetTitle className="text-foreground">Email Links</SheetTitle>
+          <SheetDescription className="text-muted-foreground">
             Search and link emails related to this transaction
           </SheetDescription>
         </SheetHeader>
 
         <div className="mt-6 space-y-6">
           {/* Transaction Info */}
-          <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg space-y-2">
-            <div className="text-sm font-medium">Transaction Details</div>
-            <div className="text-sm text-gray-600 dark:text-gray-400">
+          <div className="bg-muted/50 p-4 rounded-lg space-y-2 border border-border">
+            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Transaction Details</div>
+            <div className="text-sm text-muted-foreground space-y-1.5">
               <div className="flex justify-between">
-                <span>Description:</span>
-                <span className="font-medium text-gray-900 dark:text-gray-100">
+                <span>Description</span>
+                <span className="font-medium text-foreground">
                   {transaction.description}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>Amount:</span>
-                <span className="font-medium text-gray-900 dark:text-gray-100">
+                <span>Amount</span>
+                <span className="font-mono tabular-nums font-medium text-foreground">
                   ₹{transaction.amount.toFixed(2)}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>Date:</span>
-                <span className="font-medium text-gray-900 dark:text-gray-100">
+                <span>Date</span>
+                <span className="font-medium text-foreground">
                   {format(new Date(transaction.date), "MMM dd, yyyy")}
                 </span>
               </div>
@@ -343,19 +343,19 @@ export function EmailLinksDrawer({
           {/* Linked Emails Section */}
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <Mail className="h-4 w-4" />
+              <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <Mail className="h-3.5 w-3.5" />
                 Linked Emails
                 {linkedEmails.length > 0 && (
-                  <Badge variant="secondary">{linkedEmails.length}</Badge>
+                  <Badge className="bg-violet-400/15 text-violet-300 border border-violet-400/30 text-xs">{linkedEmails.length}</Badge>
                 )}
               </h3>
             </div>
 
             {isLoadingLinkedEmails ? (
-              <div className="flex items-center justify-center py-8 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-                <span className="ml-2 text-sm text-gray-500">Loading linked emails...</span>
+              <div className="flex items-center justify-center py-8 bg-muted/50 rounded-lg border border-border">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-sm text-muted-foreground">Loading linked emails...</span>
               </div>
             ) : linkedEmails.length > 0 ? (
               <div className="space-y-3">
@@ -371,10 +371,10 @@ export function EmailLinksDrawer({
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <Mail className="h-12 w-12 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
-                <p className="text-sm text-gray-500">No emails linked yet</p>
-                <p className="text-xs text-gray-400 mt-1">
+              <div className="text-center py-8 bg-muted/50 rounded-lg border border-border">
+                <Mail className="h-12 w-12 mx-auto text-muted-foreground/30 mb-2" />
+                <p className="text-sm text-muted-foreground">No emails linked yet</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">
                   Use the search below to find and link related emails
                 </p>
               </div>
@@ -382,9 +382,9 @@ export function EmailLinksDrawer({
           </div>
 
           {/* Search Section */}
-          <div className="border-t pt-6">
-            <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
-              <Search className="h-4 w-4" />
+          <div className="border-t border-border pt-6">
+            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-4 flex items-center gap-2">
+              <Search className="h-3.5 w-3.5" />
               Search & Link Emails
             </h3>
 
@@ -396,6 +396,7 @@ export function EmailLinksDrawer({
                     id="custom-dates"
                     checked={useCustomDates}
                     onCheckedChange={setUseCustomDates}
+                    className="data-[state=checked]:bg-violet-500"
                   />
                   <Label htmlFor="custom-dates" className="text-sm">
                     Use custom date range
@@ -453,6 +454,7 @@ export function EmailLinksDrawer({
                   id="amount-filter"
                   checked={includeAmountFilter}
                   onCheckedChange={setIncludeAmountFilter}
+                  className="data-[state=checked]:bg-violet-500"
                 />
                 <Label htmlFor="amount-filter" className="text-sm">
                   Filter by amount (₹{transaction.amount.toFixed(2)})
@@ -472,7 +474,7 @@ export function EmailLinksDrawer({
                   onChange={(e) => setCustomSearchTerm(e.target.value)}
                   className="text-sm"
                 />
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-muted-foreground">
                   Search for specific keywords in email subject or content. This will override amount filtering.
                 </p>
               </div>
@@ -481,7 +483,8 @@ export function EmailLinksDrawer({
               <Button
                 onClick={handleSearch}
                 disabled={isSearching}
-                className="w-full"
+                variant="outline"
+                className="w-full bg-violet-500/15 text-violet-300 border border-violet-400/40 hover:bg-violet-500/25 hover:text-violet-200"
               >
                 {isSearching ? (
                   <>
@@ -500,25 +503,25 @@ export function EmailLinksDrawer({
 
           {/* Search Results / Suggested Emails */}
           {hasSearched && (
-            <div className="border-t pt-6">
-              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+            <div className="border-t border-border pt-6">
+              <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
                 {isAutoSearch ? (
                   <>
-                    <Mail className="h-4 w-4" />
+                    <Mail className="h-3.5 w-3.5" />
                     Suggested Emails
                   </>
                 ) : (
                   <>
-                    <Search className="h-4 w-4" />
+                    <Search className="h-3.5 w-3.5" />
                     Search Results
                   </>
                 )}
                 {searchResults.length > 0 && (
-                  <Badge variant="secondary">{searchResults.length}</Badge>
+                  <Badge className="bg-muted/80 text-muted-foreground border border-border text-xs">{searchResults.length}</Badge>
                 )}
               </h3>
               {isAutoSearch && (
-                <p className="text-xs text-gray-500 mb-3">
+                <p className="text-xs text-muted-foreground mb-3">
                   We found these emails that might be related to this transaction. You can refine your search using the filters above.
                 </p>
               )}
@@ -537,10 +540,10 @@ export function EmailLinksDrawer({
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-8 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <AlertCircle className="h-12 w-12 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
-                  <p className="text-sm text-gray-500">No emails found</p>
-                  <p className="text-xs text-gray-400 mt-1">
+                <div className="text-center py-8 bg-muted/50 rounded-lg border border-border">
+                  <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground/30 mb-2" />
+                  <p className="text-sm text-muted-foreground">No emails found</p>
+                  <p className="text-xs text-muted-foreground/70 mt-1">
                     Try adjusting your search filters
                   </p>
                 </div>

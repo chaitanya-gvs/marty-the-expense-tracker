@@ -233,7 +233,8 @@ export function RelatedTransactionsDrawer({
 
   const renderGroupedExpenseMode = () => {
     const members = transferGroup.filter(t => !t.is_grouped_expense);
-    const groupNet = members.reduce((sum, t) => sum + t.amount, 0);
+    const groupNet = members.reduce((sum, t) =>
+      sum + (t.direction === 'debit' ? -Math.abs(t.amount) : Math.abs(t.amount)), 0);
 
     if (members.length === 0) {
       return (
@@ -315,7 +316,11 @@ export function RelatedTransactionsDrawer({
     const childTxs = transferGroup.filter(t => t.is_split === true);
     const childrenTotal = childTxs.reduce((sum, t) => sum + Math.abs(t.amount), 0);
     const parentAmount = parentTx ? Math.abs(parentTx.amount) : 0;
-    const isValid = Math.abs(childrenTotal - parentAmount) < 0.01;
+    // When the parent is a shared/split transaction, compare against the user's share, not the full amount
+    const parentComparableAmount = parentTx?.is_shared && parentTx?.split_share_amount != null
+      ? Math.abs(parentTx.split_share_amount)
+      : parentAmount;
+    const isValid = Math.abs(childrenTotal - parentComparableAmount) < 0.01;
 
     return (
       <div className="space-y-4">
@@ -390,8 +395,8 @@ export function RelatedTransactionsDrawer({
             : "bg-[#F44D4D]/10 border-[#F44D4D]/20 text-[#F44D4D]"
         )}>
           {isValid
-            ? <><Check className="h-3.5 w-3.5 shrink-0" /> Amounts match: {formatCurrency(childrenTotal)} = {formatCurrency(parentAmount)}</>
-            : <><AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Mismatch: parts ({formatCurrency(childrenTotal)}) ≠ original ({formatCurrency(parentAmount)})</>
+            ? <><Check className="h-3.5 w-3.5 shrink-0" /> Amounts match: {formatCurrency(childrenTotal)} = {formatCurrency(parentComparableAmount)}</>
+            : <><AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Mismatch: parts ({formatCurrency(childrenTotal)}) ≠ original ({formatCurrency(parentComparableAmount)})</>
           }
         </div>
 

@@ -1555,8 +1555,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   className={cn(
                     "h-7 w-7 p-0 rounded-full transition-all duration-200",
                     transaction.is_shared
-                      ? "bg-primary/10 text-primary hover:bg-primary/20"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80",
+                      ? "bg-violet-400/15 text-violet-300 hover:bg-violet-400/20 shadow-[0_0_12px_rgba(196,181,253,0.2)]"
+                      : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                     isFocusedActionsColumn && focusedActionButton === 0 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={() => {
@@ -1575,8 +1575,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   className={cn(
                     "h-7 w-7 p-0 rounded-full transition-all duration-200",
                     transaction.transaction_group_id && !transaction.is_split
-                      ? "bg-violet-400/15 text-violet-300 hover:bg-violet-400/20 shadow-[0_0_12px_rgba(196,181,253,0.2)]"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80",
+                      ? "bg-teal-400/15 text-teal-300 hover:bg-teal-400/20 shadow-[0_0_12px_rgba(45,212,191,0.2)]"
+                      : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                     isFocusedActionsColumn && focusedActionButton === 1 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={(e) => {
@@ -1602,8 +1602,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   className={cn(
                     "h-7 w-7 p-0 rounded-full transition-all duration-200",
                     isSplitGroup
-                      ? "bg-violet-400/15 text-violet-300 hover:bg-violet-400/20"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80",
+                      ? "bg-sky-400/15 text-sky-300 hover:bg-sky-400/20 shadow-[0_0_12px_rgba(125,211,252,0.2)]"
+                      : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                     isFocusedActionsColumn && focusedActionButton === 2 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={(e) => {
@@ -1629,8 +1629,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   className={cn(
                     "h-7 w-7 p-0 rounded-full transition-all duration-200",
                     transaction.related_mails && transaction.related_mails.length > 0
-                      ? "bg-amber-100 text-amber-600 hover:bg-amber-200 dark:bg-amber-900 dark:text-amber-400 dark:hover:bg-amber-800"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80",
+                      ? "bg-amber-400/15 text-amber-300 hover:bg-amber-400/20 shadow-[0_0_12px_rgba(251,191,36,0.2)]"
+                      : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                     isFocusedActionsColumn && focusedActionButton === 3 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={(e) => {
@@ -1652,10 +1652,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border",
+                    "h-7 w-7 p-0 rounded-full transition-all duration-200",
                     transaction.is_flagged === true
-                      ? "border-orange-500 text-orange-600 hover:border-orange-600 hover:text-orange-700 dark:border-orange-400 dark:text-orange-400 dark:hover:border-orange-300 dark:hover:text-orange-300 bg-orange-50 dark:bg-orange-950"
-                      : "border border-border text-muted-foreground hover:border-border/80 hover:text-foreground bg-transparent",
+                      ? "bg-[#F44D4D]/15 text-[#F44D4D] hover:bg-[#F44D4D]/20 shadow-[0_0_12px_rgba(244,77,77,0.2)]"
+                      : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                     isFocusedActionsColumn && focusedActionButton === 4 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={async (e) => {
@@ -1683,7 +1683,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-border text-muted-foreground hover:border-border/80 hover:text-foreground bg-transparent",
+                    "h-7 w-7 p-0 rounded-full transition-all duration-200 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                     isFocusedActionsColumn && focusedActionButton === 5 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={async (e) => {
@@ -1712,7 +1712,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-border text-muted-foreground hover:border-border/80 hover:text-foreground bg-transparent",
+                    "h-7 w-7 p-0 rounded-full transition-all duration-200 bg-muted/40 text-muted-foreground hover:bg-[#F44D4D]/15 hover:text-[#F44D4D]",
                     isFocusedActionsColumn && focusedActionButton === 6 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={(e) => {
@@ -1731,7 +1731,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     variant="ghost"
                     size="sm"
                     className={cn(
-                      "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-border text-muted-foreground hover:border-border/80 hover:text-foreground bg-transparent",
+                      "h-7 w-7 p-0 rounded-full transition-all duration-200 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                       isFocusedActionsColumn && focusedActionButton === 7 && "ring-2 ring-blue-500 ring-inset"
                     )}
                     onClick={(e) => {
