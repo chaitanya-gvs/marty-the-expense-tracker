@@ -789,7 +789,7 @@ export function TransactionFilters({
                             <Badge
                               key={`include-${account}`}
                               variant="secondary"
-                              className="mr-1 mb-0.5 bg-violet-600/20 text-violet-200 border-violet-500/50"
+                              className="mr-1 mb-0.5 bg-violet-400/15 text-violet-300 border-violet-400/30"
                             >
                               {account}
                               <X
@@ -805,7 +805,7 @@ export function TransactionFilters({
                             <Badge
                               key={`exclude-${account}`}
                               variant="secondary"
-                              className="mr-1 mb-0.5 bg-red-600/20 text-red-200 border-red-500/50"
+                              className="mr-1 mb-0.5 bg-red-400/15 text-red-300 border-red-400/30"
                             >
                               Not {account}
                               <X
@@ -872,9 +872,9 @@ export function TransactionFilters({
                                   className={cn(
                                     "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
                                     inInclude
-                                      ? "border-violet-500 bg-violet-500 text-white"
+                                      ? "border-violet-400 bg-violet-400/25 text-violet-200"
                                       : inExclude
-                                        ? "border-red-500 bg-red-500 text-white"
+                                        ? "border-red-400 bg-red-400/25 text-red-200"
                                         : "border-slate-500 opacity-50 [&_svg]:invisible"
                                   )}
                                 >
@@ -956,7 +956,7 @@ export function TransactionFilters({
                             <Badge
                               key={`include-${category}`}
                               variant="secondary"
-                              className="mr-1 mb-0.5 bg-violet-600/20 text-violet-200 border-violet-500/50"
+                              className="mr-1 mb-0.5 bg-violet-400/15 text-violet-300 border-violet-400/30"
                             >
                               {category}
                               <X
@@ -972,7 +972,7 @@ export function TransactionFilters({
                             <Badge
                               key={`exclude-${category}`}
                               variant="secondary"
-                              className="mr-1 mb-0.5 bg-red-600/20 text-red-200 border-red-500/50"
+                              className="mr-1 mb-0.5 bg-red-400/15 text-red-300 border-red-400/30"
                             >
                               Not {category}
                               <X
@@ -1053,9 +1053,9 @@ export function TransactionFilters({
                                   className={cn(
                                     "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
                                     inInclude
-                                      ? "border-violet-500 bg-violet-500 text-white"
+                                      ? "border-violet-400 bg-violet-400/25 text-violet-200"
                                       : inExclude
-                                        ? "border-red-500 bg-red-500 text-white"
+                                        ? "border-red-400 bg-red-400/25 text-red-200"
                                         : "border-slate-500 opacity-50 [&_svg]:invisible"
                                   )}
                                 >
@@ -1181,7 +1181,7 @@ export function TransactionFilters({
                         <>
                           {selectedParticipants.map((p) => (
                             <Badge key={`include-${p}`} variant="secondary"
-                              className="mr-1 mb-0.5 bg-violet-600/20 text-violet-200 border-violet-500/50">
+                              className="mr-1 mb-0.5 bg-violet-400/15 text-violet-300 border-violet-400/30">
                               {p}
                               <X className="h-3 w-3 ml-1 cursor-pointer hover:text-violet-100"
                                 onClick={(e) => { e.stopPropagation(); setSelectedParticipants(selectedParticipants.filter(x => x !== p)); }} />
@@ -1189,7 +1189,7 @@ export function TransactionFilters({
                           ))}
                           {excludeParticipants.map((p) => (
                             <Badge key={`exclude-${p}`} variant="secondary"
-                              className="mr-1 mb-0.5 bg-red-600/20 text-red-200 border-red-500/50">
+                              className="mr-1 mb-0.5 bg-red-400/15 text-red-300 border-red-400/30">
                               Not {p}
                               <X className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100"
                                 onClick={(e) => { e.stopPropagation(); setExcludeParticipants(excludeParticipants.filter(x => x !== p)); }} />
@@ -1235,8 +1235,8 @@ export function TransactionFilters({
                                 }
                               }}>
                               <div className={cn("mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
-                                inInclude ? "border-violet-500 bg-violet-500 text-white"
-                                : inExclude ? "border-red-500 bg-red-500 text-white"
+                                inInclude ? "border-violet-400 bg-violet-400/25 text-violet-200"
+                                : inExclude ? "border-red-400 bg-red-400/25 text-red-200"
                                 : "border-slate-500 opacity-50 [&_svg]:invisible")}>
                                 <Check className="h-4 w-4" />
                               </div>

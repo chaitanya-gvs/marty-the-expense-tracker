@@ -1044,7 +1044,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                         {description}
                       </div>
                       {isGroupedExpense && (
-                        <Layers className="h-3 w-3 text-[#7C3AED] flex-shrink-0" />
+                        <Layers className="h-3 w-3 text-violet-300 flex-shrink-0" />
                       )}
                     </div>
                     {row.original.notes && (
@@ -1134,8 +1134,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 <div className={cn(
                   "font-mono font-semibold text-sm inline-flex items-center px-2.5 py-0.5 rounded-md tabular-nums",
                   direction === "debit"
-                    ? "bg-destructive/10 text-destructive"
-                    : "bg-emerald-500/10 text-emerald-500"
+                    ? "bg-[#F44D4D]/15 text-[#F44D4D]"
+                    : "bg-emerald-400/15 text-emerald-300"
                 )}>
                   {direction === "debit" ? "↓" : "↑"} {formatCurrency(displayAmount)}
                 </div>
@@ -1170,10 +1170,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 <div className={cn(
                   "font-semibold text-sm inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md max-w-[120px] overflow-hidden",
                   isSplitwise
-                    ? "text-[#7C3AED] bg-[#7C3AED]/10"
+                    ? "text-violet-300 bg-violet-400/15"
                     : isCreditCard
-                      ? "text-primary bg-primary/10"
-                      : "text-emerald-500 bg-emerald-500/10"
+                      ? "text-amber-300 bg-amber-400/15"
+                      : "text-teal-300 bg-teal-400/15"
                 )}>
                   {icon}
                   <span className="truncate">{processedName}</span>
@@ -1575,7 +1575,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   className={cn(
                     "h-7 w-7 p-0 rounded-full transition-all duration-200",
                     transaction.transaction_group_id && !transaction.is_split
-                      ? "bg-[#7C3AED]/10 text-[#7C3AED] hover:bg-[#7C3AED]/20 shadow-[0_0_12px_rgba(124,58,237,0.5)]"
+                      ? "bg-violet-400/15 text-violet-300 hover:bg-violet-400/20 shadow-[0_0_12px_rgba(196,181,253,0.2)]"
                       : "bg-muted text-muted-foreground hover:bg-muted/80",
                     isFocusedActionsColumn && focusedActionButton === 1 && "ring-2 ring-blue-500 ring-inset"
                   )}
@@ -1602,7 +1602,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   className={cn(
                     "h-7 w-7 p-0 rounded-full transition-all duration-200",
                     isSplitGroup
-                      ? "bg-[#7C3AED]/10 text-[#7C3AED] hover:bg-[#7C3AED]/20"
+                      ? "bg-violet-400/15 text-violet-300 hover:bg-violet-400/20"
                       : "bg-muted text-muted-foreground hover:bg-muted/80",
                     isFocusedActionsColumn && focusedActionButton === 2 && "ring-2 ring-blue-500 ring-inset"
                   )}
@@ -2089,8 +2089,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                             className={cn(
                               "text-xs font-mono",
                               member.direction === "debit"
-                                ? "border-destructive/50 text-destructive"
-                                : "border-emerald-500/50 text-emerald-500"
+                                ? "border-[#F44D4D]/40 text-[#F44D4D]"
+                                : "border-emerald-400/40 text-emerald-300"
                             )}
                           >
                             {formatCurrency(member.amount)}
