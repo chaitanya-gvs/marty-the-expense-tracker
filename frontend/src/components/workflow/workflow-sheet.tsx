@@ -67,27 +67,27 @@ function StatusBadge({ status }: { status: WorkflowJobStatus }) {
   > = {
     pending: {
       label: "Pending",
-      className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+      className: "bg-muted/50 text-muted-foreground",
       icon: <Clock className="h-3 w-3" />,
     },
     running: {
       label: "Running",
-      className: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+      className: "bg-sky-400/15 text-sky-300",
       icon: <Loader2 className="h-3 w-3 animate-spin" />,
     },
     completed: {
       label: "Completed",
-      className: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+      className: "bg-emerald-400/15 text-emerald-300",
       icon: <CheckCircle2 className="h-3 w-3" />,
     },
     failed: {
       label: "Failed",
-      className: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+      className: "bg-[#F44D4D]/15 text-[#F44D4D]",
       icon: <AlertCircle className="h-3 w-3" />,
     },
     cancelled: {
       label: "Cancelled",
-      className: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+      className: "bg-amber-400/15 text-amber-300",
       icon: <Square className="h-3 w-3" />,
     },
   };
@@ -117,15 +117,15 @@ function TaskStatusIcon({
   const cls = size === "sm" ? "h-3 w-3" : "h-4 w-4";
   switch (status) {
     case "running":
-      return <Loader2 className={cn(cls, "text-blue-500 animate-spin shrink-0")} />;
+      return <Loader2 className={cn(cls, "text-sky-400 animate-spin shrink-0")} />;
     case "done":
-      return <CheckCircle2 className={cn(cls, "text-green-500 shrink-0")} />;
+      return <CheckCircle2 className={cn(cls, "text-emerald-400 shrink-0")} />;
     case "error":
-      return <AlertCircle className={cn(cls, "text-red-500 shrink-0")} />;
+      return <AlertCircle className={cn(cls, "text-[#F44D4D] shrink-0")} />;
     case "skipped":
-      return <Info className={cn(cls, "text-slate-400 shrink-0")} />;
+      return <Info className={cn(cls, "text-muted-foreground shrink-0")} />;
     default:
-      return <Clock className={cn(cls, "text-slate-300 dark:text-slate-600 shrink-0")} />;
+      return <Clock className={cn(cls, "text-muted-foreground/40 shrink-0")} />;
   }
 }
 
@@ -134,13 +134,13 @@ function TaskStatusIcon({
 function LevelIcon({ level }: { level: WorkflowEvent["level"] }) {
   switch (level) {
     case "success":
-      return <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />;
+      return <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />;
     case "warning":
-      return <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-amber-500" />;
+      return <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-amber-400" />;
     case "error":
-      return <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />;
+      return <AlertCircle className="h-3.5 w-3.5 shrink-0 text-[#F44D4D]" />;
     default:
-      return <Info className="h-3.5 w-3.5 shrink-0 text-slate-400" />;
+      return <Info className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />;
   }
 }
 
@@ -166,17 +166,17 @@ function EventRow({ event, compact }: { event: WorkflowEvent; compact?: boolean 
 
   const rowBg =
     event.level === "error"
-      ? "bg-red-50 dark:bg-red-950/20"
+      ? "bg-[#F44D4D]/5"
       : event.level === "warning"
-      ? "bg-amber-50 dark:bg-amber-950/20"
+      ? "bg-amber-400/5"
       : event.level === "success"
-      ? "bg-green-50 dark:bg-green-950/20"
+      ? "bg-emerald-400/5"
       : "";
 
   return (
     <div
       className={cn(
-        "px-3 py-1.5 text-xs border-b border-slate-100 dark:border-slate-800 last:border-0",
+        "px-3 py-1.5 text-xs border-b border-border last:border-0",
         rowBg,
         compact && "py-1"
       )}
@@ -187,10 +187,10 @@ function EventRow({ event, compact }: { event: WorkflowEvent; compact?: boolean 
         </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-slate-700 dark:text-slate-300 leading-snug break-words">
+            <span className="text-foreground leading-snug break-words">
               {event.message}
             </span>
-            <span className="shrink-0 text-[11px] text-slate-400 tabular-nums">{ts}</span>
+            <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums font-mono">{ts}</span>
           </div>
 
           {isPdfPages && !isFallback && hasPages && (
@@ -198,7 +198,7 @@ function EventRow({ event, compact }: { event: WorkflowEvent; compact?: boolean 
               {keptPages.map((pg) => (
                 <span
                   key={pg}
-                  className="inline-flex items-center gap-0.5 rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[11px] font-mono text-slate-600 dark:text-slate-400"
+                  className="inline-flex items-center gap-0.5 rounded bg-muted/50 px-1.5 py-0.5 text-[11px] font-mono text-muted-foreground"
                 >
                   <FileSearch className="h-2.5 w-2.5" />
                   p{pg}
@@ -208,7 +208,7 @@ function EventRow({ event, compact }: { event: WorkflowEvent; compact?: boolean 
           )}
 
           {isPdfPages && isFallback && (
-            <p className="mt-1 text-[11px] text-slate-500 italic">
+            <p className="mt-1 text-[11px] text-muted-foreground italic">
               No matching pages found — sending full PDF to extraction
             </p>
           )}
@@ -216,7 +216,7 @@ function EventRow({ event, compact }: { event: WorkflowEvent; compact?: boolean 
           {!isPdfPages && Object.keys(event.data).length > 0 && (
             <button
               onClick={() => setExpanded((v) => !v)}
-              className="mt-0.5 flex items-center gap-0.5 text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+              className="mt-0.5 flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground"
             >
               {expanded ? (
                 <ChevronDown className="h-3 w-3" />
@@ -227,7 +227,7 @@ function EventRow({ event, compact }: { event: WorkflowEvent; compact?: boolean 
             </button>
           )}
           {!isPdfPages && expanded && (
-            <pre className="mt-1 rounded bg-slate-100 dark:bg-slate-900 p-2 text-[10px] text-slate-600 dark:text-slate-400 overflow-x-auto whitespace-pre-wrap">
+            <pre className="mt-1 rounded bg-muted/50 p-2 text-[10px] text-muted-foreground overflow-x-auto whitespace-pre-wrap">
               {JSON.stringify(event.data, null, 2)}
             </pre>
           )}
@@ -266,7 +266,7 @@ function SubTaskItem({ subtask }: { subtask: WorkflowSubTask }) {
         onClick={() => hasEvents && setOpen((v) => !v)}
         className={cn(
           "w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left",
-          "hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors",
+          "hover:bg-muted/30 transition-colors",
           !hasEvents && "cursor-default"
         )}
       >
@@ -274,36 +274,36 @@ function SubTaskItem({ subtask }: { subtask: WorkflowSubTask }) {
         <span
           className={cn(
             "flex-1 font-medium",
-            subtask.status === "done" && "text-slate-500 dark:text-slate-400",
-            subtask.status === "skipped" && "text-slate-400 dark:text-slate-500 italic",
-            subtask.status === "pending" && "text-slate-400 dark:text-slate-500",
-            subtask.status === "running" && "text-slate-800 dark:text-slate-200",
-            subtask.status === "error" && "text-red-700 dark:text-red-400"
+            subtask.status === "done" && "text-muted-foreground",
+            subtask.status === "skipped" && "text-muted-foreground/60 italic",
+            subtask.status === "pending" && "text-muted-foreground/60",
+            subtask.status === "running" && "text-foreground",
+            subtask.status === "error" && "text-[#F44D4D]"
           )}
         >
           {subtask.label}
           {rowCount !== null && (
-            <span className="ml-1.5 font-normal text-slate-400 dark:text-slate-500">
+            <span className="ml-1.5 font-normal text-muted-foreground/60">
               · {rowCount} rows
             </span>
           )}
         </span>
         {hasEvents && (
-          <span className="shrink-0 text-[11px] text-slate-400 tabular-nums">
+          <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
             {subtask.events.length}
           </span>
         )}
         {hasEvents && (
           open ? (
-            <ChevronDown className="h-3 w-3 shrink-0 text-slate-400" />
+            <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
           ) : (
-            <ChevronRight className="h-3 w-3 shrink-0 text-slate-400" />
+            <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
           )
         )}
       </button>
 
       {open && hasEvents && (
-        <div className="ml-5 mb-1 rounded-md border border-slate-100 dark:border-slate-800 overflow-hidden">
+        <div className="ml-5 mb-1 rounded-md border border-border overflow-hidden">
           {subtask.events.map((ev, i) => (
             <EventRow key={i} event={ev} compact />
           ))}
@@ -326,11 +326,11 @@ function TaskItem({ task, autoExpand }: { task: WorkflowTask; autoExpand?: boole
   }, [task.status, autoExpand]);
 
   const statusColors: Record<TaskStatus, string> = {
-    running: "border-blue-200 dark:border-blue-800 bg-blue-50/40 dark:bg-blue-950/20",
-    done: "border-slate-200 dark:border-slate-700",
-    error: "border-red-200 dark:border-red-800 bg-red-50/40 dark:bg-red-950/20",
-    skipped: "border-slate-200 dark:border-slate-700 opacity-60",
-    pending: "border-slate-200 dark:border-slate-700 opacity-50",
+    running: "border-sky-400/30 bg-sky-400/5",
+    done: "border-border",
+    error: "border-[#F44D4D]/30 bg-[#F44D4D]/5",
+    skipped: "border-border opacity-60",
+    pending: "border-border opacity-50",
   };
 
   return (
@@ -343,37 +343,37 @@ function TaskItem({ task, autoExpand }: { task: WorkflowTask; autoExpand?: boole
       {/* Task header */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors"
+        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-muted/20 transition-colors"
       >
         <TaskStatusIcon status={task.status} />
         <span
           className={cn(
             "flex-1 text-sm font-medium",
-            task.status === "done" && "text-slate-600 dark:text-slate-400",
-            task.status === "pending" && "text-slate-400 dark:text-slate-500",
-            task.status === "skipped" && "text-slate-400 dark:text-slate-500 italic",
-            task.status === "running" && "text-slate-900 dark:text-slate-100",
-            task.status === "error" && "text-red-700 dark:text-red-400"
+            task.status === "done" && "text-muted-foreground",
+            task.status === "pending" && "text-muted-foreground/60",
+            task.status === "skipped" && "text-muted-foreground/60 italic",
+            task.status === "running" && "text-foreground",
+            task.status === "error" && "text-[#F44D4D]"
           )}
         >
           {task.label}
         </span>
         {task.subtasks.length > 0 && (
-          <span className="text-[11px] text-slate-400 tabular-nums shrink-0">
+          <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
             {task.subtasks.filter((s) => s.status === "done" || s.status === "skipped").length}/
             {task.subtasks.length}
           </span>
         )}
         {open ? (
-          <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
         ) : (
-          <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
         )}
       </button>
 
       {/* Subtasks */}
       {open && task.subtasks.length > 0 && (
-        <div className="pb-1.5 border-t border-slate-100 dark:border-slate-800">
+        <div className="pb-1.5 border-t border-border">
           {task.subtasks.map((sub) => (
             <SubTaskItem key={sub.id} subtask={sub} />
           ))}
@@ -394,7 +394,7 @@ function TaskTreeView({
 }) {
   if (tasks.length === 0) {
     return (
-      <div className="flex items-center justify-center h-24 text-slate-400 text-xs">
+      <div className="flex items-center justify-center h-24 text-muted-foreground text-xs">
         <Loader2 className="h-4 w-4 animate-spin mr-2" />
         Waiting for first task…
       </div>
@@ -469,7 +469,7 @@ function ConfigForm({ onStart }: ConfigFormProps) {
           <Label className="text-sm font-medium">Email date range (optional)</Label>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className="text-xs text-slate-500 mb-1 block">Start</Label>
+              <Label className="text-xs text-muted-foreground mb-1 block">Start</Label>
               <Input
                 type="date"
                 value={startDate}
@@ -478,7 +478,7 @@ function ConfigForm({ onStart }: ConfigFormProps) {
               />
             </div>
             <div>
-              <Label className="text-xs text-slate-500 mb-1 block">End</Label>
+              <Label className="text-xs text-muted-foreground mb-1 block">End</Label>
               <Input
                 type="date"
                 value={endDate}
@@ -494,10 +494,10 @@ function ConfigForm({ onStart }: ConfigFormProps) {
       {mode !== "resume" && (
         <div className="space-y-1.5">
           <Label className="text-sm font-medium">Splitwise date range (optional)</Label>
-          <p className="text-xs text-slate-500">Leave blank to auto-detect from last DB record</p>
+          <p className="text-xs text-muted-foreground">Leave blank to auto-detect from last DB record</p>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className="text-xs text-slate-500 mb-1 block">Start</Label>
+              <Label className="text-xs text-muted-foreground mb-1 block">Start</Label>
               <Input
                 type="date"
                 value={swStartDate}
@@ -506,7 +506,7 @@ function ConfigForm({ onStart }: ConfigFormProps) {
               />
             </div>
             <div>
-              <Label className="text-xs text-slate-500 mb-1 block">End</Label>
+              <Label className="text-xs text-muted-foreground mb-1 block">End</Label>
               <Input
                 type="date"
                 value={swEndDate}
@@ -523,25 +523,30 @@ function ConfigForm({ onStart }: ConfigFormProps) {
         <div className="flex items-center justify-between">
           <div>
             <Label className="text-sm font-medium">Secondary account</Label>
-            <p className="text-xs text-slate-500">Enable processing for secondary accounts</p>
+            <p className="text-xs text-muted-foreground">Enable processing for secondary accounts</p>
           </div>
           <Switch
             checked={secondaryAccount}
             onCheckedChange={setSecondaryAccount}
+            className="data-[state=checked]:bg-primary"
           />
         </div>
         <div className="flex items-center justify-between">
           <div>
             <Label className="text-sm font-medium">Override cache</Label>
-            <p className="text-xs text-slate-500">Bypass GCS resume checks and re-extract</p>
+            <p className="text-xs text-muted-foreground">Bypass GCS resume checks and re-extract</p>
           </div>
-          <Switch checked={override} onCheckedChange={setOverride} />
+          <Switch
+            checked={override}
+            onCheckedChange={setOverride}
+            className="data-[state=checked]:bg-primary"
+          />
         </div>
       </div>
 
       {/* Readiness banner */}
       {periodLoading && (
-        <div className="flex items-center gap-2 text-xs text-slate-400">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           Checking period status…
         </div>
@@ -550,26 +555,26 @@ function ConfigForm({ onStart }: ConfigFormProps) {
       {!periodLoading && periodCheck && periodCheck.total > 0 && (
         <>
           {periodCheck.all_done && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-3 py-2.5 flex gap-2.5">
-              <TriangleAlert className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
-              <div className="text-xs text-amber-800 dark:text-amber-300">
+            <div className="rounded-md border border-amber-400/30 bg-amber-400/10 px-3 py-2.5 flex gap-2.5">
+              <TriangleAlert className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
+              <div className="text-xs text-amber-300">
                 <p className="font-medium">Already fully processed for {periodCheck.month}</p>
-                <p className="mt-0.5 text-amber-700 dark:text-amber-400">
+                <p className="mt-0.5 text-amber-300/70">
                   All {periodCheck.total} statements are complete. Enable{" "}
-                  <span className="font-medium">Override cache</span> below to force re-extraction.
+                  <span className="font-medium text-amber-300">Override cache</span> below to force re-extraction.
                 </p>
               </div>
             </div>
           )}
 
           {periodCheck.has_partial && (
-            <div className="rounded-md border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 px-3 py-2.5 flex gap-2.5">
-              <Info className="h-4 w-4 shrink-0 text-blue-500 mt-0.5" />
-              <div className="text-xs text-blue-800 dark:text-blue-300">
+            <div className="rounded-md border border-sky-400/30 bg-sky-400/10 px-3 py-2.5 flex gap-2.5">
+              <Info className="h-4 w-4 shrink-0 text-sky-400 mt-0.5" />
+              <div className="text-xs text-sky-300">
                 <p className="font-medium">
                   Previous run was incomplete — {periodCheck.complete}/{periodCheck.total} done for {periodCheck.month}
                 </p>
-                <p className="mt-0.5 text-blue-700 dark:text-blue-400">
+                <p className="mt-0.5 text-sky-300/70">
                   {periodCheck.incomplete.length} statement{periodCheck.incomplete.length !== 1 ? "s" : ""} will be
                   picked up automatically:{" "}
                   {periodCheck.incomplete
@@ -586,7 +591,7 @@ function ConfigForm({ onStart }: ConfigFormProps) {
       <Button
         onClick={handleStart}
         disabled={isPending}
-        className="w-full gap-2"
+        className="w-full gap-2 bg-emerald-600 hover:bg-emerald-500 text-white"
       >
         {isPending ? (
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -640,7 +645,7 @@ function LiveLog({ jobId, onReset }: LiveLogProps) {
       <div className="flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <StatusBadge status={status} />
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-muted-foreground">
             {view === "tasks"
               ? `${tasks.length} task${tasks.length !== 1 ? "s" : ""}`
               : `${events.length} events`}
@@ -648,14 +653,14 @@ function LiveLog({ jobId, onReset }: LiveLogProps) {
         </div>
         <div className="flex gap-1.5">
           {/* View toggle */}
-          <div className="flex rounded-md border border-slate-200 dark:border-slate-700 overflow-hidden text-xs">
+          <div className="flex rounded-md border border-border overflow-hidden text-xs">
             <button
               onClick={() => setView("tasks")}
               className={cn(
                 "flex items-center gap-1 px-2 py-1 transition-colors",
                 view === "tasks"
-                  ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
-                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
               )}
             >
               <ListTree className="h-3.5 w-3.5" />
@@ -666,8 +671,8 @@ function LiveLog({ jobId, onReset }: LiveLogProps) {
               className={cn(
                 "flex items-center gap-1 px-2 py-1 transition-colors",
                 view === "log"
-                  ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
-                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
               )}
             >
               <List className="h-3.5 w-3.5" />
@@ -681,7 +686,7 @@ function LiveLog({ jobId, onReset }: LiveLogProps) {
               size="sm"
               onClick={handleCancel}
               disabled={isCancelling}
-              className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950/30"
+              className="gap-1.5 text-[#F44D4D] border-[#F44D4D]/30 hover:bg-[#F44D4D]/10 hover:text-[#F44D4D]"
             >
               {isCancelling ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -705,9 +710,9 @@ function LiveLog({ jobId, onReset }: LiveLogProps) {
         {view === "tasks" ? (
           <TaskTreeView tasks={tasks} bottomRef={bottomRef} />
         ) : (
-          <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs">
+          <div className="rounded-md border border-border bg-card text-xs">
             {events.length === 0 ? (
-              <div className="flex items-center justify-center h-24 text-slate-400">
+              <div className="flex items-center justify-center h-24 text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 Waiting for events…
               </div>
@@ -750,11 +755,11 @@ export function WorkflowSheet({ open, onOpenChange }: { open: boolean; onOpenCha
         )}
       >
         {/* Fixed header */}
-        <div className="shrink-0 px-6 pt-5 pb-4 border-b border-slate-100 dark:border-slate-800">
+        <div className="shrink-0 px-6 pt-5 pb-4 border-b border-border">
           <div className="flex items-start justify-between">
             <SheetHeader className="flex-1 min-w-0">
               <SheetTitle className="flex items-center gap-2">
-                <Play className="h-4 w-4 text-blue-500 fill-current shrink-0" />
+                <Play className="h-4 w-4 text-emerald-400 fill-current shrink-0" />
                 Run Workflow
               </SheetTitle>
               <SheetDescription>
@@ -767,7 +772,7 @@ export function WorkflowSheet({ open, onOpenChange }: { open: boolean; onOpenCha
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-slate-400 hover:text-slate-600"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
                 onClick={() => setExpanded((v) => !v)}
                 title={expanded ? "Collapse panel" : "Expand panel"}
               >
@@ -781,7 +786,7 @@ export function WorkflowSheet({ open, onOpenChange }: { open: boolean; onOpenCha
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-slate-400 hover:text-slate-600"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
                   title="Close panel"
                 >
                   <X className="h-4 w-4" />

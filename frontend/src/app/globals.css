@@ -88,7 +88,7 @@
   --card-foreground: #F8FAFC;
   --popover: #131418;
   --popover-foreground: #F8FAFC;
-  --primary: #3B82F6;
+  --primary: #6366F1;
   --primary-foreground: #FFFFFF;
   --secondary: #1A1B20;
   --secondary-foreground: #F8FAFC;
@@ -99,7 +99,7 @@
   --destructive: #EF4444;
   --border: rgba(255, 255, 255, 0.07);
   --input: rgba(255, 255, 255, 0.08);
-  --ring: #3B82F6;
+  --ring: #6366F1;
   --chart-1: #EF4444;
   --chart-2: #D97706;
   --chart-3: #0D9488;
@@ -107,12 +107,12 @@
   --chart-5: #64748B;
   --sidebar: #0A0B0E;
   --sidebar-foreground: #F8FAFC;
-  --sidebar-primary: #3B82F6;
+  --sidebar-primary: #6366F1;
   --sidebar-primary-foreground: #FFFFFF;
   --sidebar-accent: #131418;
   --sidebar-accent-foreground: #F8FAFC;
   --sidebar-border: rgba(255, 255, 255, 0.07);
-  --sidebar-ring: #3B82F6;
+  --sidebar-ring: #6366F1;
 
   /* Modal Design Tokens */
   --modal-bg: #0E0F13;
@@ -121,7 +121,7 @@
   --modal-border: rgba(255, 255, 255, 0.08);
   --modal-muted: #94A3B8;
   --modal-text: #F8FAFC;
-  --modal-accent: #3B82F6;
+  --modal-accent: #6366F1;
   --modal-accent-2: #D97706;
   --modal-accent-3: #0D9488;
   --modal-danger: #EF4444;

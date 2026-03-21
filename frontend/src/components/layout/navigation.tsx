@@ -5,15 +5,15 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import {
-  Receipt,
-  PieChart,
-  CheckCircle,
-  Settings,
-  CreditCard,
+  Wallet,
+  ArrowLeftRight,
+  TrendingUp,
+  Target,
+  HandCoins,
+  ScanSearch,
+  SlidersHorizontal,
   ChevronLeft,
   Menu,
-  Users,
-  BarChart3,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -25,12 +25,12 @@ import {
 } from "@/components/ui/tooltip";
 
 const navigation = [
-  { name: "Transactions", href: "/transactions", icon: Receipt },
-  { name: "Analytics", href: "/analytics", icon: BarChart3 },
-  { name: "Budgets", href: "/budgets", icon: PieChart },
-  { name: "Settlements", href: "/settlements", icon: Users },
-  { name: "Review", href: "/review", icon: CheckCircle },
-  { name: "Settings", href: "/settings", icon: Settings },
+  { name: "Transactions", href: "/transactions", icon: ArrowLeftRight },
+  { name: "Analytics", href: "/analytics", icon: TrendingUp },
+  { name: "Budgets", href: "/budgets", icon: Target },
+  { name: "Settlements", href: "/settlements", icon: HandCoins },
+  { name: "Review", href: "/review", icon: ScanSearch },
+  { name: "Settings", href: "/settings", icon: SlidersHorizontal },
 ];
 
 interface NavigationProps {
@@ -66,7 +66,7 @@ export function Navigation({ isCollapsed, onToggle }: NavigationProps) {
                   {isHeaderHovered ? (
                     <Menu className="h-5 w-5 text-primary" />
                   ) : (
-                    <CreditCard className="h-5 w-5 text-primary" />
+                    <Wallet className="h-5 w-5 text-primary" />
                   )}
                 </div>
               </TooltipTrigger>
@@ -77,7 +77,7 @@ export function Navigation({ isCollapsed, onToggle }: NavigationProps) {
           ) : (
             <>
               <div className="flex items-center gap-2">
-                <CreditCard className="h-5 w-5 text-primary" />
+                <Wallet className="h-5 w-5 text-primary" />
                 <h1 className="text-sm font-semibold text-sidebar-foreground tracking-tight">Expense Tracker</h1>
               </div>
               <div className="flex items-center gap-1">
@@ -95,9 +95,9 @@ export function Navigation({ isCollapsed, onToggle }: NavigationProps) {
           )}
         </div>
 
-        <div className="flex-1 p-2">
-          <ul className="space-y-0.5">
-            {navigation.map((item) => {
+        <div className="flex-1 p-2 flex flex-col">
+          <ul className="space-y-0.5 flex-1">
+            {navigation.filter(item => item.href !== "/settings").map((item) => {
               const isActive = pathname === item.href;
               return (
                 <li key={item.name}>
@@ -107,16 +107,13 @@ export function Navigation({ isCollapsed, onToggle }: NavigationProps) {
                         <Link
                           href={item.href}
                           className={cn(
-                            "flex items-center justify-center p-2.5 rounded-md text-sm font-medium transition-all duration-150",
+                            "flex items-center justify-center p-2.5 rounded-md text-sm transition-all duration-150",
                             isActive
-                              ? "bg-sidebar-accent text-primary border-l-2 border-primary"
-                              : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                              ? "bg-primary/15 text-primary font-semibold"
+                              : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground font-medium"
                           )}
                         >
-                          <item.icon className={cn(
-                            "h-4 w-4 flex-shrink-0",
-                            isActive ? "text-primary" : "text-muted-foreground"
-                          )} />
+                          <item.icon className="h-4 w-4 flex-shrink-0" />
                         </Link>
                       </TooltipTrigger>
                       <TooltipContent side="right" className="ml-2">
@@ -127,16 +124,13 @@ export function Navigation({ isCollapsed, onToggle }: NavigationProps) {
                     <Link
                       href={item.href}
                       className={cn(
-                        "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-all duration-150",
+                        "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-all duration-150",
                         isActive
-                          ? "bg-sidebar-accent text-primary border-l-2 border-primary pl-[10px]"
-                          : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                          ? "bg-primary/15 text-primary font-semibold"
+                          : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground font-medium"
                       )}
                     >
-                      <item.icon className={cn(
-                        "h-4 w-4 flex-shrink-0",
-                        isActive ? "text-primary" : "text-muted-foreground"
-                      )} />
+                      <item.icon className="h-4 w-4 flex-shrink-0" />
                       {item.name}
                     </Link>
                   )}
@@ -144,6 +138,45 @@ export function Navigation({ isCollapsed, onToggle }: NavigationProps) {
               );
             })}
           </ul>
+          <div className="border-t border-sidebar-border pt-1 mt-1">
+            {(() => {
+              const settingsItem = navigation.find(item => item.href === "/settings")!;
+              const isActive = pathname === settingsItem.href;
+              return isCollapsed ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link
+                      href={settingsItem.href}
+                      className={cn(
+                        "flex items-center justify-center p-2.5 rounded-md text-sm transition-all duration-150",
+                        isActive
+                          ? "bg-primary/15 text-primary font-semibold"
+                          : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground font-medium"
+                      )}
+                    >
+                      <settingsItem.icon className="h-4 w-4 flex-shrink-0" />
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="ml-2">
+                    <p>{settingsItem.name}</p>
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <Link
+                  href={settingsItem.href}
+                  className={cn(
+                    "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-all duration-150",
+                    isActive
+                      ? "bg-primary/15 text-primary font-semibold"
+                      : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground font-medium"
+                  )}
+                >
+                  <settingsItem.icon className="h-4 w-4 flex-shrink-0" />
+                  {settingsItem.name}
+                </Link>
+              );
+            })()}
+          </div>
         </div>
       </nav>
     </TooltipProvider>
