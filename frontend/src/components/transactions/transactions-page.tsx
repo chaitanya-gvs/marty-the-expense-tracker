@@ -220,34 +220,6 @@ export function TransactionsPage() {
         </div>
       </div>
 
-      {/* Active Filter Chips */}
-      {activeFilterKeys.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 items-center">
-          <span className="text-xs text-muted-foreground mr-1">Filters:</span>
-          {activeFilterKeys.map(([key, value]) => (
-            <span
-              key={key}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-xs text-foreground border border-border"
-            >
-              {getFilterChipLabel(key, value)}
-              <button
-                onClick={() => handleRemoveFilter(key)}
-                className="text-muted-foreground hover:text-foreground transition-colors ml-0.5"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </span>
-          ))}
-          {activeFilterKeys.length > 1 && (
-            <button
-              onClick={handleClearFilters}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
-            >
-              Clear all
-            </button>
-          )}
-        </div>
-      )}
 
       {/* Filters and Table */}
       <TransactionFilters

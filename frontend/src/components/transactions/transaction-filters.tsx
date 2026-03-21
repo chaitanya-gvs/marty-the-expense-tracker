@@ -565,15 +565,15 @@ export function TransactionFilters({
   const activeFilterBadges = getActiveFilterBadges();
 
   return (
-    <div className="space-y-2">
+    <div className="rounded-xl border border-border overflow-hidden">
       {/* Collapsed Bar (Always Visible) */}
-      <div className="sticky top-0 z-20 bg-slate-900/70 backdrop-blur border-b border-slate-800 px-4 py-2 flex items-center gap-2 text-sm">
+      <div className="sticky top-0 z-20 bg-card backdrop-blur px-4 py-2 flex items-center gap-2 text-sm">
         <button
           ref={filtersButtonRef}
           onClick={() => setExpanded(!expanded)}
           aria-expanded={expanded}
           aria-controls="filters-panel"
-          className="rounded-full bg-slate-800 hover:bg-slate-700 px-3 py-1 text-slate-200 flex items-center gap-1 transition-colors"
+          className="rounded-full bg-muted hover:bg-accent px-3 py-1 text-foreground flex items-center gap-1 transition-colors"
         >
           Filters
           {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -582,17 +582,17 @@ export function TransactionFilters({
         {/* Active Filter Chips */}
         <div className="flex flex-wrap gap-2 items-center">
           {activeFilterBadges.length === 0 ? (
-            <span className="text-xs text-slate-500">No filters applied</span>
+            <span className="text-xs text-muted-foreground">No active filters</span>
           ) : (
             activeFilterBadges.map((badge) => (
               <button
                 key={badge.key}
                 onClick={() => expandAndFocusControl(badge.key)}
-                className="rounded-full bg-blue-700/40 text-blue-200 border border-blue-600 px-2 py-0.5 text-xs flex items-center gap-1 hover:bg-blue-700/60 transition-colors"
+                className="rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/40 px-2 py-0.5 text-xs flex items-center gap-1 hover:bg-violet-500/25 transition-colors"
               >
                 {badge.label}
                 <X
-                  className="h-3 w-3 hover:text-blue-100"
+                  className="h-3 w-3 hover:text-violet-100"
                   onClick={(e) => {
                     e.stopPropagation();
                     clearFilter(badge.key as keyof TransactionFilters);
@@ -607,13 +607,13 @@ export function TransactionFilters({
         <div className="ml-auto hidden md:flex items-center gap-2">
           <button
             onClick={() => applyQuickDatePreset("this_month")}
-            className="rounded-md px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+            className="rounded-md px-2 py-1 text-xs bg-muted hover:bg-accent text-foreground transition-colors"
           >
             This month
           </button>
           <button
             onClick={() => applyQuickDatePreset("last_30")}
-            className="rounded-md px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+            className="rounded-md px-2 py-1 text-xs bg-muted hover:bg-accent text-foreground transition-colors"
           >
             Last 30d
           </button>
@@ -630,30 +630,30 @@ export function TransactionFilters({
           expanded ? "max-h-[600px] opacity-100" : "max-h-0 opacity-0"
         )}
       >
-        <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 mt-2">
+        <div className="bg-card p-4 border-t border-border">
 
           {/* Filter Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="space-y-1">
-              <Label htmlFor="search" className="text-xs text-slate-400 font-medium">Search</Label>
+              <Label htmlFor="search" className="text-xs text-muted-foreground font-medium">Search</Label>
               <div className="flex gap-2">
                 <Input
                   id="search"
                   placeholder="Search transactions..."
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500"
+                  className="h-9 text-sm bg-muted border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-slate-500"
                 />
               </div>
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs text-slate-400 font-medium">Date Range</Label>
+              <Label className="text-xs text-muted-foreground font-medium">Date Range</Label>
               <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
-                    className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 justify-start"
+                    className="h-9 text-sm bg-muted border-border text-muted-foreground justify-start w-full"
                   >
                     <Calendar className="h-4 w-4 mr-2" />
                     {selectedDatePreset === "custom" ? "Custom Range" :
@@ -663,15 +663,15 @@ export function TransactionFilters({
                             selectedDatePreset === "this_year" ? "This Year" : "Custom Range"}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-80 bg-slate-800 border-slate-600" align="start">
+                <PopoverContent className="w-80 bg-muted border-border" align="start">
                   <div className="space-y-4">
                     {/* Quick Presets */}
                     <div className="space-y-2">
-                      <Label className="text-xs text-slate-400 font-medium">Quick Presets</Label>
+                      <Label className="text-xs text-muted-foreground font-medium">Quick Presets</Label>
                       <div className="grid grid-cols-2 gap-2">
                         <Button
                           size="sm"
-                          variant={selectedDatePreset === "this_month" ? "default" : "outline"}
+                          variant={selectedDatePreset === "this_month" ? "secondary" : "outline" }
                           onClick={() => handleDatePreset("this_month")}
                           className="text-xs h-8"
                         >
@@ -679,7 +679,7 @@ export function TransactionFilters({
                         </Button>
                         <Button
                           size="sm"
-                          variant={selectedDatePreset === "last_month" ? "default" : "outline"}
+                          variant={selectedDatePreset === "last_month" ? "secondary" : "outline" }
                           onClick={() => handleDatePreset("last_month")}
                           className="text-xs h-8"
                         >
@@ -687,7 +687,7 @@ export function TransactionFilters({
                         </Button>
                         <Button
                           size="sm"
-                          variant={selectedDatePreset === "last_3_months" ? "default" : "outline"}
+                          variant={selectedDatePreset === "last_3_months" ? "secondary" : "outline" }
                           onClick={() => handleDatePreset("last_3_months")}
                           className="text-xs h-8"
                         >
@@ -695,7 +695,7 @@ export function TransactionFilters({
                         </Button>
                         <Button
                           size="sm"
-                          variant={selectedDatePreset === "this_year" ? "default" : "outline"}
+                          variant={selectedDatePreset === "this_year" ? "secondary" : "outline" }
                           onClick={() => handleDatePreset("this_year")}
                           className="text-xs h-8"
                         >
@@ -705,11 +705,11 @@ export function TransactionFilters({
                     </div>
 
                     {/* Custom Range */}
-                    <div className="space-y-2 pt-2 border-t border-slate-600">
-                      <Label className="text-xs text-slate-400 font-medium">Custom Range</Label>
+                    <div className="space-y-2 pt-2 border-t border-border">
+                      <Label className="text-xs text-muted-foreground font-medium">Custom Range</Label>
                       <Button
                         size="sm"
-                        variant={selectedDatePreset === "custom" ? "default" : "outline"}
+                        variant={selectedDatePreset === "custom" ? "secondary" : "outline"}
                         onClick={() => handleDatePreset("custom")}
                         className="w-full text-xs h-8"
                       >
@@ -723,7 +723,7 @@ export function TransactionFilters({
                             type="date"
                             value={dateRangeStartInput}
                             onChange={(e) => setDateRangeStartInput(e.target.value)}
-                            className="h-8 text-sm bg-slate-700 border-slate-600 text-slate-200"
+                            className="h-8 text-sm bg-accent border-border text-foreground"
                           />
                         </div>
                         <div className="space-y-1">
@@ -733,7 +733,7 @@ export function TransactionFilters({
                             type="date"
                             value={dateRangeEndInput}
                             onChange={(e) => setDateRangeEndInput(e.target.value)}
-                            className="h-8 text-sm bg-slate-700 border-slate-600 text-slate-200"
+                            className="h-8 text-sm bg-accent border-border text-foreground"
                           />
                         </div>
                       </div>
@@ -744,14 +744,14 @@ export function TransactionFilters({
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs text-slate-400 font-medium">Amount Range</Label>
-              <div className="flex rounded-md border border-slate-600 bg-slate-800 overflow-hidden h-9">
+              <Label className="text-xs text-muted-foreground font-medium">Amount Range</Label>
+              <div className="flex rounded-md border border-border bg-muted overflow-hidden h-9">
                 <input
                   type="number"
                   placeholder="Min"
                   value={amountMinInput}
                   onChange={(e) => setAmountMinInput(e.target.value)}
-                  className="flex-1 min-w-0 bg-transparent px-3 text-sm text-slate-200 placeholder:text-slate-500 outline-none"
+                  className="flex-1 min-w-0 bg-transparent px-3 text-sm text-foreground placeholder:text-muted-foreground outline-none"
                 />
                 <div className="w-px bg-slate-600 self-stretch" />
                 <input
@@ -759,13 +759,13 @@ export function TransactionFilters({
                   placeholder="Max"
                   value={amountMaxInput}
                   onChange={(e) => setAmountMaxInput(e.target.value)}
-                  className="flex-1 min-w-0 bg-transparent px-3 text-sm text-slate-200 placeholder:text-slate-500 outline-none"
+                  className="flex-1 min-w-0 bg-transparent px-3 text-sm text-foreground placeholder:text-muted-foreground outline-none"
                 />
               </div>
             </div>
 
             <div className="space-y-1">
-              <Label htmlFor="account" className="text-xs text-slate-400 font-medium">Accounts</Label>
+              <Label htmlFor="account" className="text-xs text-muted-foreground font-medium">Accounts</Label>
               <Popover
                 open={isAccountPopoverOpen}
                 onOpenChange={(open) => {
@@ -778,22 +778,22 @@ export function TransactionFilters({
                     variant="outline"
                     role="combobox"
                     aria-expanded={isAccountPopoverOpen}
-                    className="h-auto min-h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 justify-between w-full py-2"
+                    className="h-auto min-h-9 text-sm bg-muted border-border text-foreground justify-between w-full py-2"
                   >
                     <div className="flex flex-wrap gap-1 flex-1 text-left">
                       {selectedAccounts.length === 0 && excludeAccounts.length === 0 ? (
-                        <span className="text-slate-400">All accounts</span>
+                        <span className="text-muted-foreground">All accounts</span>
                       ) : (
                         <>
                           {selectedAccounts.map((account) => (
                             <Badge
                               key={`include-${account}`}
                               variant="secondary"
-                              className="mr-1 mb-0.5 bg-blue-600/20 text-blue-200 border-blue-500/50"
+                              className="mr-1 mb-0.5 bg-violet-600/20 text-violet-200 border-violet-500/50"
                             >
                               {account}
                               <X
-                                className="h-3 w-3 ml-1 cursor-pointer hover:text-blue-100"
+                                className="h-3 w-3 ml-1 cursor-pointer hover:text-violet-100"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setSelectedAccounts(selectedAccounts.filter((a) => a !== account));
@@ -823,19 +823,19 @@ export function TransactionFilters({
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[400px] p-0 bg-slate-800 border-slate-600" align="start">
-                  <div className="flex items-center border-b border-slate-700 px-3">
-                    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 text-slate-400" />
+                <PopoverContent className="w-[400px] p-0 bg-muted border-border" align="start">
+                  <div className="flex items-center border-b border-border px-3">
+                    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 text-muted-foreground" />
                     <Input
                       placeholder="Search accounts..."
                       value={accountSearchQuery}
                       onChange={(e) => setAccountSearchQuery(e.target.value)}
-                      className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50 border-0 focus-visible:ring-0 text-slate-200"
+                      className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 border-0 focus-visible:ring-0 text-foreground"
                     />
                   </div>
                   <div className="max-h-[300px] overflow-auto">
                     {accountsLoading ? (
-                      <div className="py-6 text-center text-sm text-slate-400">Loading accounts...</div>
+                      <div className="py-6 text-center text-sm text-muted-foreground">Loading accounts...</div>
                     ) : accountsError ? (
                       <div className="py-6 text-center text-sm text-red-400">Error loading accounts</div>
                     ) : (() => {
@@ -843,7 +843,7 @@ export function TransactionFilters({
                         account.toLowerCase().includes(accountSearchQuery.toLowerCase())
                       );
                       return filteredAccounts.length === 0 ? (
-                        <div className="py-6 text-center text-sm text-slate-400">No accounts found</div>
+                        <div className="py-6 text-center text-sm text-muted-foreground">No accounts found</div>
                       ) : (
                         <div className="p-1">
                           {filteredAccounts.map((account) => {
@@ -854,8 +854,8 @@ export function TransactionFilters({
                               <div
                                 key={account}
                                 className={cn(
-                                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-700 hover:text-slate-50",
-                                  isActive && "bg-slate-700/50"
+                                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-slate-50",
+                                  isActive && "bg-accent/50"
                                 )}
                                 onClick={() => {
                                   if (inInclude) {
@@ -872,7 +872,7 @@ export function TransactionFilters({
                                   className={cn(
                                     "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
                                     inInclude
-                                      ? "border-blue-500 bg-blue-500 text-white"
+                                      ? "border-violet-500 bg-violet-500 text-white"
                                       : inExclude
                                         ? "border-red-500 bg-red-500 text-white"
                                         : "border-slate-500 opacity-50 [&_svg]:invisible"
@@ -883,7 +883,7 @@ export function TransactionFilters({
                                 <div className="flex items-center gap-2 flex-1 min-w-0">
                                   <span className="truncate">{account}</span>
                                   {inInclude && (
-                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-blue-500/50 text-blue-300">
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-violet-500/50 text-violet-300">
                                       Include
                                     </Badge>
                                   )}
@@ -901,11 +901,11 @@ export function TransactionFilters({
                     })()}
                   </div>
                   {(selectedAccounts.length > 0 || excludeAccounts.length > 0) && (
-                    <div className="border-t border-slate-700 p-2">
+                    <div className="border-t border-border p-2">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-slate-400 text-xs">
                           {selectedAccounts.length > 0 && (
-                            <span className="text-blue-300">{selectedAccounts.length} included</span>
+                            <span className="text-violet-300">{selectedAccounts.length} included</span>
                           )}
                           {selectedAccounts.length > 0 && excludeAccounts.length > 0 && " · "}
                           {excludeAccounts.length > 0 && (
@@ -932,7 +932,7 @@ export function TransactionFilters({
 
 
             <div className="space-y-1">
-              <Label className="text-xs text-slate-400 font-medium">Categories</Label>
+              <Label className="text-xs text-muted-foreground font-medium">Categories</Label>
               <Popover
                 open={isCategoryPopoverOpen}
                 onOpenChange={(open) => {
@@ -945,22 +945,22 @@ export function TransactionFilters({
                     variant="outline"
                     role="combobox"
                     aria-expanded={isCategoryPopoverOpen}
-                    className="h-auto min-h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 justify-between w-full py-2"
+                    className="h-auto min-h-9 text-sm bg-muted border-border text-foreground justify-between w-full py-2"
                   >
                     <div className="flex flex-wrap gap-1 flex-1 text-left">
                       {selectedCategories.length === 0 && excludeCategories.length === 0 && !includeUncategorized ? (
-                        <span className="text-slate-400">All categories</span>
+                        <span className="text-muted-foreground">All categories</span>
                       ) : (
                         <>
                           {selectedCategories.map((category) => (
                             <Badge
                               key={`include-${category}`}
                               variant="secondary"
-                              className="mr-1 mb-0.5 bg-blue-600/20 text-blue-200 border-blue-500/50"
+                              className="mr-1 mb-0.5 bg-violet-600/20 text-violet-200 border-violet-500/50"
                             >
                               {category}
                               <X
-                                className="h-3 w-3 ml-1 cursor-pointer hover:text-blue-100"
+                                className="h-3 w-3 ml-1 cursor-pointer hover:text-violet-100"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setSelectedCategories(selectedCategories.filter((c) => c !== category));
@@ -1005,25 +1005,25 @@ export function TransactionFilters({
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[400px] p-0 bg-slate-800 border-slate-600" align="start">
-                  <div className="flex items-center border-b border-slate-700 px-3">
-                    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 text-slate-400" />
+                <PopoverContent className="w-[400px] p-0 bg-muted border-border" align="start">
+                  <div className="flex items-center border-b border-border px-3">
+                    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 text-muted-foreground" />
                     <Input
                       placeholder="Search categories..."
                       value={categorySearchQuery}
                       onChange={(e) => setCategorySearchQuery(e.target.value)}
-                      className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50 border-0 focus-visible:ring-0 text-slate-200"
+                      className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 border-0 focus-visible:ring-0 text-foreground"
                     />
                   </div>
                   <div className="max-h-[300px] overflow-auto">
                     {categories.length === 0 ? (
-                      <div className="py-6 text-center text-sm text-slate-400">No categories found</div>
+                      <div className="py-6 text-center text-sm text-muted-foreground">No categories found</div>
                     ) : (() => {
                       const filteredCategories = categories.filter((category) =>
                         category.name.toLowerCase().includes(categorySearchQuery.toLowerCase())
                       );
                       return filteredCategories.length === 0 ? (
-                        <div className="py-6 text-center text-sm text-slate-400">No categories found</div>
+                        <div className="py-6 text-center text-sm text-muted-foreground">No categories found</div>
                       ) : (
                         <div className="p-1">
                           {filteredCategories.map((category) => {
@@ -1035,8 +1035,8 @@ export function TransactionFilters({
                               <div
                                 key={category.id}
                                 className={cn(
-                                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-700 hover:text-slate-50",
-                                  isActive && "bg-slate-700/50"
+                                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-slate-50",
+                                  isActive && "bg-accent/50"
                                 )}
                                 onClick={() => {
                                   if (inInclude) {
@@ -1053,7 +1053,7 @@ export function TransactionFilters({
                                   className={cn(
                                     "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
                                     inInclude
-                                      ? "border-blue-500 bg-blue-500 text-white"
+                                      ? "border-violet-500 bg-violet-500 text-white"
                                       : inExclude
                                         ? "border-red-500 bg-red-500 text-white"
                                         : "border-slate-500 opacity-50 [&_svg]:invisible"
@@ -1064,7 +1064,7 @@ export function TransactionFilters({
                                 <div className="flex items-center gap-2 flex-1 min-w-0">
                                   <span className="truncate">{name}</span>
                                   {inInclude && (
-                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-blue-500/50 text-blue-300">
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-violet-500/50 text-violet-300">
                                       Include
                                     </Badge>
                                   )}
@@ -1077,11 +1077,11 @@ export function TransactionFilters({
                               </div>
                             );
                           })}
-                          <div className="h-px bg-slate-700 my-1" />
+                          <div className="h-px bg-accent my-1" />
                           <div
                             className={cn(
-                              "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-700 hover:text-slate-50",
-                              includeUncategorized && "bg-slate-700/50"
+                              "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-slate-50",
+                              includeUncategorized && "bg-accent/50"
                             )}
                             onClick={() => {
                               if (includeUncategorized && selectedCategories.length === 0 && excludeCategories.length === 0) {
@@ -1123,11 +1123,11 @@ export function TransactionFilters({
                     })()}
                   </div>
                   {(selectedCategories.length > 0 || excludeCategories.length > 0 || includeUncategorized) && (
-                    <div className="border-t border-slate-700 p-2">
+                    <div className="border-t border-border p-2">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-slate-400 text-xs">
                           {selectedCategories.length > 0 && (
-                            <span className="text-blue-300">{selectedCategories.length} included</span>
+                            <span className="text-violet-300">{selectedCategories.length} included</span>
                           )}
                           {selectedCategories.length > 0 && excludeCategories.length > 0 && " · "}
                           {excludeCategories.length > 0 && (
@@ -1159,7 +1159,113 @@ export function TransactionFilters({
 
 
             <div className="space-y-1">
-              <Label className="text-xs text-slate-400 font-medium">Tags</Label>
+              <Label className="text-xs text-muted-foreground font-medium">Participants</Label>
+              <Popover
+                open={isParticipantPopoverOpen}
+                onOpenChange={(open) => {
+                  setIsParticipantPopoverOpen(open);
+                  if (!open) setParticipantSearchQuery("");
+                }}
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={isParticipantPopoverOpen}
+                    className="h-auto min-h-9 text-sm bg-muted border-border text-foreground justify-between w-full py-2"
+                  >
+                    <div className="flex flex-wrap gap-1 flex-1 text-left">
+                      {selectedParticipants.length === 0 && excludeParticipants.length === 0 ? (
+                        <span className="text-muted-foreground">All participants</span>
+                      ) : (
+                        <>
+                          {selectedParticipants.map((p) => (
+                            <Badge key={`include-${p}`} variant="secondary"
+                              className="mr-1 mb-0.5 bg-violet-600/20 text-violet-200 border-violet-500/50">
+                              {p}
+                              <X className="h-3 w-3 ml-1 cursor-pointer hover:text-violet-100"
+                                onClick={(e) => { e.stopPropagation(); setSelectedParticipants(selectedParticipants.filter(x => x !== p)); }} />
+                            </Badge>
+                          ))}
+                          {excludeParticipants.map((p) => (
+                            <Badge key={`exclude-${p}`} variant="secondary"
+                              className="mr-1 mb-0.5 bg-red-600/20 text-red-200 border-red-500/50">
+                              Not {p}
+                              <X className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100"
+                                onClick={(e) => { e.stopPropagation(); setExcludeParticipants(excludeParticipants.filter(x => x !== p)); }} />
+                            </Badge>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[300px] p-0 bg-muted border-border" align="start">
+                  <div className="flex items-center border-b border-border px-3">
+                    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 text-muted-foreground" />
+                    <Input
+                      placeholder="Search participants..."
+                      value={participantSearchQuery}
+                      onChange={(e) => setParticipantSearchQuery(e.target.value)}
+                      className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground border-0 focus-visible:ring-0 text-foreground"
+                    />
+                  </div>
+                  <div className="max-h-[250px] overflow-auto">
+                    {participantsLoading ? (
+                      <div className="py-6 text-center text-sm text-muted-foreground">Loading...</div>
+                    ) : participants.length === 0 ? (
+                      <div className="py-6 text-center text-sm text-muted-foreground">No participants found</div>
+                    ) : (
+                      <div className="p-1">
+                        {participants.map((p) => {
+                          const inInclude = selectedParticipants.includes(p.name);
+                          const inExclude = excludeParticipants.includes(p.name);
+                          return (
+                            <div key={p.id}
+                              className={cn("relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-slate-50", (inInclude || inExclude) && "bg-accent/50")}
+                              onClick={() => {
+                                if (inInclude) {
+                                  setSelectedParticipants(selectedParticipants.filter(x => x !== p.name));
+                                  setExcludeParticipants([...excludeParticipants, p.name]);
+                                } else if (inExclude) {
+                                  setExcludeParticipants(excludeParticipants.filter(x => x !== p.name));
+                                } else {
+                                  setSelectedParticipants([...selectedParticipants, p.name]);
+                                }
+                              }}>
+                              <div className={cn("mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
+                                inInclude ? "border-violet-500 bg-violet-500 text-white"
+                                : inExclude ? "border-red-500 bg-red-500 text-white"
+                                : "border-slate-500 opacity-50 [&_svg]:invisible")}>
+                                <Check className="h-4 w-4" />
+                              </div>
+                              <span className="truncate">{p.name}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  {(selectedParticipants.length > 0 || excludeParticipants.length > 0) && (
+                    <div className="border-t border-border p-2 flex justify-between items-center text-xs">
+                      <span className="text-muted-foreground">
+                        {selectedParticipants.length > 0 && <span className="text-violet-300">{selectedParticipants.length} included</span>}
+                        {selectedParticipants.length > 0 && excludeParticipants.length > 0 && " · "}
+                        {excludeParticipants.length > 0 && <span className="text-red-300">{excludeParticipants.length} excluded</span>}
+                      </span>
+                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs"
+                        onClick={() => { setSelectedParticipants([]); setExcludeParticipants([]); }}>
+                        Clear
+                      </Button>
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground font-medium">Tags</Label>
               <Select
                 value={selectedTags[0] || "all"}
                 onValueChange={(value) => {
@@ -1170,10 +1276,10 @@ export function TransactionFilters({
                   }
                 }}
               >
-                <SelectTrigger className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200">
+                <SelectTrigger className="h-9 text-sm bg-muted border-border text-muted-foreground w-full">
                   <SelectValue placeholder="+ Select tags" />
                 </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-600">
+                <SelectContent className="bg-muted border-border">
                   <SelectItem value="all">All tags</SelectItem>
                   {tags.map((tag) => (
                     <SelectItem key={tag.id} value={tag.name}>
@@ -1183,84 +1289,61 @@ export function TransactionFilters({
                 </SelectContent>
               </Select>
             </div>
+
           </div>
 
-          {/* Compact Advanced Filters Row */}
-          <div className="mt-3 pt-3 border-t border-slate-700 flex flex-wrap items-center gap-x-4 gap-y-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 font-medium">Direction</span>
-              <Select value={selectedDirection} onValueChange={(value) => setSelectedDirection(value)}>
-                <SelectTrigger className="h-7 text-xs bg-slate-800 border-slate-600 text-slate-200 w-[110px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-600">
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="debit">Debit</SelectItem>
-                  <SelectItem value="credit">Credit</SelectItem>
-                </SelectContent>
-              </Select>
+          {/* Quick Filter Chips */}
+          <div className="mt-3 pt-3 border-t border-border flex flex-wrap items-center gap-2">
+
+            {/* Pill chips: Shared, Flagged, Split */}
+            {[
+              {
+                label: "Shared",
+                active: selectedTransactionType === "shared",
+                onClick: () => setSelectedTransactionType(selectedTransactionType === "shared" ? "all" : "shared"),
+              },
+              {
+                label: "Flagged",
+                active: flaggedFilter === "flagged",
+                onClick: () => setFlaggedFilter(flaggedFilter === "flagged" ? "all" : "flagged"),
+              },
+              {
+                label: "Split",
+                active: splitFilter === "only",
+                onClick: () => setSplitFilter(splitFilter === "only" ? "all" : "only"),
+              },
+            ].map(({ label, active, onClick }) => (
+              <button
+                key={label}
+                onClick={onClick}
+                className={cn(
+                  "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium border transition-colors select-none",
+                  active
+                    ? "bg-violet-500/15 border-violet-500/40 text-violet-300"
+                    : "bg-transparent border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+
+            {/* Segmented control: Direction */}
+            <div className="ml-auto inline-flex rounded-full border border-border overflow-hidden text-xs">
+              {(["All", "Credit", "Debit"] as const).map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => setSelectedDirection(opt.toLowerCase())}
+                  className={cn(
+                    "px-3 py-1 transition-colors select-none",
+                    selectedDirection === opt.toLowerCase()
+                      ? "bg-muted-foreground/20 text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {opt}
+                </button>
+              ))}
             </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 font-medium">Type</span>
-              <Select value={selectedTransactionType} onValueChange={(value) => setSelectedTransactionType(value)}>
-                <SelectTrigger className="h-7 text-xs bg-slate-800 border-slate-600 text-slate-200 w-[120px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-600">
-                  <SelectItem value="all">All types</SelectItem>
-                  <SelectItem value="shared">Shared only</SelectItem>
-                  <SelectItem value="refunds">Refunds only</SelectItem>
-                  <SelectItem value="transfers">Transfers only</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 font-medium">Flagged</span>
-              <Select value={flaggedFilter} onValueChange={setFlaggedFilter}>
-                <SelectTrigger className="h-7 text-xs bg-slate-800 border-slate-600 text-slate-200 w-[120px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-600">
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="flagged">Flagged only</SelectItem>
-                  <SelectItem value="not_flagged">Not flagged</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 font-medium">Split</span>
-              <Select value={splitFilter} onValueChange={setSplitFilter}>
-                <SelectTrigger className="h-7 text-xs bg-slate-800 border-slate-600 text-slate-200 w-[130px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-600">
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="exclude">Exclude split</SelectItem>
-                  <SelectItem value="only">Split only</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <Switch
-                checked={hideShared}
-                onCheckedChange={(checked) => setHideShared(checked)}
-                className="scale-75"
-              />
-              <span className="text-xs text-slate-400">Hide Shared</span>
-            </label>
-
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <Switch
-                checked={includeUncategorized}
-                onCheckedChange={setIncludeUncategorized}
-                className="scale-75"
-              />
-              <span className="text-xs text-slate-400">Include Uncategorized</span>
-            </label>
           </div>
 
         </div>

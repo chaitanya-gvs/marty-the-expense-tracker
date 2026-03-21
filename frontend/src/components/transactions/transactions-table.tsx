@@ -38,6 +38,8 @@ import {
   Wallet,
   ShoppingCart,
   Building2,
+  FolderOpen,
+  IndianRupee,
   MoreVertical,
   Link2,
   CheckSquare,
@@ -882,8 +884,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         // Description column (resizable)
         columnHelper.accessor("description", {
           header: () => (
-            <div className="flex items-center gap-1 text-sm font-medium pl-1">
-              <FileText className="h-4 w-4" />
+            <div className="flex items-center gap-1">
+              <FileText className="h-3 w-3" />
               Description
             </div>
           ),
@@ -1063,9 +1065,9 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             <Button
               variant="ghost"
               onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              className="h-8 px-2 gap-1 text-sm font-medium justify-end w-full"
+              className="h-8 px-2 gap-1 text-xs font-medium uppercase tracking-wide justify-end w-full"
             >
-              <span className="text-lg font-bold">₹</span>
+              <IndianRupee className="size-3" />
               Amount
               {column.getIsSorted() === "asc" ? (
                 <ArrowUp className="ml-1 h-3 w-3 text-primary" />
@@ -1156,8 +1158,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         // Account column (moved after amount)
         columnHelper.accessor("account", {
           header: () => (
-            <div className="flex items-center gap-1 text-sm font-medium">
-              <Building2 className="h-4 w-4" />
+            <div className="flex items-center gap-1">
+              <Building2 className="h-3 w-3" />
               Account
             </div>
           ),
@@ -1188,8 +1190,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         // Category column (moved after amount)
         columnHelper.accessor("category", {
           header: () => (
-            <div className="flex items-center gap-1 text-sm font-medium">
-              <TagIcon className="h-4 w-4" />
+            <div className="flex items-center gap-1">
+              <FolderOpen className="h-3 w-3" />
               Category
             </div>
           ),
@@ -1352,8 +1354,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         // Tags column
         columnHelper.accessor("tags", {
           header: () => (
-            <div className="flex items-center gap-1 text-sm font-medium">
-              <TagIcon className="h-4 w-4" />
+            <div className="flex items-center gap-1">
+              <TagIcon className="h-3 w-3" />
               Tags
             </div>
           ),
