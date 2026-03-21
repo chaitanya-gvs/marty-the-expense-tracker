@@ -10,6 +10,7 @@ from uuid import UUID
 
 import pandas as pd
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .connection import get_session_factory
@@ -2366,14 +2367,34 @@ class TagOperations:
         session_factory = get_session_factory()
         session = session_factory()
         try:
-            # Check if tag already exists
+            import re
+
+            # Check if active tag already exists
             existing = await TagOperations.get_tag_by_name(name)
             if existing:
                 raise ValueError(f"Tag '{name}' already exists")
-            
-            # Generate slug from name
+
+            # Check if a soft-deleted tag exists with this name — reactivate it
+            result_inactive = await session.execute(
+                text("SELECT id FROM tags WHERE LOWER(name) = LOWER(:name) AND is_active = false"),
+                {"name": name}
+            )
+            inactive_row = result_inactive.fetchone()
+            if inactive_row:
+                tag_id = inactive_row[0]
+                await session.execute(
+                    text("UPDATE tags SET is_active = true, color = :color, updated_at = NOW() WHERE id = :id"),
+                    {"color": color, "id": tag_id}
+                )
+                await session.commit()
+                logger.info(f"Reactivated soft-deleted tag: {name} (ID: {tag_id})")
+                return str(tag_id)
+
+            # Generate slug from name (sanitize special characters)
             slug = name.lower().replace(' ', '-').replace('&', 'and')
-            
+            slug = re.sub(r'[^a-z0-9\-]', '-', slug)
+            slug = re.sub(r'-+', '-', slug).strip('-')
+
             result = await session.execute(
                 text("""
                     INSERT INTO tags (name, slug, color, description, is_active)
@@ -2391,8 +2412,10 @@ class TagOperations:
             logger.info(f"Created new tag: {name} (ID: {tag_id})")
             return str(tag_id)
         except ValueError:
-            # Re-raise ValueError (tag already exists) without rollback
             raise
+        except IntegrityError:
+            await session.rollback()
+            raise ValueError(f"Tag '{name}' already exists")
         except Exception as e:
             await session.rollback()
             logger.error(f"Failed to create tag '{name}'", exc_info=True)
