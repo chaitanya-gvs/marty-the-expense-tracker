@@ -576,7 +576,7 @@ export function TransactionFilters({
           onClick={() => setExpanded(!expanded)}
           aria-expanded={expanded}
           aria-controls="filters-panel"
-          className="rounded-full bg-muted hover:bg-accent px-3 py-1 text-foreground flex items-center gap-1 transition-colors"
+          className="rounded-full bg-muted hover:bg-primary/10 hover:text-primary px-3 py-1 text-foreground flex items-center gap-1 transition-colors"
         >
           Filters
           {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}

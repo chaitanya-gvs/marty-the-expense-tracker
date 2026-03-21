@@ -170,39 +170,39 @@ export function TransactionsPage() {
 
       {/* Stats Bar */}
       <div className="grid grid-cols-4 divide-x divide-border rounded-lg border border-border bg-card overflow-hidden">
-        <div className="px-5 py-4">
+        <div className="px-3 py-4 min-w-0">
           <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
             <TrendingDown className="h-3 w-3" />
             Total Spent
           </p>
-          <p className="font-mono text-xl font-semibold text-foreground tabular-nums">
+          <p className="font-mono text-base font-semibold text-foreground tabular-nums">
             {formatCurrency(totalDebits)}
           </p>
         </div>
-        <div className="px-5 py-4">
+        <div className="px-3 py-4 min-w-0">
           <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
             <TrendingUp className="h-3 w-3" />
             Total In
           </p>
-          <p className="font-mono text-xl font-semibold text-foreground tabular-nums">
+          <p className="font-mono text-base font-semibold text-foreground tabular-nums">
             {formatCurrency(totalCredits)}
           </p>
         </div>
-        <div className="px-5 py-4">
+        <div className="px-3 py-4 min-w-0">
           <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
             <ArrowRightLeft className="h-3 w-3" />
             Net
           </p>
-          <p className={`font-mono text-xl font-semibold tabular-nums ${net >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+          <p className={`font-mono text-base font-semibold tabular-nums ${net >= 0 ? "text-emerald-500" : "text-destructive"}`}>
             {formatCurrency(Math.abs(net))}
           </p>
         </div>
-        <div className="px-5 py-4">
+        <div className="px-3 py-4 min-w-0">
           <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
             <Hash className="h-3 w-3" />
             Transactions
           </p>
-          <p className="font-mono text-xl font-semibold text-foreground tabular-nums">
+          <p className="font-mono text-base font-semibold text-foreground tabular-nums">
             {count}
           </p>
         </div>
