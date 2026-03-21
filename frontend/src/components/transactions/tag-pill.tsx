@@ -17,8 +17,8 @@ export function TagPill({ tag, onRemove, variant = "default", className }: TagPi
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border bg-muted px-2 py-1 text-xs font-medium transition-colors",
-        isCompact ? "px-1.5 py-0.5 text-xs" : "px-2 py-1 text-xs",
+        "inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-sm font-semibold transition-colors",
+        isCompact ? "px-1.5 py-0.5 text-xs" : "px-2.5 py-0.5 text-sm",
         className
       )}
       style={{

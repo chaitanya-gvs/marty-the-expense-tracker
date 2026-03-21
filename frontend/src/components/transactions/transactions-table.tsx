@@ -1167,20 +1167,17 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             const { processedName, icon, isCreditCard, isSplitwise } = processAccountInfo(getValue());
             return (
               <div className="whitespace-nowrap" title={getValue()}>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "text-xs font-medium inline-flex items-center max-w-[120px]",
-                    isSplitwise
-                      ? "border-[#7C3AED]/30 text-[#7C3AED] bg-[#7C3AED]/10"
-                      : isCreditCard
-                        ? "border-primary/50 text-primary bg-primary/10"
-                        : "border-emerald-500/50 text-emerald-500 bg-emerald-500/10"
-                  )}
-                >
+                <div className={cn(
+                  "font-semibold text-sm inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md max-w-[120px] overflow-hidden",
+                  isSplitwise
+                    ? "text-[#7C3AED] bg-[#7C3AED]/10"
+                    : isCreditCard
+                      ? "text-primary bg-primary/10"
+                      : "text-emerald-500 bg-emerald-500/10"
+                )}>
                   {icon}
                   <span className="truncate">{processedName}</span>
-                </Badge>
+                </div>
               </div>
             );
           },
@@ -1317,17 +1314,15 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 title="Click to edit category"
               >
                 {category ? (
-                  <Badge
-                    variant="secondary"
-                    className="text-xs font-medium inline-flex items-center max-w-[120px]"
+                  <div
+                    className="font-semibold text-sm inline-flex items-center px-2.5 py-0.5 rounded-md max-w-[120px] overflow-hidden"
                     style={{
                       backgroundColor: category.color ? `${category.color}20` : undefined,
-                      borderColor: category.color ? `${category.color}40` : undefined,
                       color: category.color || undefined,
                     }}
                   >
                     <span className="truncate">{category.name}</span>
-                  </Badge>
+                  </div>
                 ) : categoryName ? (
                   <span
                     className="text-xs text-muted-foreground italic"
