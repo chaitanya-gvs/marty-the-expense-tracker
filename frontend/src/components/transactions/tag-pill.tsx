@@ -17,13 +17,12 @@ export function TagPill({ tag, onRemove, variant = "default", className }: TagPi
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-sm font-semibold transition-colors",
-        isCompact ? "px-1.5 py-0.5 text-xs" : "px-2.5 py-0.5 text-sm",
+        "inline-flex items-center gap-1 rounded-md font-semibold transition-colors",
+        isCompact ? "px-2.5 py-0.5 text-sm max-w-[120px] overflow-hidden" : "px-2.5 py-0.5 text-sm",
         className
       )}
       style={{
         backgroundColor: tag.color ? `${tag.color}20` : undefined,
-        borderColor: tag.color ? `${tag.color}40` : undefined,
         color: tag.color || undefined,
       }}
     >
