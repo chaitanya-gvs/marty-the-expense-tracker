@@ -632,11 +632,10 @@ export function TransactionFilters({
       >
         <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 mt-2">
 
-          {/* 2-Row Grid Layout */}
+          {/* Filter Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {/* Row 1 */}
             <div className="space-y-1">
-              <Label htmlFor="search" className="text-xs text-slate-400 uppercase tracking-wide">Search</Label>
+              <Label htmlFor="search" className="text-xs text-slate-400 font-medium">Search</Label>
               <div className="flex gap-2">
                 <Input
                   id="search"
@@ -649,7 +648,124 @@ export function TransactionFilters({
             </div>
 
             <div className="space-y-1">
-              <Label htmlFor="account" className="text-xs text-slate-400 uppercase tracking-wide">Accounts</Label>
+              <Label className="text-xs text-slate-400 font-medium">Date Range</Label>
+              <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 justify-start"
+                  >
+                    <Calendar className="h-4 w-4 mr-2" />
+                    {selectedDatePreset === "custom" ? "Custom Range" :
+                      selectedDatePreset === "this_month" ? "This Month" :
+                        selectedDatePreset === "last_month" ? "Last Month" :
+                          selectedDatePreset === "last_3_months" ? "Last 3 Months" :
+                            selectedDatePreset === "this_year" ? "This Year" : "Custom Range"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 bg-slate-800 border-slate-600" align="start">
+                  <div className="space-y-4">
+                    {/* Quick Presets */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-slate-400 font-medium">Quick Presets</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          size="sm"
+                          variant={selectedDatePreset === "this_month" ? "default" : "outline"}
+                          onClick={() => handleDatePreset("this_month")}
+                          className="text-xs h-8"
+                        >
+                          This Month
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={selectedDatePreset === "last_month" ? "default" : "outline"}
+                          onClick={() => handleDatePreset("last_month")}
+                          className="text-xs h-8"
+                        >
+                          Last Month
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={selectedDatePreset === "last_3_months" ? "default" : "outline"}
+                          onClick={() => handleDatePreset("last_3_months")}
+                          className="text-xs h-8"
+                        >
+                          Last 3 Months
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={selectedDatePreset === "this_year" ? "default" : "outline"}
+                          onClick={() => handleDatePreset("this_year")}
+                          className="text-xs h-8"
+                        >
+                          This Year
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Custom Range */}
+                    <div className="space-y-2 pt-2 border-t border-slate-600">
+                      <Label className="text-xs text-slate-400 font-medium">Custom Range</Label>
+                      <Button
+                        size="sm"
+                        variant={selectedDatePreset === "custom" ? "default" : "outline"}
+                        onClick={() => handleDatePreset("custom")}
+                        className="w-full text-xs h-8"
+                      >
+                        Custom Range
+                      </Button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label htmlFor="start-date" className="text-xs text-slate-300">Start Date</Label>
+                          <Input
+                            id="start-date"
+                            type="date"
+                            value={dateRangeStartInput}
+                            onChange={(e) => setDateRangeStartInput(e.target.value)}
+                            className="h-8 text-sm bg-slate-700 border-slate-600 text-slate-200"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="end-date" className="text-xs text-slate-300">End Date</Label>
+                          <Input
+                            id="end-date"
+                            type="date"
+                            value={dateRangeEndInput}
+                            onChange={(e) => setDateRangeEndInput(e.target.value)}
+                            className="h-8 text-sm bg-slate-700 border-slate-600 text-slate-200"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-slate-400 font-medium">Amount Range</Label>
+              <div className="flex rounded-md border border-slate-600 bg-slate-800 overflow-hidden h-9">
+                <input
+                  type="number"
+                  placeholder="Min"
+                  value={amountMinInput}
+                  onChange={(e) => setAmountMinInput(e.target.value)}
+                  className="flex-1 min-w-0 bg-transparent px-3 text-sm text-slate-200 placeholder:text-slate-500 outline-none"
+                />
+                <div className="w-px bg-slate-600 self-stretch" />
+                <input
+                  type="number"
+                  placeholder="Max"
+                  value={amountMaxInput}
+                  onChange={(e) => setAmountMaxInput(e.target.value)}
+                  className="flex-1 min-w-0 bg-transparent px-3 text-sm text-slate-200 placeholder:text-slate-500 outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="account" className="text-xs text-slate-400 font-medium">Accounts</Label>
               <Popover
                 open={isAccountPopoverOpen}
                 onOpenChange={(open) => {
@@ -814,161 +930,9 @@ export function TransactionFilters({
               </Popover>
             </div>
 
-            <div className="space-y-1">
-              <Label htmlFor="direction" className="text-xs text-slate-400 uppercase tracking-wide">Direction</Label>
-              <Select
-                value={selectedDirection}
-                onValueChange={(value) => setSelectedDirection(value)}
-              >
-                <SelectTrigger className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200">
-                  <SelectValue placeholder="All directions" />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-600">
-                  <SelectItem value="all">All directions</SelectItem>
-                  <SelectItem value="debit">Debit</SelectItem>
-                  <SelectItem value="credit">Credit</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
 
             <div className="space-y-1">
-              <Label htmlFor="transaction-type" className="text-xs text-slate-400 uppercase tracking-wide">Type</Label>
-              <Select
-                value={selectedTransactionType}
-                onValueChange={(value) => setSelectedTransactionType(value)}
-              >
-                <SelectTrigger className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200">
-                  <SelectValue placeholder="All types" />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-600">
-                  <SelectItem value="all">All types</SelectItem>
-                  <SelectItem value="shared">Shared only</SelectItem>
-                  <SelectItem value="refunds">Refunds only</SelectItem>
-                  <SelectItem value="transfers">Transfers only</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Row 2 */}
-            <div className="space-y-1">
-              <Label className="text-xs text-slate-400 uppercase tracking-wide">Date Range</Label>
-              <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 justify-start"
-                  >
-                    <Calendar className="h-4 w-4 mr-2" />
-                    {selectedDatePreset === "custom" ? "Custom Range" :
-                      selectedDatePreset === "this_month" ? "This Month" :
-                        selectedDatePreset === "last_month" ? "Last Month" :
-                          selectedDatePreset === "last_3_months" ? "Last 3 Months" :
-                            selectedDatePreset === "this_year" ? "This Year" : "Custom Range"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80 bg-slate-800 border-slate-600" align="start">
-                  <div className="space-y-4">
-                    {/* Quick Presets */}
-                    <div className="space-y-2">
-                      <Label className="text-xs text-slate-400 uppercase tracking-wide">Quick Presets</Label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Button
-                          size="sm"
-                          variant={selectedDatePreset === "this_month" ? "default" : "outline"}
-                          onClick={() => handleDatePreset("this_month")}
-                          className="text-xs h-8"
-                        >
-                          This Month
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={selectedDatePreset === "last_month" ? "default" : "outline"}
-                          onClick={() => handleDatePreset("last_month")}
-                          className="text-xs h-8"
-                        >
-                          Last Month
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={selectedDatePreset === "last_3_months" ? "default" : "outline"}
-                          onClick={() => handleDatePreset("last_3_months")}
-                          className="text-xs h-8"
-                        >
-                          Last 3 Months
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={selectedDatePreset === "this_year" ? "default" : "outline"}
-                          onClick={() => handleDatePreset("this_year")}
-                          className="text-xs h-8"
-                        >
-                          This Year
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Custom Range */}
-                    <div className="space-y-2 pt-2 border-t border-slate-600">
-                      <Label className="text-xs text-slate-400 uppercase tracking-wide">Custom Range</Label>
-                      <Button
-                        size="sm"
-                        variant={selectedDatePreset === "custom" ? "default" : "outline"}
-                        onClick={() => handleDatePreset("custom")}
-                        className="w-full text-xs h-8"
-                      >
-                        Custom Range
-                      </Button>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                          <Label htmlFor="start-date" className="text-xs text-slate-300">Start Date</Label>
-                          <Input
-                            id="start-date"
-                            type="date"
-                            value={dateRangeStartInput}
-                            onChange={(e) => setDateRangeStartInput(e.target.value)}
-                            className="h-8 text-sm bg-slate-700 border-slate-600 text-slate-200"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label htmlFor="end-date" className="text-xs text-slate-300">End Date</Label>
-                          <Input
-                            id="end-date"
-                            type="date"
-                            value={dateRangeEndInput}
-                            onChange={(e) => setDateRangeEndInput(e.target.value)}
-                            className="h-8 text-sm bg-slate-700 border-slate-600 text-slate-200"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs text-slate-400 uppercase tracking-wide">Amount Range</Label>
-              <div className="flex gap-2">
-                <Input
-                  type="number"
-                  placeholder="Min"
-                  value={amountMinInput}
-                  onChange={(e) => setAmountMinInput(e.target.value)}
-                  className="h-9 text-sm w-[100px] bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500"
-                />
-                <span className="text-slate-400 self-center text-sm">-</span>
-                <Input
-                  type="number"
-                  placeholder="Max"
-                  value={amountMaxInput}
-                  onChange={(e) => setAmountMaxInput(e.target.value)}
-                  className="h-9 text-sm w-[100px] bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs text-slate-400 uppercase tracking-wide">Categories</Label>
+              <Label className="text-xs text-slate-400 font-medium">Categories</Label>
               <Popover
                 open={isCategoryPopoverOpen}
                 onOpenChange={(open) => {
@@ -1193,173 +1157,9 @@ export function TransactionFilters({
               </Popover>
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs text-slate-400 uppercase tracking-wide">Participants</Label>
-              <Popover
-                open={isParticipantPopoverOpen}
-                onOpenChange={(open) => {
-                  setIsParticipantPopoverOpen(open);
-                  if (!open) setParticipantSearchQuery("");
-                }}
-              >
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={isParticipantPopoverOpen}
-                    className="h-auto min-h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 justify-between w-full py-2"
-                  >
-                    <div className="flex flex-wrap gap-1 flex-1 text-left">
-                      {selectedParticipants.length === 0 && excludeParticipants.length === 0 ? (
-                        <span className="text-slate-400">All participants</span>
-                      ) : (
-                        <>
-                          {selectedParticipants.map((participant) => (
-                            <Badge
-                              key={`include-${participant}`}
-                              variant="secondary"
-                              className="mr-1 mb-0.5 bg-blue-600/20 text-blue-200 border-blue-500/50"
-                            >
-                              {participant}
-                              <X
-                                className="h-3 w-3 ml-1 cursor-pointer hover:text-blue-100"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedParticipants(selectedParticipants.filter((p) => p !== participant));
-                                }}
-                              />
-                            </Badge>
-                          ))}
-                          {excludeParticipants.map((participant) => (
-                            <Badge
-                              key={`exclude-${participant}`}
-                              variant="secondary"
-                              className="mr-1 mb-0.5 bg-red-600/20 text-red-200 border-red-500/50"
-                            >
-                              Not {participant}
-                              <X
-                                className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setExcludeParticipants(excludeParticipants.filter((p) => p !== participant));
-                                }}
-                              />
-                            </Badge>
-                          ))}
-                        </>
-                      )}
-                    </div>
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[400px] p-0 bg-slate-800 border-slate-600" align="start">
-                  <div className="flex items-center border-b border-slate-700 px-3">
-                    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 text-slate-400" />
-                    <Input
-                      placeholder="Search participants..."
-                      value={participantSearchQuery}
-                      onChange={(e) => setParticipantSearchQuery(e.target.value)}
-                      className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50 border-0 focus-visible:ring-0 text-slate-200"
-                    />
-                  </div>
-                  <div className="max-h-[300px] overflow-auto">
-                    {participantsLoading ? (
-                      <div className="py-6 text-center text-sm text-slate-400">Loading participants...</div>
-                    ) : (() => {
-                      const filteredParticipants = participants.filter((participant) =>
-                        participant.name.toLowerCase().includes(participantSearchQuery.toLowerCase())
-                      );
-                      return filteredParticipants.length === 0 ? (
-                        <div className="py-6 text-center text-sm text-slate-400">No participants found</div>
-                      ) : (
-                        <div className="p-1">
-                          {filteredParticipants.map((participant) => {
-                            const name = participant.name;
-                            const inInclude = selectedParticipants.includes(name);
-                            const inExclude = excludeParticipants.includes(name);
-                            const isActive = inInclude || inExclude;
-                            return (
-                              <div
-                                key={participant.id}
-                                className={cn(
-                                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-700 hover:text-slate-50",
-                                  isActive && "bg-slate-700/50"
-                                )}
-                                onClick={() => {
-                                  if (inInclude) {
-                                    setSelectedParticipants(selectedParticipants.filter((p) => p !== name));
-                                    setExcludeParticipants([...excludeParticipants, name]);
-                                  } else if (inExclude) {
-                                    setExcludeParticipants(excludeParticipants.filter((p) => p !== name));
-                                  } else {
-                                    setSelectedParticipants([...selectedParticipants, name]);
-                                  }
-                                }}
-                              >
-                                <div
-                                  className={cn(
-                                    "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
-                                    inInclude
-                                      ? "border-blue-500 bg-blue-500 text-white"
-                                      : inExclude
-                                        ? "border-red-500 bg-red-500 text-white"
-                                        : "border-slate-500 opacity-50 [&_svg]:invisible"
-                                  )}
-                                >
-                                  <Check className="h-4 w-4" />
-                                </div>
-                                <div className="flex items-center gap-2 flex-1 min-w-0">
-                                  <span className="truncate">{name}</span>
-                                  {inInclude && (
-                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-blue-500/50 text-blue-300">
-                                      Include
-                                    </Badge>
-                                  )}
-                                  {inExclude && (
-                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-red-500/50 text-red-300">
-                                      Exclude
-                                    </Badge>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                  {(selectedParticipants.length > 0 || excludeParticipants.length > 0) && (
-                    <div className="border-t border-slate-700 p-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-slate-400 text-xs">
-                          {selectedParticipants.length > 0 && (
-                            <span className="text-blue-300">{selectedParticipants.length} included</span>
-                          )}
-                          {selectedParticipants.length > 0 && excludeParticipants.length > 0 && " · "}
-                          {excludeParticipants.length > 0 && (
-                            <span className="text-red-300">{excludeParticipants.length} excluded</span>
-                          )}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs"
-                          onClick={() => {
-                            setSelectedParticipants([]);
-                            setExcludeParticipants([]);
-                          }}
-                        >
-                          Clear
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </PopoverContent>
-              </Popover>
-            </div>
 
             <div className="space-y-1">
-              <Label className="text-xs text-slate-400 uppercase tracking-wide">Tags</Label>
+              <Label className="text-xs text-slate-400 font-medium">Tags</Label>
               <Select
                 value={selectedTags[0] || "all"}
                 onValueChange={(value) => {
@@ -1385,98 +1185,82 @@ export function TransactionFilters({
             </div>
           </div>
 
-          {/* Additional Filter Options */}
-          <div className="mt-4 pt-4 border-t border-slate-700 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col gap-1 flex-1">
-                <Label htmlFor="include-uncategorized" className="text-sm text-slate-300 cursor-pointer">
-                  Also Include Uncategorized
-                </Label>
-                <span className="text-xs text-slate-500">
-                  {selectedCategories.length > 0
-                    ? "Include uncategorized transactions when filtering by category"
-                    : "Show uncategorized transactions (select 'Uncategorized' in dropdown for only uncategorized)"}
-                </span>
-              </div>
-              <Switch
-                id="include-uncategorized"
-                checked={includeUncategorized}
-                onCheckedChange={setIncludeUncategorized}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col gap-1 flex-1">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                  <Label htmlFor="flagged-filter" className="text-sm text-slate-300 cursor-pointer">
-                    Flagged Transactions
-                  </Label>
-                </div>
-                <span className="text-xs text-slate-500">
-                  Filter transactions by flagged status
-                </span>
-              </div>
-              <Select
-                value={flaggedFilter}
-                onValueChange={setFlaggedFilter}
-              >
-                <SelectTrigger className="h-9 w-[140px] text-sm bg-slate-800 border-slate-600 text-slate-200">
+          {/* Compact Advanced Filters Row */}
+          <div className="mt-3 pt-3 border-t border-slate-700 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 font-medium">Direction</span>
+              <Select value={selectedDirection} onValueChange={(value) => setSelectedDirection(value)}>
+                <SelectTrigger className="h-7 text-xs bg-slate-800 border-slate-600 text-slate-200 w-[110px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-slate-800 border-slate-600">
                   <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="flagged">Flagged Only</SelectItem>
-                  <SelectItem value="not_flagged">Not Flagged</SelectItem>
+                  <SelectItem value="debit">Debit</SelectItem>
+                  <SelectItem value="credit">Credit</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col gap-1 flex-1">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-blue-400" />
-                  <Label htmlFor="hide-shared" className="text-sm text-slate-300 cursor-pointer">
-                    Hide Shared Expenses
-                  </Label>
-                </div>
-                <span className="text-xs text-slate-500">
-                  Filter out transactions where they are marked as shared (show only personal spend)
-                </span>
-              </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 font-medium">Type</span>
+              <Select value={selectedTransactionType} onValueChange={(value) => setSelectedTransactionType(value)}>
+                <SelectTrigger className="h-7 text-xs bg-slate-800 border-slate-600 text-slate-200 w-[120px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-600">
+                  <SelectItem value="all">All types</SelectItem>
+                  <SelectItem value="shared">Shared only</SelectItem>
+                  <SelectItem value="refunds">Refunds only</SelectItem>
+                  <SelectItem value="transfers">Transfers only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 font-medium">Flagged</span>
+              <Select value={flaggedFilter} onValueChange={setFlaggedFilter}>
+                <SelectTrigger className="h-7 text-xs bg-slate-800 border-slate-600 text-slate-200 w-[120px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-600">
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="flagged">Flagged only</SelectItem>
+                  <SelectItem value="not_flagged">Not flagged</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 font-medium">Split</span>
+              <Select value={splitFilter} onValueChange={setSplitFilter}>
+                <SelectTrigger className="h-7 text-xs bg-slate-800 border-slate-600 text-slate-200 w-[130px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-600">
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="exclude">Exclude split</SelectItem>
+                  <SelectItem value="only">Split only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <label className="flex items-center gap-2 cursor-pointer select-none">
               <Switch
-                id="hide-shared"
                 checked={hideShared}
                 onCheckedChange={(checked) => setHideShared(checked)}
+                className="scale-75"
               />
-            </div>
+              <span className="text-xs text-slate-400">Hide Shared</span>
+            </label>
 
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col gap-1 flex-1">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-purple-400" />
-                  <Label htmlFor="split-filter" className="text-sm text-slate-300 cursor-pointer">
-                    Split Transactions
-                  </Label>
-                </div>
-                <span className="text-xs text-slate-500">
-                  Filter transactions by split status
-                </span>
-              </div>
-              <Select
-                value={splitFilter}
-                onValueChange={setSplitFilter}
-              >
-                <SelectTrigger className="h-9 w-[160px] text-sm bg-slate-800 border-slate-600 text-slate-200">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-600">
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="exclude">Exclude Split</SelectItem>
-                  <SelectItem value="only">Split Only</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <Switch
+                checked={includeUncategorized}
+                onCheckedChange={setIncludeUncategorized}
+                className="scale-75"
+              />
+              <span className="text-xs text-slate-400">Include Uncategorized</span>
+            </label>
           </div>
 
         </div>

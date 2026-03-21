@@ -882,8 +882,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         // Description column (resizable)
         columnHelper.accessor("description", {
           header: () => (
-            <div className="flex items-center gap-1 text-sm font-medium">
-              <ShoppingCart className="h-4 w-4" />
+            <div className="flex items-center gap-1 text-sm font-medium pl-1">
+              <FileText className="h-4 w-4" />
               Description
             </div>
           ),
