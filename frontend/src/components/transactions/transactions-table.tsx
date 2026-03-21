@@ -880,7 +880,18 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       return [
         ...baseColumns,
 
-        // Date column
+        // Date column — empty for regular rows (separator handles date display); populated for grouped expense member rows
+        columnHelper.accessor("date", {
+          id: "date",
+          header: () => (
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Date</span>
+          ),
+          size: 80,
+          enableResizing: false,
+          enableSorting: false,
+          cell: () => null,
+        }),
+
         // Description column (resizable)
         columnHelper.accessor("description", {
           header: () => (
@@ -2074,10 +2085,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                         className="bg-muted/10 border-l-2 border-l-chart-4 hover:bg-muted/20 border-b border-border"
                       >
                         {isMultiSelectMode && <td className="px-3 py-2"></td>}
-                        <td className="px-3 py-2 text-xs text-muted-foreground pl-8">
+                        <td className="px-3 py-2 text-xs text-muted-foreground/60">
                           {format(new Date(member.date), "dd MMM yy")}
                         </td>
-                        <td className="px-3 py-2 pl-12 min-w-0">
+                        <td className="px-3 py-2 pl-8 min-w-0">
                           <div className="text-sm truncate">{member.description}</div>
                           {member.notes && (
                             <div className="text-xs text-muted-foreground truncate">{member.notes}</div>

@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo } from "react";
 import { TransactionFilters } from "@/components/transactions/transaction-filters";
 import { TransactionsTable } from "@/components/transactions/transactions-table";
 import { AddTransactionModal } from "@/components/transactions/add-transaction-modal";
-import { TableSkeleton } from "@/components/transactions/table-skeleton";
 import { TransactionFilters as TransactionFiltersType, TransactionSort } from "@/lib/types";
 import { useInfiniteTransactions } from "@/hooks/use-transactions";
 import { Button } from "@/components/ui/button";
@@ -133,17 +132,6 @@ export function TransactionsPage() {
       return true;
     });
   }, [filters]);
-
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold text-foreground">Transactions</h1>
-        </div>
-        <TableSkeleton />
-      </div>
-    );
-  }
 
   if (error) {
     return (
