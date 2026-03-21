@@ -854,8 +854,8 @@ export function TransactionFilters({
                               <div
                                 key={account}
                                 className={cn(
-                                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-slate-50",
-                                  isActive && "bg-accent/50"
+                                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-primary/10 hover:text-foreground",
+                                  isActive && "bg-primary/10"
                                 )}
                                 onClick={() => {
                                   if (inInclude) {
@@ -1035,8 +1035,8 @@ export function TransactionFilters({
                               <div
                                 key={category.id}
                                 className={cn(
-                                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-slate-50",
-                                  isActive && "bg-accent/50"
+                                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-primary/10 hover:text-foreground",
+                                  isActive && "bg-primary/10"
                                 )}
                                 onClick={() => {
                                   if (inInclude) {
@@ -1080,8 +1080,8 @@ export function TransactionFilters({
                           <div className="h-px bg-accent my-1" />
                           <div
                             className={cn(
-                              "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-slate-50",
-                              includeUncategorized && "bg-accent/50"
+                              "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-primary/10 hover:text-foreground",
+                              includeUncategorized && "bg-primary/10"
                             )}
                             onClick={() => {
                               if (includeUncategorized && selectedCategories.length === 0 && excludeCategories.length === 0) {
@@ -1223,7 +1223,7 @@ export function TransactionFilters({
                           const inExclude = excludeParticipants.includes(p.name);
                           return (
                             <div key={p.id}
-                              className={cn("relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-slate-50", (inInclude || inExclude) && "bg-accent/50")}
+                              className={cn("relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-primary/10 hover:text-foreground", (inInclude || inExclude) && "bg-primary/10")}
                               onClick={() => {
                                 if (inInclude) {
                                   setSelectedParticipants(selectedParticipants.filter(x => x !== p.name));
