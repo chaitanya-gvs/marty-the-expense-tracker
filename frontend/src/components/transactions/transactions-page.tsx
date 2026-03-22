@@ -23,20 +23,7 @@ function getDefaultDateRange() {
 
 // Load filters from localStorage or use defaults
 function getInitialFilters(): TransactionFiltersType {
-  if (typeof window === 'undefined') return {};
-
-  try {
-    const saved = localStorage.getItem('transaction-filters');
-    if (saved) {
-      return JSON.parse(saved);
-    }
-  } catch (error) {
-    console.error('Error loading filters from localStorage:', error);
-  }
-
-  return {
-    date_range: getDefaultDateRange()
-  };
+  return { date_range: getDefaultDateRange() };
 }
 
 // Human-readable labels for active filter chips
@@ -82,6 +69,17 @@ export function TransactionsPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isWorkflowOpen, setIsWorkflowOpen] = useState(false);
 
+  // Restore filters from localStorage after mount (must be client-only to avoid hydration mismatch)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('transaction-filters');
+      if (saved) setFilters(JSON.parse(saved));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Persist filters to localStorage whenever they change
   useEffect(() => {
     try {
       localStorage.setItem('transaction-filters', JSON.stringify(filters));
