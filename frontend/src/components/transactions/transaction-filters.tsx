@@ -651,7 +651,7 @@ export function TransactionFilters({
 
           {/* Filter Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0">
               <Label htmlFor="search" className="text-xs text-muted-foreground font-medium">Search</Label>
               <div className="flex gap-2">
                 <Input
@@ -664,20 +664,22 @@ export function TransactionFilters({
               </div>
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0">
               <Label className="text-xs text-muted-foreground font-medium">Date Range</Label>
               <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
-                    className="h-9 text-sm bg-muted border-border text-muted-foreground justify-start w-full"
+                    className="h-9 text-sm bg-muted border-border text-muted-foreground justify-start w-full overflow-hidden"
                   >
-                    <Calendar className="h-4 w-4 mr-2" />
-                    {selectedDatePreset === "custom" ? "Custom Range" :
-                      selectedDatePreset === "this_month" ? "This Month" :
-                        selectedDatePreset === "last_month" ? "Last Month" :
-                          selectedDatePreset === "last_3_months" ? "Last 3 Months" :
-                            selectedDatePreset === "this_year" ? "This Year" : "Custom Range"}
+                    <Calendar className="h-4 w-4 mr-2 shrink-0" />
+                    <span className="truncate">
+                      {selectedDatePreset === "custom" ? "Custom Range" :
+                        selectedDatePreset === "this_month" ? "This Month" :
+                          selectedDatePreset === "last_month" ? "Last Month" :
+                            selectedDatePreset === "last_3_months" ? "Last 3 Months" :
+                              selectedDatePreset === "this_year" ? "This Year" : "Custom Range"}
+                    </span>
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-80 bg-muted border-border" align="start">
@@ -760,7 +762,7 @@ export function TransactionFilters({
               </Popover>
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0">
               <Label className="text-xs text-muted-foreground font-medium">Amount Range</Label>
               <div className="flex rounded-md border border-border bg-muted overflow-hidden h-9">
                 <input
@@ -781,7 +783,7 @@ export function TransactionFilters({
               </div>
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0">
               <Label htmlFor="account" className="text-xs text-muted-foreground font-medium">Accounts</Label>
               <Popover
                 open={isAccountPopoverOpen}
@@ -948,7 +950,7 @@ export function TransactionFilters({
             </div>
 
 
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0">
               <Label className="text-xs text-muted-foreground font-medium">Categories</Label>
               <Popover
                 open={isCategoryPopoverOpen}
@@ -1175,7 +1177,7 @@ export function TransactionFilters({
             </div>
 
 
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0">
               <Label className="text-xs text-muted-foreground font-medium">Participants</Label>
               <Popover
                 open={isParticipantPopoverOpen}
@@ -1281,7 +1283,7 @@ export function TransactionFilters({
               </Popover>
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0">
               <Label className="text-xs text-muted-foreground font-medium">Tags</Label>
               <Select
                 value={selectedTags[0] || "all"}
