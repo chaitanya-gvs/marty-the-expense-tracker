@@ -958,7 +958,7 @@ class StatementWorkflow:
                     f"Fetching Splitwise transactions ({start_date.strftime('%Y-%m-%d')} → {end_date.strftime('%Y-%m-%d')})",
                     data={"start_date": start_date.isoformat(), "end_date": end_date.isoformat(), "mode": "full"},
                 )
-                splitwise_transactions = self.splitwise_service.get_transactions_for_past_month(
+                splitwise_transactions, deleted_expense_ids = self.splitwise_service.get_transactions_for_past_month(
                     exclude_created_by_me=True,
                     include_only_my_transactions=True,
                     start_date=start_date,
@@ -970,16 +970,30 @@ class StatementWorkflow:
                     f"Incremental sync: fetching transactions updated after {cursor.isoformat()}",
                     data={"cursor": cursor.isoformat(), "mode": "incremental"},
                 )
-                splitwise_transactions, _ = self.splitwise_service.get_transactions_updated_since(
+                splitwise_transactions, deleted_expense_ids, _ = self.splitwise_service.get_transactions_updated_since(
                     updated_after=cursor,
                     updated_before=datetime.now(),
                     exclude_created_by_me=True,
                     include_only_my_transactions=True,
                 )
 
-            # When 0 transactions (incremental): upload empty CSV to overwrite stale file, return success
+            if deleted_expense_ids:
+                soft_deleted = await TransactionOperations.soft_delete_splitwise_by_expense_ids(deleted_expense_ids)
+                logger.info(
+                    f"Splitwise API reported {len(deleted_expense_ids)} deleted expense(s); "
+                    f"soft-deleted {soft_deleted} local row(s)",
+                    extra=self._log_extra(),
+                )
+
+            # When 0 transactions to put in CSV: upload empty CSV to overwrite stale file, return success
             if not splitwise_transactions:
-                logger.info("No Splitwise transactions to sync", extra=self._log_extra())
+                if deleted_expense_ids:
+                    logger.info(
+                        "No active Splitwise transactions to sync (soft-delete(s) applied)",
+                        extra=self._log_extra(),
+                    )
+                else:
+                    logger.info("No Splitwise transactions to sync", extra=self._log_extra())
                 csv_filename = "splitwise.csv"
                 cloud_path = f"{cloud_month}/extracted_data/{csv_filename}"
                 empty_df = pd.DataFrame(columns=[
@@ -989,6 +1003,11 @@ class StatementWorkflow:
                 ])
                 temp_csv_path = self.temp_dir / csv_filename
                 empty_df.to_csv(temp_csv_path, index=False)
+                empty_mode = (
+                    "full_empty" if use_full_sync else (
+                        "incremental_deletes_only" if deleted_expense_ids else "incremental_empty"
+                    )
+                )
                 upload_result = self.cloud_storage.upload_file(
                     local_file_path=str(temp_csv_path),
                     cloud_path=cloud_path,
@@ -997,7 +1016,8 @@ class StatementWorkflow:
                         "source": "splitwise",
                         "transaction_count": 0,
                         "upload_timestamp": datetime.now().isoformat(),
-                        "mode": "incremental_empty",
+                        "mode": empty_mode,
+                        "deleted_expense_ids_count": str(len(deleted_expense_ids)),
                     },
                 )
                 if upload_result.get("success"):
@@ -1005,9 +1025,18 @@ class StatementWorkflow:
                         "splitwise_sync_complete", "splitwise",
                         "No new Splitwise transactions (empty file uploaded)",
                         level="info",
-                        data={"transaction_count": 0, "cloud_path": cloud_path},
+                        data={
+                            "transaction_count": 0,
+                            "cloud_path": cloud_path,
+                            "deleted_expense_ids_count": len(deleted_expense_ids),
+                        },
                     )
-                    return {"success": True, "cloud_path": cloud_path, "transaction_count": 0}
+                    return {
+                        "success": True,
+                        "cloud_path": cloud_path,
+                        "transaction_count": 0,
+                        "deleted_expense_ids_count": len(deleted_expense_ids),
+                    }
                 return None
 
             logger.info(f"Found {len(splitwise_transactions)} Splitwise transactions", extra=self._log_extra())
@@ -1481,6 +1510,7 @@ class StatementWorkflow:
                             "updated": db_result.get("updated_count", 0),
                             "skipped": db_result.get("skipped_count", 0),
                             "errors": db_result.get("error_count", 0),
+                            "splitwise_upsert_updates": db_result.get("splitwise_upsert_updates") or [],
                         },
                     )
                 else:

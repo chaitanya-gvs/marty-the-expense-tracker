@@ -19,6 +19,7 @@ import uuid
 from calendar import monthrange
 from datetime import datetime, date
 from typing import Any, AsyncGenerator, Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -39,6 +40,9 @@ from src.services.orchestrator.statement_workflow import StatementWorkflow
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# End of "today" for auto Splitwise range (API uses date strings; IST matches user's calendar day)
+_IST = ZoneInfo("Asia/Kolkata")
 
 router = APIRouter(prefix="/workflow", tags=["workflow"])
 
@@ -137,11 +141,12 @@ async def _resolve_splitwise_dates(
     # Auto-detect last Splitwise transaction date in DB
     last_date = await _get_last_splitwise_date()
     if last_date:
-        # Day after the last Splitwise transaction → today
+        # Last Splitwise transaction date → end of today in IST (Splitwise dated_* params are Y-M-D)
         start = datetime(last_date.year, last_date.month, last_date.day)
-        end = datetime.utcnow().replace(hour=23, minute=59, second=59, microsecond=0)
+        now_ist = datetime.now(_IST)
+        end = now_ist.replace(hour=23, minute=59, second=59, microsecond=0)
         logger.info(
-            f"Auto-detected Splitwise range: {start.date()} → {end.date()}",
+            f"Auto-detected Splitwise range: {start.date()} → {end.date()} (end = end of today IST)",
             extra={"job_id": job_id} if job_id else {},
         )
         return start, end

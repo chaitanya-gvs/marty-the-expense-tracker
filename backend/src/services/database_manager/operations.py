@@ -1047,6 +1047,57 @@ class TransactionOperations:
             await session.close()
 
     @staticmethod
+    async def soft_delete_splitwise_by_expense_ids(expense_ids: List[int]) -> int:
+        """
+        Soft-delete local Splitwise rows that match Splitwise expense ids (deleted in Splitwise).
+        Matches reference_number and raw_data id fields like _upsert_splitwise_transactions.
+        """
+        if not expense_ids:
+            return 0
+        # Deduplicate while preserving order
+        seen = set()
+        unique_ids: List[int] = []
+        for eid in expense_ids:
+            if eid not in seen:
+                seen.add(eid)
+                unique_ids.append(eid)
+        id_strs = [str(i) for i in unique_ids]
+        placeholders = ",".join([f":id_{i}" for i in range(len(id_strs))])
+        params: Dict[str, Any] = {f"id_{i}": id_strs[i] for i in range(len(id_strs))}
+
+        session_factory = get_session_factory()
+        session = session_factory()
+        try:
+            update_sql = text(f"""
+                UPDATE transactions
+                SET is_deleted = true,
+                    deleted_at = COALESCE(deleted_at, NOW()),
+                    updated_at = NOW()
+                WHERE LOWER(account) = 'splitwise'
+                  AND is_deleted = false
+                  AND (
+                    reference_number IN ({placeholders})
+                    OR raw_data::jsonb->>'id' IN ({placeholders})
+                    OR raw_data::jsonb->>'external_id' IN ({placeholders})
+                  )
+            """)
+            result = await session.execute(update_sql, params)
+            await session.commit()
+            rowcount = result.rowcount or 0
+            logger.info(
+                "Soft-deleted %s local Splitwise transaction(s) for %s Splitwise expense id(s)",
+                rowcount,
+                len(unique_ids),
+            )
+            return rowcount
+        except Exception as e:
+            await session.rollback()
+            logger.error("Error soft-deleting Splitwise transactions by expense ids", exc_info=True)
+            raise
+        finally:
+            await session.close()
+
+    @staticmethod
     async def bulk_insert_transactions(
         transactions: List[Dict[str, Any]],
         check_duplicates: bool = True,
@@ -1071,7 +1122,8 @@ class TransactionOperations:
                 "updated_count": 0,
                 "skipped_count": 0,
                 "error_count": 0,
-                "errors": []
+                "errors": [],
+                "splitwise_upsert_updates": [],
             }
         
         
@@ -1084,7 +1136,8 @@ class TransactionOperations:
             "updated_count": 0,
             "skipped_count": 0,
             "error_count": 0,
-            "errors": []
+            "errors": [],
+            "splitwise_upsert_updates": [],
         }
         
         try:
@@ -1096,10 +1149,13 @@ class TransactionOperations:
 
             # Handle Splitwise transactions with upsert if enabled
             if splitwise_transactions and upsert_splitwise:
-                updated_count, splitwise_to_insert = await TransactionOperations._upsert_splitwise_transactions(
-                    session, splitwise_transactions
+                updated_count, splitwise_to_insert, splitwise_upsert_updates = (
+                    await TransactionOperations._upsert_splitwise_transactions(
+                        session, splitwise_transactions
+                    )
                 )
                 result["updated_count"] = updated_count
+                result["splitwise_upsert_updates"] = splitwise_upsert_updates
                 # After upsert, check for duplicates in remaining transactions before insert
                 # (in case upsert failed to find some and they already exist)
                 if check_duplicates and splitwise_to_insert:
@@ -1362,7 +1418,7 @@ class TransactionOperations:
     async def _upsert_splitwise_transactions(
         session: AsyncSession,
         transactions: List[Dict[str, Any]]
-    ) -> Tuple[int, List[Dict[str, Any]]]:
+    ) -> Tuple[int, List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
         Upsert Splitwise transactions: update existing ones, return new ones for insert
         
@@ -1371,14 +1427,16 @@ class TransactionOperations:
             transactions: List of Splitwise transaction dictionaries
             
         Returns:
-            Tuple of (updated_count, transactions_to_insert)
+            Tuple of (updated_count, transactions_to_insert, upsert_updates)
+            upsert_updates: list of dicts with transaction_id, splitwise_id, description per update
         """
         updated_count = 0
         transactions_to_insert = []
+        upsert_updates: List[Dict[str, Any]] = []
         
         try:
             if not transactions:
-                return 0, []
+                return 0, [], []
             
             # Extract all splitwise_ids from incoming transactions
             splitwise_id_to_transaction = {}
@@ -1389,7 +1447,7 @@ class TransactionOperations:
             
             if not splitwise_id_to_transaction:
                 # No splitwise_ids found, return all for insert
-                return 0, transactions
+                return 0, transactions, []
             
             # Query existing Splitwise transactions with these IDs
             splitwise_ids_list = list(splitwise_id_to_transaction.keys())
@@ -1487,7 +1545,18 @@ class TransactionOperations:
                             
                             await session.execute(update_query, update_params)
                             updated_count += 1
-                            logger.debug(f"Updated Splitwise transaction {transaction_id} (splitwise_id: {splitwise_id})")
+                            desc = (prepared_data.get("description") or "")[:200]
+                            logger.info(
+                                "Updated Splitwise transaction id=%s splitwise_id=%s description=%r",
+                                transaction_id,
+                                splitwise_id,
+                                desc,
+                            )
+                            upsert_updates.append({
+                                "transaction_id": str(transaction_id),
+                                "splitwise_id": splitwise_id,
+                                "description": prepared_data.get("description"),
+                            })
                     except Exception as e:
                         logger.error(f"Error updating Splitwise transaction {transaction_id}", exc_info=True)
                         # On error, add to insert list as fallback
@@ -1498,13 +1567,13 @@ class TransactionOperations:
             
             await session.commit()
             logger.info(f"Upserted {updated_count} Splitwise transactions, {len(transactions_to_insert)} to insert")
-            return updated_count, transactions_to_insert
+            return updated_count, transactions_to_insert, upsert_updates
             
         except Exception as e:
             await session.rollback()
             logger.error("Error upserting Splitwise transactions", exc_info=True)
             # On error, return all for insert as fallback
-            return 0, transactions
+            return 0, transactions, []
     
     @staticmethod
     def _extract_splitwise_id(transaction: Dict[str, Any]) -> Optional[int]:

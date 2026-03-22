@@ -36,7 +36,7 @@ class SplitwiseService:
         include_only_my_transactions: bool = True,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None
-    ) -> List[ProcessedSplitwiseTransaction]:
+    ) -> Tuple[List[ProcessedSplitwiseTransaction], List[int]]:
         """
         Get transactions from the past month where the user is involved.
         
@@ -45,7 +45,8 @@ class SplitwiseService:
             include_only_my_transactions: If True, only include transactions where the user is involved
         
         Returns:
-            List of processed transactions
+            (processed transactions, deleted_expense_ids) — Splitwise expense ids with deleted_at
+            for local soft-delete; no filters applied to deleted ids.
         """
         # Use provided date range or calculate default past month
         if start_date is None or end_date is None:
@@ -63,10 +64,11 @@ class SplitwiseService:
         
         # Filter and process expenses
         processed_transactions = []
+        deleted_expense_ids: List[int] = []
         
         for expense in expenses:
-            # Skip deleted expenses
             if expense.deleted_at:
+                deleted_expense_ids.append(expense.id)
                 continue
             
             # Check if current user is involved in this expense
@@ -83,8 +85,11 @@ class SplitwiseService:
             if processed_transaction:
                 processed_transactions.append(processed_transaction)
         
-        logger.info(f"Processed {len(processed_transactions)} transactions for user {current_user.first_name}")
-        return processed_transactions
+        logger.info(
+            f"Processed {len(processed_transactions)} transactions for user {current_user.first_name}; "
+            f"{len(deleted_expense_ids)} deleted in Splitwise"
+        )
+        return processed_transactions, deleted_expense_ids
 
     def get_transactions_updated_since(
         self,
@@ -92,11 +97,11 @@ class SplitwiseService:
         updated_before: Optional[datetime] = None,
         exclude_created_by_me: bool = True,
         include_only_my_transactions: bool = True,
-    ) -> Tuple[List[ProcessedSplitwiseTransaction], Optional[datetime]]:
+    ) -> Tuple[List[ProcessedSplitwiseTransaction], List[int], Optional[datetime]]:
         """
         Fetch only expenses updated after/before the given timestamps (incremental sync).
         Uses updated_after/updated_before API params; no date range.
-        Returns (transactions, max_updated_at) where max_updated_at is for logging.
+        Returns (transactions, deleted_expense_ids, max_updated_at) where max_updated_at is for logging.
         """
         current_user = self.get_current_user()
         logger.info(
@@ -110,10 +115,12 @@ class SplitwiseService:
         )
 
         processed_transactions = []
+        deleted_expense_ids: List[int] = []
         max_updated_at: Optional[datetime] = None
 
         for expense in expenses:
             if expense.deleted_at:
+                deleted_expense_ids.append(expense.id)
                 continue
             if include_only_my_transactions and not self._is_user_involved(expense, current_user.id):
                 continue
@@ -126,8 +133,11 @@ class SplitwiseService:
                 if processed.updated_at and (max_updated_at is None or processed.updated_at > max_updated_at):
                     max_updated_at = processed.updated_at
 
-        logger.info(f"Found {len(processed_transactions)} transactions updated since {updated_after.isoformat()}")
-        return processed_transactions, max_updated_at
+        logger.info(
+            f"Found {len(processed_transactions)} transactions updated since {updated_after.isoformat()}; "
+            f"{len(deleted_expense_ids)} deleted in Splitwise"
+        )
+        return processed_transactions, deleted_expense_ids, max_updated_at
 
     def _is_user_involved(self, expense: SplitwiseExpense, user_id: int) -> bool:
         """Check if a user is involved in an expense."""
@@ -236,7 +246,9 @@ class SplitwiseService:
             logger.error(f"Failed to process transaction {expense.id}", exc_info=True)
             return None
     
-    def get_transactions_with_filter(self, filter_criteria: SplitwiseTransactionFilter) -> List[ProcessedSplitwiseTransaction]:
+    def get_transactions_with_filter(
+        self, filter_criteria: SplitwiseTransactionFilter
+    ) -> Tuple[List[ProcessedSplitwiseTransaction], List[int]]:
         """
         Get transactions with custom filter criteria.
         
@@ -244,7 +256,7 @@ class SplitwiseService:
             filter_criteria: Filter criteria for transactions
         
         Returns:
-            List of processed transactions matching the criteria
+            (processed transactions, deleted_expense_ids) — Splitwise expense ids with deleted_at
         """
         # Get current user
         current_user = self.get_current_user()
@@ -256,10 +268,11 @@ class SplitwiseService:
         )
         
         processed_transactions = []
+        deleted_expense_ids: List[int] = []
         
         for expense in expenses:
-            # Skip deleted expenses
             if expense.deleted_at:
+                deleted_expense_ids.append(expense.id)
                 continue
             
             # Apply filters
@@ -271,8 +284,11 @@ class SplitwiseService:
             if processed_transaction:
                 processed_transactions.append(processed_transaction)
         
-        logger.info(f"Found {len(processed_transactions)} transactions matching filter criteria")
-        return processed_transactions
+        logger.info(
+            f"Found {len(processed_transactions)} transactions matching filter criteria; "
+            f"{len(deleted_expense_ids)} deleted in Splitwise"
+        )
+        return processed_transactions, deleted_expense_ids
     
     def _matches_filter(self, expense: SplitwiseExpense, filter_criteria: SplitwiseTransactionFilter, current_user) -> bool:
         """Check if an expense matches the filter criteria."""
