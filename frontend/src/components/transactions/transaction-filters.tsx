@@ -533,9 +533,9 @@ export function TransactionFilters({
       badges.push({ key: "transaction_type", label: `Type: ${filters.transaction_type}`, value: filters.transaction_type });
     }
     if (filters.date_range && (filters.date_range.start || filters.date_range.end)) {
-      const start = filters.date_range.start ? new Date(filters.date_range.start).toLocaleDateString() : "Start";
-      const end = filters.date_range.end ? new Date(filters.date_range.end).toLocaleDateString() : "End";
-      badges.push({ key: "date_range", label: `Date: ${start} - ${end}`, value: filters.date_range });
+      const start = filters.date_range.start ?? "Start";
+      const end = filters.date_range.end ?? "End";
+      badges.push({ key: "date_range", label: `Date: ${start} – ${end}`, value: filters.date_range });
     }
     if (filters.amount_range && (filters.amount_range.min !== undefined || filters.amount_range.max !== undefined)) {
       const min = filters.amount_range.min !== undefined ? `₹${filters.amount_range.min}` : "Min";
