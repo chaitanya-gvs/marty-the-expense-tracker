@@ -113,7 +113,7 @@ function SummaryCards({ analytics }: { analytics: ExpenseAnalytics }) {
               <TrendingDown className="h-3.5 w-3.5" />
             </div>
           </div>
-          <p className="font-mono text-2xl font-semibold text-foreground tabular-nums tracking-tight">
+          <p className="font-mono text-lg font-semibold text-foreground tabular-nums tracking-tight">
             {formatCurrency(analytics.summary.total_amount)}
           </p>
           <p className="text-xs text-muted-foreground">
@@ -130,7 +130,7 @@ function SummaryCards({ analytics }: { analytics: ExpenseAnalytics }) {
               <Hash className="h-3.5 w-3.5" />
             </div>
           </div>
-          <p className="font-mono text-2xl font-semibold text-foreground tabular-nums tracking-tight">
+          <p className="font-mono text-lg font-semibold text-foreground tabular-nums tracking-tight">
             {analytics.summary.total_count}
           </p>
           <p className="text-xs text-muted-foreground">
@@ -147,7 +147,7 @@ function SummaryCards({ analytics }: { analytics: ExpenseAnalytics }) {
               <BarChart3 className="h-3.5 w-3.5" />
             </div>
           </div>
-          <p className="font-mono text-2xl font-semibold text-foreground tabular-nums tracking-tight">
+          <p className="font-mono text-lg font-semibold text-foreground tabular-nums tracking-tight">
             {formatCurrency(analytics.summary.average_amount)}
           </p>
           <p className="text-xs text-muted-foreground">per transaction this period</p>

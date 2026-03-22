@@ -59,7 +59,8 @@ export function AnalyticsCharts({ analytics, analyticsFilters }: AnalyticsCharts
   const drillDownFilters = expandedGroup ? {
     date_range: analyticsFilters.date_range,
     direction: analyticsFilters.direction,
-    ...(group_by === "category" && { categories: [expandedGroup] }),
+    ...(group_by === "category" && expandedGroup !== "Uncategorized" && { categories: [expandedGroup] }),
+    ...(group_by === "category" && expandedGroup === "Uncategorized" && { include_uncategorized: true }),
     ...(group_by === "account" && { accounts: [expandedGroup] }),
     ...(group_by === "tag" && { tags: [expandedGroup] }),
   } : undefined;

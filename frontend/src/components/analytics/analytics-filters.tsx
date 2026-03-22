@@ -16,7 +16,7 @@ const DATE_PRESETS = [
 const GROUP_BY_OPTIONS = [
   { value: "category", label: "Category" },
   { value: "tag", label: "Tag" },
-  { value: "tag_category", label: "Tag › Category" },
+  { value: "tag_category", label: "Tag × Category" },
   { value: "month", label: "Month" },
   { value: "account", label: "Account" },
   { value: "category_month", label: "Cat × Month" },
