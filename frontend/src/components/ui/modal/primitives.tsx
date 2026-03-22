@@ -82,9 +82,9 @@ export function MoneyInput({
         value={value}
         onChange={handleChange}
         className={cn(
-          "h-10 bg-slate-800/60 border-slate-700 rounded-lg pl-8 pr-3",
+          "h-10 bg-muted/60 border-border rounded-lg pl-8 pr-3",
           "text-right text-[var(--modal-text)] font-mono",
-          "focus:outline-none focus:ring-2 focus:ring-slate-600",
+          "focus:outline-none focus:ring-2 focus:ring-ring",
           className
         )}
       />
@@ -121,7 +121,7 @@ export function CategorySelect({
               "border-2 min-w-[100px]",
               isSelected
                 ? "border-[var(--modal-accent)] bg-[var(--modal-accent)]/20 text-[var(--modal-accent)]"
-                : "border-slate-700 bg-slate-800/60 text-[var(--modal-muted)] hover:border-slate-600"
+                : "border-border bg-muted/60 text-[var(--modal-muted)] hover:border-muted-foreground/50"
             )}
             style={
               isSelected && category.color
@@ -201,7 +201,7 @@ export function ResultItem({
     "border hover:border-slate-600",
     selected
       ? "border-[var(--modal-accent)] bg-[var(--modal-accent)]/10"
-      : "border-slate-700 bg-slate-800/40 hover:bg-slate-800/60",
+      : "border-border bg-muted/40 hover:bg-muted/60",
     className
   );
 
@@ -243,7 +243,7 @@ export function RemainingBar({ remaining, total, className }: RemainingBarProps)
           {isComplete ? "Complete" : `₹${remaining.toFixed(2)} remaining`}
         </span>
       </div>
-      <div className="h-2 bg-slate-800/60 rounded-full overflow-hidden">
+      <div className="h-2 bg-muted/60 rounded-full overflow-hidden">
         <div
           className={cn(
             "h-full transition-all duration-300",
@@ -271,7 +271,7 @@ export function KeepOriginalToggle({
     <div
       className={cn(
         "flex items-start gap-3 p-3 rounded-lg",
-        "bg-slate-900/70 border border-slate-800",
+        "bg-muted/40 border border-border/50",
         className
       )}
     >
@@ -280,7 +280,7 @@ export function KeepOriginalToggle({
         id="keep-original"
         checked={value}
         onChange={(e) => onChange(e.target.checked)}
-        className="mt-1 h-4 w-4 rounded border-slate-700 bg-slate-800/60 text-[var(--modal-accent)] focus:ring-2 focus:ring-[var(--modal-accent)] focus:ring-offset-0"
+        className="mt-1 h-4 w-4 rounded border-border bg-muted/60 text-primary focus:ring-2 focus:ring-ring focus:ring-offset-0"
       />
       <div className="flex-1">
         <label

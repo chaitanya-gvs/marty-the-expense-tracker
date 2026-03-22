@@ -187,8 +187,8 @@ function ModalHeader({
           className={cn(
             "inline-flex h-8 w-8 items-center justify-center rounded-full",
             "text-[var(--modal-muted)] hover:text-[var(--modal-text)]",
-            "hover:bg-slate-800/60 transition-colors",
-            "focus:outline-none focus:ring-2 focus:ring-slate-600"
+            "hover:bg-muted/60 transition-colors",
+            "focus:outline-none focus:ring-2 focus:ring-ring"
           )}
           aria-label="Close modal"
         >
@@ -205,7 +205,7 @@ function ModalBody({ children, className }: ModalBodyProps) {
       className={cn(
         "overflow-y-auto px-6 py-4",
         "max-h-[calc(70vh)]",
-        "scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent",
+        "scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent",
         className
       )}
     >

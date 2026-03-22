@@ -47,6 +47,18 @@
 /* Light Mode — Warm Blush */
 :root {
   --radius: 0.5rem;
+
+  /* Modal tokens — aliases to theme tokens so they work in both modes */
+  --modal-panel: var(--card);
+  --modal-panel-header: var(--muted);
+  --modal-border: var(--border);
+  --modal-muted: var(--muted-foreground);
+  --modal-text: var(--foreground);
+  --modal-accent: var(--primary);
+  --modal-accent-2: #D97706;
+  --modal-accent-3: #0D9488;
+  --modal-danger: var(--destructive);
+  --modal-success: #22c55e;
   --background: #FFF8F8;
   --foreground: #0F172A;
   --card: #FFFFFF;
@@ -114,19 +126,7 @@
   --sidebar-border: rgba(255, 255, 255, 0.07);
   --sidebar-ring: #6366F1;
 
-  /* Modal Design Tokens */
-  --modal-bg: #0E0F13;
-  --modal-panel: #131418;
-  --modal-panel-header: #1A1B20;
-  --modal-border: rgba(255, 255, 255, 0.08);
-  --modal-muted: #94A3B8;
-  --modal-text: #F8FAFC;
-  --modal-accent: #6366F1;
-  --modal-accent-2: #D97706;
-  --modal-accent-3: #0D9488;
-  --modal-danger: #EF4444;
-  --modal-success: #22c55e;
-  --modal-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+  /* Modal tokens inherit from :root aliases — no overrides needed */
 }
 
 @layer base {
