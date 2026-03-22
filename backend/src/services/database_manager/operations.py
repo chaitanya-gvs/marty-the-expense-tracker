@@ -10,6 +10,7 @@ from uuid import UUID
 
 import pandas as pd
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .connection import get_session_factory
@@ -1998,21 +1999,37 @@ class TransactionOperations:
         session_factory = get_session_factory()
         session = session_factory()
         try:
-            # Build WHERE clause - always force debit for expense analytics
+            # Build WHERE clause
             where_conditions = [
                 "t.is_deleted = false",
-                "t.direction = 'debit'",  # Only consider debit transactions
                 # Exclude parent transactions in split groups - only count the split parts (is_split = True)
                 # Include collapsed grouped expenses (is_grouped_expense = True)
                 "(t.transaction_group_id IS NULL OR t.is_split = true OR t.is_grouped_expense = true)"
             ]
             params = {}
-            
+
+            if direction == 'debit':
+                # Net mode: include both debits and credits so refunds/settlements reduce the total
+                where_conditions.append("t.direction IN ('debit', 'credit')")
+                # Debit adds to total, credit subtracts (refund/settlement offsets the expense)
+                net_amount_expr = """CASE WHEN t.direction = 'debit'
+                    THEN COALESCE(t.split_share_amount, t.amount)
+                    ELSE -COALESCE(t.split_share_amount, t.amount) END"""
+                # Count only debit transactions (credits are offsets, not separate expense events)
+                count_expr = "COUNT(CASE WHEN t.direction = 'debit' THEN t.id END)"
+                count_distinct_expr = "COUNT(DISTINCT CASE WHEN t.direction = 'debit' THEN t.id END)"
+            else:
+                # Credit mode: show only credits
+                where_conditions.append("t.direction = 'credit'")
+                net_amount_expr = "COALESCE(t.split_share_amount, t.amount)"
+                count_expr = "COUNT(t.id)"
+                count_distinct_expr = "COUNT(DISTINCT t.id)"
+
             # Use user-provided exclude_categories
             all_exclude_categories = set()
             if exclude_categories:
                 all_exclude_categories.update(exclude_categories)
-            
+
             if start_date:
                 where_conditions.append("t.transaction_date >= :start_date")
                 params["start_date"] = start_date
@@ -2031,13 +2048,8 @@ class TransactionOperations:
             if all_exclude_categories:
                 where_conditions.append("(c.name IS NULL OR c.name != ALL(:exclude_categories))")
                 params["exclude_categories"] = list(all_exclude_categories)
-            
+
             where_clause = " AND ".join(where_conditions)
-            
-            # Build GROUP BY and SELECT based on group_by parameter
-            # For split transactions, use split_share_amount; otherwise use amount
-            # This ensures we don't count split transactions twice
-            net_amount_expr = "COALESCE(t.split_share_amount, t.amount)"
             
             join_tags = ""
             if group_by == "category":
@@ -2045,17 +2057,17 @@ class TransactionOperations:
                     COALESCE(c.name, 'Uncategorized') as group_key,
                     c.color as color,
                     SUM({net_amount_expr}) as total_amount,
-                    COUNT(t.id) as transaction_count
+                    {count_expr} as transaction_count
                 """
                 group_by_clause = "COALESCE(c.name, 'Uncategorized'), c.color"
                 order_by_clause = "total_amount DESC"
-                
+
             elif group_by == "tag":
                 select_clause = f"""
                     tag.name as group_key,
                     tag.color as color,
                     SUM({net_amount_expr}) as total_amount,
-                    COUNT(DISTINCT t.id) as transaction_count
+                    {count_distinct_expr} as transaction_count
                 """
                 group_by_clause = "tag.name, tag.color"
                 order_by_clause = "total_amount DESC"
@@ -2075,7 +2087,7 @@ class TransactionOperations:
                     TO_CHAR(t.transaction_date, 'YYYY-MM') as group_key,
                     NULL as color,
                     SUM({net_amount_expr}) as total_amount,
-                    COUNT(t.id) as transaction_count
+                    {count_expr} as transaction_count
                 """
                 group_by_clause = "TO_CHAR(t.transaction_date, 'YYYY-MM')"
                 order_by_clause = "group_key ASC"
@@ -2085,7 +2097,7 @@ class TransactionOperations:
                     t.account as group_key,
                     NULL as color,
                     SUM({net_amount_expr}) as total_amount,
-                    COUNT(t.id) as transaction_count
+                    {count_expr} as transaction_count
                 """
                 group_by_clause = "t.account"
                 order_by_clause = "total_amount DESC"
@@ -2097,7 +2109,7 @@ class TransactionOperations:
                     (COALESCE(c.name, 'Uncategorized') || ' - ' || TO_CHAR(t.transaction_date, 'YYYY-MM')) as group_key,
                     c.color as color,
                     SUM({net_amount_expr}) as total_amount,
-                    COUNT(t.id) as transaction_count
+                    {count_expr} as transaction_count
                 """
                 group_by_clause = "COALESCE(c.name, 'Uncategorized'), TO_CHAR(t.transaction_date, 'YYYY-MM'), c.color"
                 order_by_clause = "month ASC, total_amount DESC"
@@ -2109,7 +2121,7 @@ class TransactionOperations:
                     (tag.name || ' - ' || TO_CHAR(t.transaction_date, 'YYYY-MM')) as group_key,
                     tag.color as color,
                     SUM({net_amount_expr}) as total_amount,
-                    COUNT(DISTINCT t.id) as transaction_count
+                    {count_distinct_expr} as transaction_count
                 """
                 group_by_clause = "tag.name, TO_CHAR(t.transaction_date, 'YYYY-MM'), tag.color"
                 order_by_clause = "month ASC, total_amount DESC"
@@ -2131,7 +2143,7 @@ class TransactionOperations:
                     (tag.name || ' - ' || COALESCE(c.name, 'Uncategorized')) as group_key,
                     tag.color as color,
                     SUM({net_amount_expr}) as total_amount,
-                    COUNT(DISTINCT t.id) as transaction_count
+                    {count_distinct_expr} as transaction_count
                 """
                 group_by_clause = "tag.name, COALESCE(c.name, 'Uncategorized'), tag.color"
                 order_by_clause = "tag.name ASC, total_amount DESC"
@@ -2355,14 +2367,34 @@ class TagOperations:
         session_factory = get_session_factory()
         session = session_factory()
         try:
-            # Check if tag already exists
+            import re
+
+            # Check if active tag already exists
             existing = await TagOperations.get_tag_by_name(name)
             if existing:
                 raise ValueError(f"Tag '{name}' already exists")
-            
-            # Generate slug from name
+
+            # Check if a soft-deleted tag exists with this name — reactivate it
+            result_inactive = await session.execute(
+                text("SELECT id FROM tags WHERE LOWER(name) = LOWER(:name) AND is_active = false"),
+                {"name": name}
+            )
+            inactive_row = result_inactive.fetchone()
+            if inactive_row:
+                tag_id = inactive_row[0]
+                await session.execute(
+                    text("UPDATE tags SET is_active = true, color = :color, updated_at = NOW() WHERE id = :id"),
+                    {"color": color, "id": tag_id}
+                )
+                await session.commit()
+                logger.info(f"Reactivated soft-deleted tag: {name} (ID: {tag_id})")
+                return str(tag_id)
+
+            # Generate slug from name (sanitize special characters)
             slug = name.lower().replace(' ', '-').replace('&', 'and')
-            
+            slug = re.sub(r'[^a-z0-9\-]', '-', slug)
+            slug = re.sub(r'-+', '-', slug).strip('-')
+
             result = await session.execute(
                 text("""
                     INSERT INTO tags (name, slug, color, description, is_active)
@@ -2380,8 +2412,10 @@ class TagOperations:
             logger.info(f"Created new tag: {name} (ID: {tag_id})")
             return str(tag_id)
         except ValueError:
-            # Re-raise ValueError (tag already exists) without rollback
             raise
+        except IntegrityError:
+            await session.rollback()
+            raise ValueError(f"Tag '{name}' already exists")
         except Exception as e:
             await session.rollback()
             logger.error(f"Failed to create tag '{name}'", exc_info=True)

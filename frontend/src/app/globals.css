@@ -1,3 +1,4 @@
+/* Dark Garnet theme */
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -6,8 +7,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-dm-sans);
+  --font-mono: var(--font-dm-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -43,87 +44,89 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* Light Mode — Warm Blush */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.13 0.028 261.692);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.13 0.028 261.692);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.13 0.028 261.692);
-  --primary: oklch(0.21 0.034 264.665);
-  --primary-foreground: oklch(0.985 0.002 247.839);
-  --secondary: oklch(0.967 0.003 264.542);
-  --secondary-foreground: oklch(0.21 0.034 264.665);
-  --muted: oklch(0.967 0.003 264.542);
-  --muted-foreground: oklch(0.551 0.027 264.364);
-  --accent: oklch(0.967 0.003 264.542);
-  --accent-foreground: oklch(0.21 0.034 264.665);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.928 0.006 264.531);
-  --input: oklch(0.928 0.006 264.531);
-  --ring: oklch(0.707 0.022 261.325);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0.002 247.839);
-  --sidebar-foreground: oklch(0.13 0.028 261.692);
-  --sidebar-primary: oklch(0.21 0.034 264.665);
-  --sidebar-primary-foreground: oklch(0.985 0.002 247.839);
-  --sidebar-accent: oklch(0.967 0.003 264.542);
-  --sidebar-accent-foreground: oklch(0.21 0.034 264.665);
-  --sidebar-border: oklch(0.928 0.006 264.531);
-  --sidebar-ring: oklch(0.707 0.022 261.325);
+  --radius: 0.5rem;
+
+  /* Modal tokens — aliases to theme tokens so they work in both modes */
+  --modal-panel: var(--card);
+  --modal-panel-header: var(--muted);
+  --modal-border: var(--border);
+  --modal-muted: var(--muted-foreground);
+  --modal-text: var(--foreground);
+  --modal-accent: var(--primary);
+  --modal-accent-2: #D97706;
+  --modal-accent-3: #0D9488;
+  --modal-danger: var(--destructive);
+  --modal-success: #22c55e;
+  --background: #FFF8F8;
+  --foreground: #0F172A;
+  --card: #FFFFFF;
+  --card-foreground: #0F172A;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F172A;
+  --primary: #B91C1C;
+  --primary-foreground: #FFFFFF;
+  --secondary: #FFF0F0;
+  --secondary-foreground: #0F172A;
+  --muted: #FFF0F0;
+  --muted-foreground: #64748B;
+  --accent: #B45309;
+  --accent-foreground: #FFFFFF;
+  --destructive: #EF4444;
+  --border: #F2E8E8;
+  --input: #F2E8E8;
+  --ring: #B91C1C;
+  --chart-1: #DC2626;
+  --chart-2: #D97706;
+  --chart-3: #0D9488;
+  --chart-4: #7C3AED;
+  --chart-5: #64748B;
+  --sidebar: #FFF0F0;
+  --sidebar-foreground: #0F172A;
+  --sidebar-primary: #B91C1C;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #FFE4E4;
+  --sidebar-accent-foreground: #0F172A;
+  --sidebar-border: #F2E8E8;
+  --sidebar-ring: #B91C1C;
 }
 
+/* Dark Mode */
 .dark {
-  --background: oklch(0.13 0.028 261.692);
-  --foreground: oklch(0.985 0.002 247.839);
-  --card: oklch(0.21 0.034 264.665);
-  --card-foreground: oklch(0.985 0.002 247.839);
-  --popover: oklch(0.21 0.034 264.665);
-  --popover-foreground: oklch(0.985 0.002 247.839);
-  --primary: oklch(0.928 0.006 264.531);
-  --primary-foreground: oklch(0.21 0.034 264.665);
-  --secondary: oklch(0.278 0.033 256.848);
-  --secondary-foreground: oklch(0.985 0.002 247.839);
-  --muted: oklch(0.278 0.033 256.848);
-  --muted-foreground: oklch(0.707 0.022 261.325);
-  --accent: oklch(0.278 0.033 256.848);
-  --accent-foreground: oklch(0.985 0.002 247.839);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.21 0.034 264.665);
-  --sidebar-foreground: oklch(0.985 0.002 247.839);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0.002 247.839);
-  --sidebar-accent: oklch(0.278 0.033 256.848);
-  --sidebar-accent-foreground: oklch(0.985 0.002 247.839);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
-  
-  /* Modal Design Tokens */
-  --modal-bg: #0b1220;
-  --modal-panel: #0f172a;
-  --modal-panel-header: #0b1324;
-  --modal-border: #1f2937;
-  --modal-muted: #94a3b8;
-  --modal-text: #e5e7eb;
-  --modal-accent: #6366f1;
-  --modal-accent-2: #06b6d4;
-  --modal-accent-3: #f59e0b;
-  --modal-danger: #ef4444;
-  --modal-success: #22c55e;
-  --modal-shadow: 0 10px 40px rgba(0,0,0,0.45);
+  --background: #0E0F13;
+  --foreground: #F8FAFC;
+  --card: #131418;
+  --card-foreground: #F8FAFC;
+  --popover: #131418;
+  --popover-foreground: #F8FAFC;
+  --primary: #6366F1;
+  --primary-foreground: #FFFFFF;
+  --secondary: #1A1B20;
+  --secondary-foreground: #F8FAFC;
+  --muted: #1A1B20;
+  --muted-foreground: #94A3B8;
+  --accent: #D97706;
+  --accent-foreground: #FFFFFF;
+  --destructive: #EF4444;
+  --border: rgba(255, 255, 255, 0.07);
+  --input: rgba(255, 255, 255, 0.08);
+  --ring: #6366F1;
+  --chart-1: #EF4444;
+  --chart-2: #D97706;
+  --chart-3: #0D9488;
+  --chart-4: #7C3AED;
+  --chart-5: #64748B;
+  --sidebar: #0A0B0E;
+  --sidebar-foreground: #F8FAFC;
+  --sidebar-primary: #6366F1;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #131418;
+  --sidebar-accent-foreground: #F8FAFC;
+  --sidebar-border: rgba(255, 255, 255, 0.07);
+  --sidebar-ring: #6366F1;
+
+  /* Modal tokens inherit from :root aliases — no overrides needed */
 }
 
 @layer base {

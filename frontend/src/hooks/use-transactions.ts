@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery, keepPreviousData } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 import { Transaction, TransactionFilters, TransactionSort, PaginationParams, SplitBreakdown } from "@/lib/types";
 
@@ -21,16 +21,14 @@ export function useInfiniteTransactions(
 ) {
   return useInfiniteQuery({
     queryKey: ["transactions-infinite", filters, sort],
-    queryFn: ({ pageParam = 1 }) => 
+    queryFn: ({ pageParam = 1 }) =>
       apiClient.getTransactions(filters, sort, { page: pageParam - 1, limit: 500 }),
     getNextPageParam: (lastPage) => {
       const { pagination } = lastPage;
-      // pagination.page is 1-based from the API
-      // pageParam is also 1-based (starts at 1)
-      // So the next pageParam should be pagination.page + 1
       return pagination && pagination.page < pagination.total_pages ? pagination.page + 1 : undefined;
     },
     initialPageParam: 1,
+    placeholderData: keepPreviousData,
   });
 }
 

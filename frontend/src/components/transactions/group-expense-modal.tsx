@@ -114,7 +114,7 @@ export function GroupExpenseModal({
           <div className="space-y-2">
             <div className="flex justify-between items-center text-sm">
               <span className="text-muted-foreground">Credits (positive):</span>
-              <span className="text-green-600 font-medium">
+              <span className="text-emerald-500 font-medium">
                 +{formatCurrency(selectedTransactions
                   .filter(t => t.direction === "credit")
                   .reduce((sum, t) => {
@@ -126,7 +126,7 @@ export function GroupExpenseModal({
             </div>
             <div className="flex justify-between items-center text-sm">
               <span className="text-muted-foreground">Debits (negative):</span>
-              <span className="text-red-600 font-medium">
+              <span className="text-destructive font-medium">
                 -{formatCurrency(selectedTransactions
                   .filter(t => t.direction === "debit")
                   .reduce((sum, t) => {
@@ -141,7 +141,7 @@ export function GroupExpenseModal({
                 <span className="font-semibold">Net Amount:</span>
                 <span className={cn(
                   "text-lg font-bold",
-                  netAmount >= 0 ? "text-green-600" : "text-red-600"
+                  netAmount >= 0 ? "text-emerald-500" : "text-destructive"
                 )}>
                   {netAmount >= 0 ? "+" : ""}
                   {formatCurrency(Math.abs(netAmount))}
@@ -226,7 +226,7 @@ export function GroupExpenseModal({
                     <div className="text-right ml-4 flex-shrink-0">
                       <div className={cn(
                         "text-sm font-semibold",
-                        tx.direction === "credit" ? "text-green-600" : "text-red-600"
+                        tx.direction === "credit" ? "text-emerald-500" : "text-destructive"
                       )}>
                         {tx.direction === "credit" ? "+" : "-"}
                         {formatCurrency(effectiveAmount)}
@@ -250,8 +250,8 @@ export function GroupExpenseModal({
         </div>
 
         {/* Info Note */}
-        <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-3">
-          <p className="text-xs text-blue-800 dark:text-blue-200">
+        <div className="rounded-lg bg-primary/10 border border-primary/20 p-3">
+          <p className="text-xs text-primary">
             <strong>Note:</strong> The grouped expense will hide these individual transactions 
             and show only the collapsed transaction with the net amount. You can expand to view 
             details later, and the collapsed transaction can be split/shared like any other transaction.

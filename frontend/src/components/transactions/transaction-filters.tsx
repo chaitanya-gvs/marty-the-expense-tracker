@@ -96,6 +96,7 @@ export function TransactionFilters({
   const [splitFilter, setSplitFilter] = useState<string>(
     filters.is_split === false ? "exclude" : filters.is_split === true ? "only" : "all"
   );
+  const [groupedFilter, setGroupedFilter] = useState<boolean>(filters.is_grouped_expense === true);
   const [accountSearchQuery, setAccountSearchQuery] = useState("");
   const [categorySearchQuery, setCategorySearchQuery] = useState("");
   const [participantSearchQuery, setParticipantSearchQuery] = useState("");
@@ -249,6 +250,9 @@ export function TransactionFilters({
       newFilters.is_split = undefined; // Show all
     }
 
+    // Apply is_grouped_expense filter
+    newFilters.is_grouped_expense = groupedFilter ? true : undefined;
+
     // Check if filters have actually changed
     const filtersChanged =
       newFilters.search !== filters.search ||
@@ -268,7 +272,8 @@ export function TransactionFilters({
       newFilters.include_uncategorized !== filters.include_uncategorized ||
       newFilters.flagged !== filters.flagged ||
       newFilters.is_shared !== filters.is_shared ||
-      newFilters.is_split !== filters.is_split;
+      newFilters.is_split !== filters.is_split ||
+      newFilters.is_grouped_expense !== filters.is_grouped_expense;
 
     if (filtersChanged) {
       onFiltersChange(newFilters);
@@ -298,6 +303,7 @@ export function TransactionFilters({
     setFlaggedFilter("all");
     setHideShared(false);
     setSplitFilter("all");
+    setGroupedFilter(false);
     onClearFilters();
 
     // Collapse panel after reset
@@ -370,6 +376,9 @@ export function TransactionFilters({
 
     const newSplitFilter = filters.is_split === false ? "exclude" : filters.is_split === true ? "only" : "all";
     if (newSplitFilter !== splitFilter) setSplitFilter(newSplitFilter);
+
+    const newGroupedFilter = filters.is_grouped_expense === true;
+    if (newGroupedFilter !== groupedFilter) setGroupedFilter(newGroupedFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
@@ -391,15 +400,19 @@ export function TransactionFilters({
     debouncedDateEnd,
     selectedDatePreset, // Ensure preset changes trigger
     selectedCategories,
+    excludeCategories,
     selectedTags,
     selectedAccounts,
+    excludeAccounts,
     selectedParticipants,
+    excludeParticipants,
     selectedDirection,
     selectedTransactionType,
     includeUncategorized,
     flaggedFilter,
     hideShared,
     splitFilter,
+    groupedFilter,
     // Explicitly exclude non-filter state like popover open states
   ]);
 
@@ -453,6 +466,7 @@ export function TransactionFilters({
     else if (key === "flagged") setFlaggedFilter("all");
     else if (key === "is_shared") setHideShared(false);
     else if (key === "is_split") setSplitFilter("all");
+    else if (key === "is_grouped_expense") setGroupedFilter(false);
 
     onFiltersChange(newFilters);
   };
@@ -558,6 +572,9 @@ export function TransactionFilters({
     if (filters.is_split === true) {
       badges.push({ key: "is_split", label: "Split transactions only", value: true });
     }
+    if (filters.is_grouped_expense === true) {
+      badges.push({ key: "is_grouped_expense", label: "Grouped transactions only", value: true });
+    }
 
     return badges;
   };
@@ -565,15 +582,15 @@ export function TransactionFilters({
   const activeFilterBadges = getActiveFilterBadges();
 
   return (
-    <div className="space-y-2">
+    <div className="rounded-xl border border-border overflow-hidden">
       {/* Collapsed Bar (Always Visible) */}
-      <div className="sticky top-0 z-20 bg-slate-900/70 backdrop-blur border-b border-slate-800 px-4 py-2 flex items-center gap-2 text-sm">
+      <div className="sticky top-0 z-20 bg-card backdrop-blur px-4 py-2 flex items-center gap-2 text-sm">
         <button
           ref={filtersButtonRef}
           onClick={() => setExpanded(!expanded)}
           aria-expanded={expanded}
           aria-controls="filters-panel"
-          className="rounded-full bg-slate-800 hover:bg-slate-700 px-3 py-1 text-slate-200 flex items-center gap-1 transition-colors"
+          className="rounded-full bg-muted hover:bg-primary/10 hover:text-primary px-3 py-1 text-foreground flex items-center gap-1 transition-colors"
         >
           Filters
           {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -582,17 +599,17 @@ export function TransactionFilters({
         {/* Active Filter Chips */}
         <div className="flex flex-wrap gap-2 items-center">
           {activeFilterBadges.length === 0 ? (
-            <span className="text-xs text-slate-500">No filters applied</span>
+            <span className="text-xs text-muted-foreground">No active filters</span>
           ) : (
             activeFilterBadges.map((badge) => (
               <button
                 key={badge.key}
                 onClick={() => expandAndFocusControl(badge.key)}
-                className="rounded-full bg-blue-700/40 text-blue-200 border border-blue-600 px-2 py-0.5 text-xs flex items-center gap-1 hover:bg-blue-700/60 transition-colors"
+                className="rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/40 px-2 py-0.5 text-xs flex items-center gap-1 hover:bg-violet-500/25 transition-colors"
               >
                 {badge.label}
                 <X
-                  className="h-3 w-3 hover:text-blue-100"
+                  className="h-3 w-3 hover:text-violet-100"
                   onClick={(e) => {
                     e.stopPropagation();
                     clearFilter(badge.key as keyof TransactionFilters);
@@ -607,13 +624,13 @@ export function TransactionFilters({
         <div className="ml-auto hidden md:flex items-center gap-2">
           <button
             onClick={() => applyQuickDatePreset("this_month")}
-            className="rounded-md px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+            className="rounded-md px-2 py-1 text-xs bg-muted hover:bg-accent text-foreground transition-colors"
           >
             This month
           </button>
           <button
             onClick={() => applyQuickDatePreset("last_30")}
-            className="rounded-md px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+            className="rounded-md px-2 py-1 text-xs bg-muted hover:bg-accent text-foreground transition-colors"
           >
             Last 30d
           </button>
@@ -630,26 +647,144 @@ export function TransactionFilters({
           expanded ? "max-h-[600px] opacity-100" : "max-h-0 opacity-0"
         )}
       >
-        <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 mt-2">
+        <div className="bg-card p-4 border-t border-border">
 
-          {/* 2-Row Grid Layout */}
+          {/* Filter Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {/* Row 1 */}
-            <div className="space-y-1">
-              <Label htmlFor="search" className="text-xs text-slate-400 uppercase tracking-wide">Search</Label>
+            <div className="space-y-1 min-w-0">
+              <Label htmlFor="search" className="text-xs text-muted-foreground font-medium">Search</Label>
               <div className="flex gap-2">
                 <Input
                   id="search"
                   placeholder="Search transactions..."
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500"
+                  className="h-9 text-sm bg-muted border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-slate-500"
                 />
               </div>
             </div>
 
-            <div className="space-y-1">
-              <Label htmlFor="account" className="text-xs text-slate-400 uppercase tracking-wide">Accounts</Label>
+            <div className="space-y-1 min-w-0">
+              <Label className="text-xs text-muted-foreground font-medium">Date Range</Label>
+              <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="h-9 text-sm bg-muted border-border text-muted-foreground justify-start w-full overflow-hidden"
+                  >
+                    <Calendar className="h-4 w-4 mr-2 shrink-0" />
+                    <span className="truncate">
+                      {selectedDatePreset === "custom" ? "Custom Range" :
+                        selectedDatePreset === "this_month" ? "This Month" :
+                          selectedDatePreset === "last_month" ? "Last Month" :
+                            selectedDatePreset === "last_3_months" ? "Last 3 Months" :
+                              selectedDatePreset === "this_year" ? "This Year" : "Custom Range"}
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 bg-muted border-border" align="start">
+                  <div className="space-y-4">
+                    {/* Quick Presets */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground font-medium">Quick Presets</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          size="sm"
+                          variant={selectedDatePreset === "this_month" ? "secondary" : "outline" }
+                          onClick={() => handleDatePreset("this_month")}
+                          className="text-xs h-8"
+                        >
+                          This Month
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={selectedDatePreset === "last_month" ? "secondary" : "outline" }
+                          onClick={() => handleDatePreset("last_month")}
+                          className="text-xs h-8"
+                        >
+                          Last Month
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={selectedDatePreset === "last_3_months" ? "secondary" : "outline" }
+                          onClick={() => handleDatePreset("last_3_months")}
+                          className="text-xs h-8"
+                        >
+                          Last 3 Months
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={selectedDatePreset === "this_year" ? "secondary" : "outline" }
+                          onClick={() => handleDatePreset("this_year")}
+                          className="text-xs h-8"
+                        >
+                          This Year
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Custom Range */}
+                    <div className="space-y-2 pt-2 border-t border-border">
+                      <Label className="text-xs text-muted-foreground font-medium">Custom Range</Label>
+                      <Button
+                        size="sm"
+                        variant={selectedDatePreset === "custom" ? "secondary" : "outline"}
+                        onClick={() => handleDatePreset("custom")}
+                        className="w-full text-xs h-8"
+                      >
+                        Custom Range
+                      </Button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label htmlFor="start-date" className="text-xs text-slate-300">Start Date</Label>
+                          <Input
+                            id="start-date"
+                            type="date"
+                            value={dateRangeStartInput}
+                            onChange={(e) => setDateRangeStartInput(e.target.value)}
+                            className="h-8 text-sm bg-accent border-border text-foreground"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="end-date" className="text-xs text-slate-300">End Date</Label>
+                          <Input
+                            id="end-date"
+                            type="date"
+                            value={dateRangeEndInput}
+                            onChange={(e) => setDateRangeEndInput(e.target.value)}
+                            className="h-8 text-sm bg-accent border-border text-foreground"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="space-y-1 min-w-0">
+              <Label className="text-xs text-muted-foreground font-medium">Amount Range</Label>
+              <div className="flex rounded-md border border-border bg-muted overflow-hidden h-9">
+                <input
+                  type="number"
+                  placeholder="Min"
+                  value={amountMinInput}
+                  onChange={(e) => setAmountMinInput(e.target.value)}
+                  className="flex-1 min-w-0 bg-transparent px-3 text-sm text-foreground placeholder:text-muted-foreground outline-none"
+                />
+                <div className="w-px bg-slate-600 self-stretch" />
+                <input
+                  type="number"
+                  placeholder="Max"
+                  value={amountMaxInput}
+                  onChange={(e) => setAmountMaxInput(e.target.value)}
+                  className="flex-1 min-w-0 bg-transparent px-3 text-sm text-foreground placeholder:text-muted-foreground outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1 min-w-0">
+              <Label htmlFor="account" className="text-xs text-muted-foreground font-medium">Accounts</Label>
               <Popover
                 open={isAccountPopoverOpen}
                 onOpenChange={(open) => {
@@ -662,22 +797,22 @@ export function TransactionFilters({
                     variant="outline"
                     role="combobox"
                     aria-expanded={isAccountPopoverOpen}
-                    className="h-auto min-h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 justify-between w-full py-2"
+                    className="h-auto min-h-9 text-sm bg-muted border-border text-foreground justify-between w-full py-2"
                   >
                     <div className="flex flex-wrap gap-1 flex-1 text-left">
                       {selectedAccounts.length === 0 && excludeAccounts.length === 0 ? (
-                        <span className="text-slate-400">All accounts</span>
+                        <span className="text-muted-foreground">All accounts</span>
                       ) : (
                         <>
                           {selectedAccounts.map((account) => (
                             <Badge
                               key={`include-${account}`}
                               variant="secondary"
-                              className="mr-1 mb-0.5 bg-blue-600/20 text-blue-200 border-blue-500/50"
+                              className="mr-1 mb-0.5 bg-violet-400/15 text-violet-300 border-violet-400/30 max-w-[140px]"
                             >
-                              {account}
+                              <span className="truncate min-w-0">{account}</span>
                               <X
-                                className="h-3 w-3 ml-1 cursor-pointer hover:text-blue-100"
+                                className="h-3 w-3 ml-1 cursor-pointer hover:text-violet-100 flex-shrink-0"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setSelectedAccounts(selectedAccounts.filter((a) => a !== account));
@@ -689,9 +824,9 @@ export function TransactionFilters({
                             <Badge
                               key={`exclude-${account}`}
                               variant="secondary"
-                              className="mr-1 mb-0.5 bg-red-600/20 text-red-200 border-red-500/50"
+                              className="mr-1 mb-0.5 bg-red-400/15 text-red-300 border-red-400/30 max-w-[140px]"
                             >
-                              Not {account}
+                              <span className="truncate min-w-0">Not {account}</span>
                               <X
                                 className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100"
                                 onClick={(e) => {
@@ -707,19 +842,19 @@ export function TransactionFilters({
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[400px] p-0 bg-slate-800 border-slate-600" align="start">
-                  <div className="flex items-center border-b border-slate-700 px-3">
-                    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 text-slate-400" />
+                <PopoverContent className="w-[400px] p-0 bg-muted border-border" align="start">
+                  <div className="flex items-center border-b border-border px-3">
+                    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 text-muted-foreground" />
                     <Input
                       placeholder="Search accounts..."
                       value={accountSearchQuery}
                       onChange={(e) => setAccountSearchQuery(e.target.value)}
-                      className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50 border-0 focus-visible:ring-0 text-slate-200"
+                      className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 border-0 focus-visible:ring-0 text-foreground"
                     />
                   </div>
                   <div className="max-h-[300px] overflow-auto">
                     {accountsLoading ? (
-                      <div className="py-6 text-center text-sm text-slate-400">Loading accounts...</div>
+                      <div className="py-6 text-center text-sm text-muted-foreground">Loading accounts...</div>
                     ) : accountsError ? (
                       <div className="py-6 text-center text-sm text-red-400">Error loading accounts</div>
                     ) : (() => {
@@ -727,7 +862,7 @@ export function TransactionFilters({
                         account.toLowerCase().includes(accountSearchQuery.toLowerCase())
                       );
                       return filteredAccounts.length === 0 ? (
-                        <div className="py-6 text-center text-sm text-slate-400">No accounts found</div>
+                        <div className="py-6 text-center text-sm text-muted-foreground">No accounts found</div>
                       ) : (
                         <div className="p-1">
                           {filteredAccounts.map((account) => {
@@ -738,8 +873,8 @@ export function TransactionFilters({
                               <div
                                 key={account}
                                 className={cn(
-                                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-700 hover:text-slate-50",
-                                  isActive && "bg-slate-700/50"
+                                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-primary/10 hover:text-foreground",
+                                  isActive && "bg-primary/10"
                                 )}
                                 onClick={() => {
                                   if (inInclude) {
@@ -756,18 +891,18 @@ export function TransactionFilters({
                                   className={cn(
                                     "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
                                     inInclude
-                                      ? "border-blue-500 bg-blue-500 text-white"
+                                      ? "border-violet-400 bg-violet-400/25 text-violet-200"
                                       : inExclude
-                                        ? "border-red-500 bg-red-500 text-white"
+                                        ? "border-red-400 bg-red-400/25 text-red-200"
                                         : "border-slate-500 opacity-50 [&_svg]:invisible"
                                   )}
                                 >
                                   <Check className="h-4 w-4" />
                                 </div>
                                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                                  <span className="truncate">{account}</span>
+                                  <span className="truncate min-w-0">{account}</span>
                                   {inInclude && (
-                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-blue-500/50 text-blue-300">
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-violet-500/50 text-violet-300">
                                       Include
                                     </Badge>
                                   )}
@@ -785,11 +920,11 @@ export function TransactionFilters({
                     })()}
                   </div>
                   {(selectedAccounts.length > 0 || excludeAccounts.length > 0) && (
-                    <div className="border-t border-slate-700 p-2">
+                    <div className="border-t border-border p-2">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-slate-400 text-xs">
                           {selectedAccounts.length > 0 && (
-                            <span className="text-blue-300">{selectedAccounts.length} included</span>
+                            <span className="text-violet-300">{selectedAccounts.length} included</span>
                           )}
                           {selectedAccounts.length > 0 && excludeAccounts.length > 0 && " · "}
                           {excludeAccounts.length > 0 && (
@@ -814,161 +949,9 @@ export function TransactionFilters({
               </Popover>
             </div>
 
-            <div className="space-y-1">
-              <Label htmlFor="direction" className="text-xs text-slate-400 uppercase tracking-wide">Direction</Label>
-              <Select
-                value={selectedDirection}
-                onValueChange={(value) => setSelectedDirection(value)}
-              >
-                <SelectTrigger className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200">
-                  <SelectValue placeholder="All directions" />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-600">
-                  <SelectItem value="all">All directions</SelectItem>
-                  <SelectItem value="debit">Debit</SelectItem>
-                  <SelectItem value="credit">Credit</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
 
-            <div className="space-y-1">
-              <Label htmlFor="transaction-type" className="text-xs text-slate-400 uppercase tracking-wide">Type</Label>
-              <Select
-                value={selectedTransactionType}
-                onValueChange={(value) => setSelectedTransactionType(value)}
-              >
-                <SelectTrigger className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200">
-                  <SelectValue placeholder="All types" />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-600">
-                  <SelectItem value="all">All types</SelectItem>
-                  <SelectItem value="shared">Shared only</SelectItem>
-                  <SelectItem value="refunds">Refunds only</SelectItem>
-                  <SelectItem value="transfers">Transfers only</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Row 2 */}
-            <div className="space-y-1">
-              <Label className="text-xs text-slate-400 uppercase tracking-wide">Date Range</Label>
-              <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 justify-start"
-                  >
-                    <Calendar className="h-4 w-4 mr-2" />
-                    {selectedDatePreset === "custom" ? "Custom Range" :
-                      selectedDatePreset === "this_month" ? "This Month" :
-                        selectedDatePreset === "last_month" ? "Last Month" :
-                          selectedDatePreset === "last_3_months" ? "Last 3 Months" :
-                            selectedDatePreset === "this_year" ? "This Year" : "Custom Range"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80 bg-slate-800 border-slate-600" align="start">
-                  <div className="space-y-4">
-                    {/* Quick Presets */}
-                    <div className="space-y-2">
-                      <Label className="text-xs text-slate-400 uppercase tracking-wide">Quick Presets</Label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Button
-                          size="sm"
-                          variant={selectedDatePreset === "this_month" ? "default" : "outline"}
-                          onClick={() => handleDatePreset("this_month")}
-                          className="text-xs h-8"
-                        >
-                          This Month
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={selectedDatePreset === "last_month" ? "default" : "outline"}
-                          onClick={() => handleDatePreset("last_month")}
-                          className="text-xs h-8"
-                        >
-                          Last Month
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={selectedDatePreset === "last_3_months" ? "default" : "outline"}
-                          onClick={() => handleDatePreset("last_3_months")}
-                          className="text-xs h-8"
-                        >
-                          Last 3 Months
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={selectedDatePreset === "this_year" ? "default" : "outline"}
-                          onClick={() => handleDatePreset("this_year")}
-                          className="text-xs h-8"
-                        >
-                          This Year
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Custom Range */}
-                    <div className="space-y-2 pt-2 border-t border-slate-600">
-                      <Label className="text-xs text-slate-400 uppercase tracking-wide">Custom Range</Label>
-                      <Button
-                        size="sm"
-                        variant={selectedDatePreset === "custom" ? "default" : "outline"}
-                        onClick={() => handleDatePreset("custom")}
-                        className="w-full text-xs h-8"
-                      >
-                        Custom Range
-                      </Button>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                          <Label htmlFor="start-date" className="text-xs text-slate-300">Start Date</Label>
-                          <Input
-                            id="start-date"
-                            type="date"
-                            value={dateRangeStartInput}
-                            onChange={(e) => setDateRangeStartInput(e.target.value)}
-                            className="h-8 text-sm bg-slate-700 border-slate-600 text-slate-200"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label htmlFor="end-date" className="text-xs text-slate-300">End Date</Label>
-                          <Input
-                            id="end-date"
-                            type="date"
-                            value={dateRangeEndInput}
-                            onChange={(e) => setDateRangeEndInput(e.target.value)}
-                            className="h-8 text-sm bg-slate-700 border-slate-600 text-slate-200"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs text-slate-400 uppercase tracking-wide">Amount Range</Label>
-              <div className="flex gap-2">
-                <Input
-                  type="number"
-                  placeholder="Min"
-                  value={amountMinInput}
-                  onChange={(e) => setAmountMinInput(e.target.value)}
-                  className="h-9 text-sm w-[100px] bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500"
-                />
-                <span className="text-slate-400 self-center text-sm">-</span>
-                <Input
-                  type="number"
-                  placeholder="Max"
-                  value={amountMaxInput}
-                  onChange={(e) => setAmountMaxInput(e.target.value)}
-                  className="h-9 text-sm w-[100px] bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs text-slate-400 uppercase tracking-wide">Categories</Label>
+            <div className="space-y-1 min-w-0">
+              <Label className="text-xs text-muted-foreground font-medium">Categories</Label>
               <Popover
                 open={isCategoryPopoverOpen}
                 onOpenChange={(open) => {
@@ -981,22 +964,22 @@ export function TransactionFilters({
                     variant="outline"
                     role="combobox"
                     aria-expanded={isCategoryPopoverOpen}
-                    className="h-auto min-h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 justify-between w-full py-2"
+                    className="h-auto min-h-9 text-sm bg-muted border-border text-foreground justify-between w-full py-2"
                   >
                     <div className="flex flex-wrap gap-1 flex-1 text-left">
                       {selectedCategories.length === 0 && excludeCategories.length === 0 && !includeUncategorized ? (
-                        <span className="text-slate-400">All categories</span>
+                        <span className="text-muted-foreground">All categories</span>
                       ) : (
                         <>
                           {selectedCategories.map((category) => (
                             <Badge
                               key={`include-${category}`}
                               variant="secondary"
-                              className="mr-1 mb-0.5 bg-blue-600/20 text-blue-200 border-blue-500/50"
+                              className="mr-1 mb-0.5 bg-violet-400/15 text-violet-300 border-violet-400/30 max-w-[140px]"
                             >
-                              {category}
+                              <span className="truncate min-w-0">{category}</span>
                               <X
-                                className="h-3 w-3 ml-1 cursor-pointer hover:text-blue-100"
+                                className="h-3 w-3 ml-1 cursor-pointer hover:text-violet-100 flex-shrink-0"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setSelectedCategories(selectedCategories.filter((c) => c !== category));
@@ -1008,11 +991,11 @@ export function TransactionFilters({
                             <Badge
                               key={`exclude-${category}`}
                               variant="secondary"
-                              className="mr-1 mb-0.5 bg-red-600/20 text-red-200 border-red-500/50"
+                              className="mr-1 mb-0.5 bg-red-400/15 text-red-300 border-red-400/30 max-w-[140px]"
                             >
-                              Not {category}
+                              <span className="truncate min-w-0">Not {category}</span>
                               <X
-                                className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100"
+                                className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100 flex-shrink-0"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setExcludeCategories(excludeCategories.filter((c) => c !== category));
@@ -1041,25 +1024,25 @@ export function TransactionFilters({
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[400px] p-0 bg-slate-800 border-slate-600" align="start">
-                  <div className="flex items-center border-b border-slate-700 px-3">
-                    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 text-slate-400" />
+                <PopoverContent className="w-[400px] p-0 bg-muted border-border" align="start">
+                  <div className="flex items-center border-b border-border px-3">
+                    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 text-muted-foreground" />
                     <Input
                       placeholder="Search categories..."
                       value={categorySearchQuery}
                       onChange={(e) => setCategorySearchQuery(e.target.value)}
-                      className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50 border-0 focus-visible:ring-0 text-slate-200"
+                      className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 border-0 focus-visible:ring-0 text-foreground"
                     />
                   </div>
                   <div className="max-h-[300px] overflow-auto">
                     {categories.length === 0 ? (
-                      <div className="py-6 text-center text-sm text-slate-400">No categories found</div>
+                      <div className="py-6 text-center text-sm text-muted-foreground">No categories found</div>
                     ) : (() => {
                       const filteredCategories = categories.filter((category) =>
                         category.name.toLowerCase().includes(categorySearchQuery.toLowerCase())
                       );
                       return filteredCategories.length === 0 ? (
-                        <div className="py-6 text-center text-sm text-slate-400">No categories found</div>
+                        <div className="py-6 text-center text-sm text-muted-foreground">No categories found</div>
                       ) : (
                         <div className="p-1">
                           {filteredCategories.map((category) => {
@@ -1071,8 +1054,8 @@ export function TransactionFilters({
                               <div
                                 key={category.id}
                                 className={cn(
-                                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-700 hover:text-slate-50",
-                                  isActive && "bg-slate-700/50"
+                                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-primary/10 hover:text-foreground",
+                                  isActive && "bg-primary/10"
                                 )}
                                 onClick={() => {
                                   if (inInclude) {
@@ -1089,9 +1072,9 @@ export function TransactionFilters({
                                   className={cn(
                                     "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
                                     inInclude
-                                      ? "border-blue-500 bg-blue-500 text-white"
+                                      ? "border-violet-400 bg-violet-400/25 text-violet-200"
                                       : inExclude
-                                        ? "border-red-500 bg-red-500 text-white"
+                                        ? "border-red-400 bg-red-400/25 text-red-200"
                                         : "border-slate-500 opacity-50 [&_svg]:invisible"
                                   )}
                                 >
@@ -1100,7 +1083,7 @@ export function TransactionFilters({
                                 <div className="flex items-center gap-2 flex-1 min-w-0">
                                   <span className="truncate">{name}</span>
                                   {inInclude && (
-                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-blue-500/50 text-blue-300">
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-violet-500/50 text-violet-300">
                                       Include
                                     </Badge>
                                   )}
@@ -1113,11 +1096,11 @@ export function TransactionFilters({
                               </div>
                             );
                           })}
-                          <div className="h-px bg-slate-700 my-1" />
+                          <div className="h-px bg-accent my-1" />
                           <div
                             className={cn(
-                              "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-700 hover:text-slate-50",
-                              includeUncategorized && "bg-slate-700/50"
+                              "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-primary/10 hover:text-foreground",
+                              includeUncategorized && "bg-primary/10"
                             )}
                             onClick={() => {
                               if (includeUncategorized && selectedCategories.length === 0 && excludeCategories.length === 0) {
@@ -1159,11 +1142,11 @@ export function TransactionFilters({
                     })()}
                   </div>
                   {(selectedCategories.length > 0 || excludeCategories.length > 0 || includeUncategorized) && (
-                    <div className="border-t border-slate-700 p-2">
+                    <div className="border-t border-border p-2">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-slate-400 text-xs">
                           {selectedCategories.length > 0 && (
-                            <span className="text-blue-300">{selectedCategories.length} included</span>
+                            <span className="text-violet-300">{selectedCategories.length} included</span>
                           )}
                           {selectedCategories.length > 0 && excludeCategories.length > 0 && " · "}
                           {excludeCategories.length > 0 && (
@@ -1193,8 +1176,9 @@ export function TransactionFilters({
               </Popover>
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs text-slate-400 uppercase tracking-wide">Participants</Label>
+
+            <div className="space-y-1 min-w-0">
+              <Label className="text-xs text-muted-foreground font-medium">Participants</Label>
               <Popover
                 open={isParticipantPopoverOpen}
                 onOpenChange={(open) => {
@@ -1207,43 +1191,27 @@ export function TransactionFilters({
                     variant="outline"
                     role="combobox"
                     aria-expanded={isParticipantPopoverOpen}
-                    className="h-auto min-h-9 text-sm bg-slate-800 border-slate-600 text-slate-200 justify-between w-full py-2"
+                    className="h-auto min-h-9 text-sm bg-muted border-border text-foreground justify-between w-full py-2"
                   >
                     <div className="flex flex-wrap gap-1 flex-1 text-left">
                       {selectedParticipants.length === 0 && excludeParticipants.length === 0 ? (
-                        <span className="text-slate-400">All participants</span>
+                        <span className="text-muted-foreground">All participants</span>
                       ) : (
                         <>
-                          {selectedParticipants.map((participant) => (
-                            <Badge
-                              key={`include-${participant}`}
-                              variant="secondary"
-                              className="mr-1 mb-0.5 bg-blue-600/20 text-blue-200 border-blue-500/50"
-                            >
-                              {participant}
-                              <X
-                                className="h-3 w-3 ml-1 cursor-pointer hover:text-blue-100"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedParticipants(selectedParticipants.filter((p) => p !== participant));
-                                }}
-                              />
+                          {selectedParticipants.map((p) => (
+                            <Badge key={`include-${p}`} variant="secondary"
+                              className="mr-1 mb-0.5 bg-violet-400/15 text-violet-300 border-violet-400/30 max-w-[140px]">
+                              <span className="truncate min-w-0">{p}</span>
+                              <X className="h-3 w-3 ml-1 cursor-pointer hover:text-violet-100 flex-shrink-0"
+                                onClick={(e) => { e.stopPropagation(); setSelectedParticipants(selectedParticipants.filter(x => x !== p)); }} />
                             </Badge>
                           ))}
-                          {excludeParticipants.map((participant) => (
-                            <Badge
-                              key={`exclude-${participant}`}
-                              variant="secondary"
-                              className="mr-1 mb-0.5 bg-red-600/20 text-red-200 border-red-500/50"
-                            >
-                              Not {participant}
-                              <X
-                                className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setExcludeParticipants(excludeParticipants.filter((p) => p !== participant));
-                                }}
-                              />
+                          {excludeParticipants.map((p) => (
+                            <Badge key={`exclude-${p}`} variant="secondary"
+                              className="mr-1 mb-0.5 bg-red-400/15 text-red-300 border-red-400/30 max-w-[140px]">
+                              <span className="truncate min-w-0">Not {p}</span>
+                              <X className="h-3 w-3 ml-1 cursor-pointer hover:text-red-100 flex-shrink-0"
+                                onClick={(e) => { e.stopPropagation(); setExcludeParticipants(excludeParticipants.filter(x => x !== p)); }} />
                             </Badge>
                           ))}
                         </>
@@ -1252,114 +1220,71 @@ export function TransactionFilters({
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[400px] p-0 bg-slate-800 border-slate-600" align="start">
-                  <div className="flex items-center border-b border-slate-700 px-3">
-                    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 text-slate-400" />
+                <PopoverContent className="w-[300px] p-0 bg-muted border-border" align="start">
+                  <div className="flex items-center border-b border-border px-3">
+                    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 text-muted-foreground" />
                     <Input
                       placeholder="Search participants..."
                       value={participantSearchQuery}
                       onChange={(e) => setParticipantSearchQuery(e.target.value)}
-                      className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50 border-0 focus-visible:ring-0 text-slate-200"
+                      className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground border-0 focus-visible:ring-0 text-foreground"
                     />
                   </div>
-                  <div className="max-h-[300px] overflow-auto">
+                  <div className="max-h-[250px] overflow-auto">
                     {participantsLoading ? (
-                      <div className="py-6 text-center text-sm text-slate-400">Loading participants...</div>
-                    ) : (() => {
-                      const filteredParticipants = participants.filter((participant) =>
-                        participant.name.toLowerCase().includes(participantSearchQuery.toLowerCase())
-                      );
-                      return filteredParticipants.length === 0 ? (
-                        <div className="py-6 text-center text-sm text-slate-400">No participants found</div>
-                      ) : (
-                        <div className="p-1">
-                          {filteredParticipants.map((participant) => {
-                            const name = participant.name;
-                            const inInclude = selectedParticipants.includes(name);
-                            const inExclude = excludeParticipants.includes(name);
-                            const isActive = inInclude || inExclude;
-                            return (
-                              <div
-                                key={participant.id}
-                                className={cn(
-                                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-700 hover:text-slate-50",
-                                  isActive && "bg-slate-700/50"
-                                )}
-                                onClick={() => {
-                                  if (inInclude) {
-                                    setSelectedParticipants(selectedParticipants.filter((p) => p !== name));
-                                    setExcludeParticipants([...excludeParticipants, name]);
-                                  } else if (inExclude) {
-                                    setExcludeParticipants(excludeParticipants.filter((p) => p !== name));
-                                  } else {
-                                    setSelectedParticipants([...selectedParticipants, name]);
-                                  }
-                                }}
-                              >
-                                <div
-                                  className={cn(
-                                    "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
-                                    inInclude
-                                      ? "border-blue-500 bg-blue-500 text-white"
-                                      : inExclude
-                                        ? "border-red-500 bg-red-500 text-white"
-                                        : "border-slate-500 opacity-50 [&_svg]:invisible"
-                                  )}
-                                >
-                                  <Check className="h-4 w-4" />
-                                </div>
-                                <div className="flex items-center gap-2 flex-1 min-w-0">
-                                  <span className="truncate">{name}</span>
-                                  {inInclude && (
-                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-blue-500/50 text-blue-300">
-                                      Include
-                                    </Badge>
-                                  )}
-                                  {inExclude && (
-                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-red-500/50 text-red-300">
-                                      Exclude
-                                    </Badge>
-                                  )}
-                                </div>
+                      <div className="py-6 text-center text-sm text-muted-foreground">Loading...</div>
+                    ) : participants.length === 0 ? (
+                      <div className="py-6 text-center text-sm text-muted-foreground">No participants found</div>
+                    ) : (
+                      <div className="p-1">
+                        {participants.map((p) => {
+                          const inInclude = selectedParticipants.includes(p.name);
+                          const inExclude = excludeParticipants.includes(p.name);
+                          return (
+                            <div key={p.id}
+                              className={cn("relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-primary/10 hover:text-foreground", (inInclude || inExclude) && "bg-primary/10")}
+                              onClick={() => {
+                                if (inInclude) {
+                                  setSelectedParticipants(selectedParticipants.filter(x => x !== p.name));
+                                  setExcludeParticipants([...excludeParticipants, p.name]);
+                                } else if (inExclude) {
+                                  setExcludeParticipants(excludeParticipants.filter(x => x !== p.name));
+                                } else {
+                                  setSelectedParticipants([...selectedParticipants, p.name]);
+                                }
+                              }}>
+                              <div className={cn("mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
+                                inInclude ? "border-violet-400 bg-violet-400/25 text-violet-200"
+                                : inExclude ? "border-red-400 bg-red-400/25 text-red-200"
+                                : "border-slate-500 opacity-50 [&_svg]:invisible")}>
+                                <Check className="h-4 w-4" />
                               </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
+                              <span className="truncate">{p.name}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                   {(selectedParticipants.length > 0 || excludeParticipants.length > 0) && (
-                    <div className="border-t border-slate-700 p-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-slate-400 text-xs">
-                          {selectedParticipants.length > 0 && (
-                            <span className="text-blue-300">{selectedParticipants.length} included</span>
-                          )}
-                          {selectedParticipants.length > 0 && excludeParticipants.length > 0 && " · "}
-                          {excludeParticipants.length > 0 && (
-                            <span className="text-red-300">{excludeParticipants.length} excluded</span>
-                          )}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs"
-                          onClick={() => {
-                            setSelectedParticipants([]);
-                            setExcludeParticipants([]);
-                          }}
-                        >
-                          Clear
-                        </Button>
-                      </div>
+                    <div className="border-t border-border p-2 flex justify-between items-center text-xs">
+                      <span className="text-muted-foreground">
+                        {selectedParticipants.length > 0 && <span className="text-violet-300">{selectedParticipants.length} included</span>}
+                        {selectedParticipants.length > 0 && excludeParticipants.length > 0 && " · "}
+                        {excludeParticipants.length > 0 && <span className="text-red-300">{excludeParticipants.length} excluded</span>}
+                      </span>
+                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs"
+                        onClick={() => { setSelectedParticipants([]); setExcludeParticipants([]); }}>
+                        Clear
+                      </Button>
                     </div>
                   )}
                 </PopoverContent>
               </Popover>
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs text-slate-400 uppercase tracking-wide">Tags</Label>
+            <div className="space-y-1 min-w-0">
+              <Label className="text-xs text-muted-foreground font-medium">Tags</Label>
               <Select
                 value={selectedTags[0] || "all"}
                 onValueChange={(value) => {
@@ -1370,10 +1295,10 @@ export function TransactionFilters({
                   }
                 }}
               >
-                <SelectTrigger className="h-9 text-sm bg-slate-800 border-slate-600 text-slate-200">
+                <SelectTrigger className="h-9 text-sm bg-muted border-border text-muted-foreground w-full">
                   <SelectValue placeholder="+ Select tags" />
                 </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-600">
+                <SelectContent className="bg-muted border-border">
                   <SelectItem value="all">All tags</SelectItem>
                   {tags.map((tag) => (
                     <SelectItem key={tag.id} value={tag.name}>
@@ -1383,99 +1308,65 @@ export function TransactionFilters({
                 </SelectContent>
               </Select>
             </div>
+
           </div>
 
-          {/* Additional Filter Options */}
-          <div className="mt-4 pt-4 border-t border-slate-700 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col gap-1 flex-1">
-                <Label htmlFor="include-uncategorized" className="text-sm text-slate-300 cursor-pointer">
-                  Also Include Uncategorized
-                </Label>
-                <span className="text-xs text-slate-500">
-                  {selectedCategories.length > 0
-                    ? "Include uncategorized transactions when filtering by category"
-                    : "Show uncategorized transactions (select 'Uncategorized' in dropdown for only uncategorized)"}
-                </span>
-              </div>
-              <Switch
-                id="include-uncategorized"
-                checked={includeUncategorized}
-                onCheckedChange={setIncludeUncategorized}
-              />
-            </div>
+          {/* Quick Filter Chips */}
+          <div className="mt-3 pt-3 border-t border-border flex flex-wrap items-center gap-2">
 
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col gap-1 flex-1">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                  <Label htmlFor="flagged-filter" className="text-sm text-slate-300 cursor-pointer">
-                    Flagged Transactions
-                  </Label>
-                </div>
-                <span className="text-xs text-slate-500">
-                  Filter transactions by flagged status
-                </span>
-              </div>
-              <Select
-                value={flaggedFilter}
-                onValueChange={setFlaggedFilter}
+            {/* Pill chips: Shared, Flagged, Split */}
+            {[
+              {
+                label: "Shared",
+                active: selectedTransactionType === "shared",
+                onClick: () => setSelectedTransactionType(selectedTransactionType === "shared" ? "all" : "shared"),
+              },
+              {
+                label: "Flagged",
+                active: flaggedFilter === "flagged",
+                onClick: () => setFlaggedFilter(flaggedFilter === "flagged" ? "all" : "flagged"),
+              },
+              {
+                label: "Split",
+                active: splitFilter === "only",
+                onClick: () => setSplitFilter(splitFilter === "only" ? "all" : "only"),
+              },
+              {
+                label: "Grouped",
+                active: groupedFilter,
+                onClick: () => setGroupedFilter(v => !v),
+              },
+            ].map(({ label, active, onClick }) => (
+              <button
+                key={label}
+                onClick={onClick}
+                className={cn(
+                  "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium border transition-colors select-none",
+                  active
+                    ? "bg-violet-500/15 border-violet-500/40 text-violet-300"
+                    : "bg-transparent border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground"
+                )}
               >
-                <SelectTrigger className="h-9 w-[140px] text-sm bg-slate-800 border-slate-600 text-slate-200">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-600">
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="flagged">Flagged Only</SelectItem>
-                  <SelectItem value="not_flagged">Not Flagged</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+                {label}
+              </button>
+            ))}
 
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col gap-1 flex-1">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-blue-400" />
-                  <Label htmlFor="hide-shared" className="text-sm text-slate-300 cursor-pointer">
-                    Hide Shared Expenses
-                  </Label>
-                </div>
-                <span className="text-xs text-slate-500">
-                  Filter out transactions where they are marked as shared (show only personal spend)
-                </span>
-              </div>
-              <Switch
-                id="hide-shared"
-                checked={hideShared}
-                onCheckedChange={(checked) => setHideShared(checked)}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col gap-1 flex-1">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-purple-400" />
-                  <Label htmlFor="split-filter" className="text-sm text-slate-300 cursor-pointer">
-                    Split Transactions
-                  </Label>
-                </div>
-                <span className="text-xs text-slate-500">
-                  Filter transactions by split status
-                </span>
-              </div>
-              <Select
-                value={splitFilter}
-                onValueChange={setSplitFilter}
-              >
-                <SelectTrigger className="h-9 w-[160px] text-sm bg-slate-800 border-slate-600 text-slate-200">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-600">
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="exclude">Exclude Split</SelectItem>
-                  <SelectItem value="only">Split Only</SelectItem>
-                </SelectContent>
-              </Select>
+            {/* Segmented control: Direction */}
+            <div className="ml-auto inline-flex rounded-full border border-border overflow-hidden text-xs">
+              {(["All", "Credit", "Debit"] as const).map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => setSelectedDirection(opt.toLowerCase())}
+                  className={cn(
+                    "px-3 py-1 transition-colors select-none",
+                    selectedDirection === opt.toLowerCase()
+                      ? "bg-muted-foreground/20 text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {opt}
+                </button>
+              ))}
             </div>
           </div>
 

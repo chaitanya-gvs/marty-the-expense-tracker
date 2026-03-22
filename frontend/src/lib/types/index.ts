@@ -164,6 +164,11 @@ export interface TransactionFilters {
    * When undefined, all transactions are shown.
    */
   is_split?: boolean;
+  /**
+   * Filter by grouped expense status. When set to true, only grouped transactions are shown.
+   * When undefined, all transactions are shown.
+   */
+  is_grouped_expense?: boolean;
 }
 
 export interface TransactionSort {

@@ -37,7 +37,7 @@ export function DeleteConfirmationDialog({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
+          <DialogTitle className="flex items-center gap-2 text-[#F44D4D]">
             <AlertTriangle className="h-5 w-5" />
             Delete {isMultiple ? "Transactions" : "Transaction"}
           </DialogTitle>
@@ -50,23 +50,23 @@ export function DeleteConfirmationDialog({
                   </p>
                   <p>This will permanently remove:</p>
                   <ul className="ml-4 list-disc space-y-1">
-                    <li><strong>{debits} debit(s)</strong> totaling <strong>${totalAmount.toFixed(2)}</strong></li>
+                    <li><strong>{debits} debit(s)</strong> totaling <strong>₹{totalAmount.toFixed(2)}</strong></li>
                     <li><strong>{credits} credit(s)</strong></li>
                   </ul>
-                  <p className="text-red-600 dark:text-red-400 font-semibold">
+                  <p className="text-[#F44D4D] font-semibold">
                     This action cannot be undone.
                   </p>
                 </>
               ) : (
                 <>
                   <p>Are you sure you want to delete this transaction?</p>
-                  <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-md">
-                    <div className="font-medium">{transactions[0]?.description}</div>
-                    <div className="text-sm text-gray-600 dark:text-gray-400">
-                      {transactions[0]?.date} • ${Math.abs(transactions[0]?.amount || 0).toFixed(2)}
+                  <div className="bg-muted/50 border border-border p-3 rounded-md">
+                    <div className="font-medium text-foreground">{transactions[0]?.description}</div>
+                    <div className="text-sm text-muted-foreground font-mono tabular-nums">
+                      {transactions[0]?.date} • ₹{Math.abs(transactions[0]?.amount || 0).toFixed(2)}
                     </div>
                   </div>
-                  <p className="text-red-600 dark:text-red-400 font-semibold">
+                  <p className="text-[#F44D4D] font-semibold">
                     This action cannot be undone.
                   </p>
                 </>

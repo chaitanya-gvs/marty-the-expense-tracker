@@ -215,7 +215,7 @@ export function SplitTransactionModal({
 
       <Modal.Body>
         {/* Transaction Summary */}
-        <div className="rounded-xl bg-slate-900/70 border border-slate-800 p-4 mb-4">
+        <div className="rounded-lg bg-muted/40 border border-border/50 p-4 mb-4">
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <span className="text-[var(--modal-muted)] text-xs uppercase tracking-wider">
@@ -252,7 +252,7 @@ export function SplitTransactionModal({
             variant="secondary"
             size="sm"
             onClick={autoDistribute}
-            className="rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1 text-xs"
+            className="rounded-lg bg-muted hover:bg-muted/70 text-foreground px-3 py-1 text-xs"
           >
             Auto Distribute
           </Button>
@@ -271,13 +271,13 @@ export function SplitTransactionModal({
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="rounded-xl bg-slate-900/70 border border-slate-800 overflow-hidden"
+                  className="rounded-lg bg-muted/40 border border-border/50 overflow-hidden"
                 >
                   {/* Collapsed Summary */}
                   <button
                     type="button"
                     onClick={() => togglePartExpand(part.id)}
-                    className="w-full flex items-center justify-between p-3 hover:bg-slate-800/40 transition-colors"
+                    className="w-full flex items-center justify-between p-3 hover:bg-muted/60 transition-colors"
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[var(--modal-accent)]/20 text-[var(--modal-accent)] text-xs font-semibold flex-shrink-0">
@@ -335,7 +335,7 @@ export function SplitTransactionModal({
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
                         transition={{ duration: 0.2 }}
-                        className="border-t border-slate-800"
+                        className="border-t border-border/50"
                       >
                         <div className="p-4 space-y-4">
                           <FieldRow label="Description" required>
@@ -345,7 +345,7 @@ export function SplitTransactionModal({
                                 updatePart(part.id, "description", e.target.value)
                               }
                               placeholder="e.g., Internet charges"
-                              className="h-10 bg-slate-800/60 border-slate-700 rounded-lg text-[var(--modal-text)]"
+                              className="h-10 bg-muted/60 border-border rounded-lg text-foreground"
                             />
                           </FieldRow>
 
@@ -375,7 +375,7 @@ export function SplitTransactionModal({
                                 updatePart(part.id, "notes", e.target.value)
                               }
                               placeholder="Additional notes"
-                              className="h-10 bg-slate-800/60 border-slate-700 rounded-lg text-[var(--modal-text)]"
+                              className="h-10 bg-muted/60 border-border rounded-lg text-foreground"
                             />
                           </FieldRow>
                         </div>
@@ -392,7 +392,7 @@ export function SplitTransactionModal({
             type="button"
             variant="outline"
             onClick={addPart}
-            className="w-full rounded-lg border-slate-700 bg-slate-800/40 hover:bg-slate-800/60 text-slate-200 py-2"
+            className="w-full rounded-lg border-border bg-muted/40 hover:bg-muted/60 py-2"
           >
             <Plus className="h-4 w-4 mr-2" />
             Add Another Part
@@ -400,7 +400,7 @@ export function SplitTransactionModal({
         </div>
 
         {/* Summary Stats */}
-        <div className="rounded-xl bg-slate-900/70 border border-slate-800 p-4 space-y-1 mb-4">
+        <div className="rounded-lg bg-muted/40 border border-border/50 p-4 space-y-1 mb-4">
           <SummaryStat
             label={isShared ? "Your Share" : "Original Amount"}
             value={formatCurrency(originalAmount)}
@@ -435,7 +435,7 @@ export function SplitTransactionModal({
           type="button"
           variant="secondary"
           onClick={onClose}
-          className="rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2"
+          className="rounded-lg bg-muted hover:bg-muted/70 text-foreground px-4 py-2"
         >
           Cancel
         </Button>
@@ -446,8 +446,8 @@ export function SplitTransactionModal({
           className={cn(
             "rounded-lg px-4 py-2",
             isValid
-              ? "bg-[var(--modal-accent)] hover:bg-indigo-500 text-white"
-              : "bg-slate-700 text-slate-400 cursor-not-allowed"
+              ? "bg-primary hover:bg-primary/90 text-primary-foreground"
+              : "bg-muted text-muted-foreground cursor-not-allowed"
           )}
         >
           {splitTransaction.isPending

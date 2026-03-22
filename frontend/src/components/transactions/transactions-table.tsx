@@ -36,9 +36,10 @@ import {
   Edit3,
   CreditCard,
   Wallet,
-  Calendar,
   ShoppingCart,
   Building2,
+  FolderOpen,
+  IndianRupee,
   MoreVertical,
   Link2,
   CheckSquare,
@@ -50,7 +51,8 @@ import {
   Trash2,
   FileText,
   Layers,
-  ChevronDown
+  ChevronDown,
+  Keyboard
 } from "lucide-react";
 import { format } from "date-fns";
 import { TransactionEditModal } from "./transaction-edit-modal";
@@ -848,9 +850,9 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 className="h-8 w-8 p-0"
               >
                 {isAllSelected ? (
-                  <CheckSquare className="h-4 w-4 text-blue-600" />
+                  <CheckSquare className="h-4 w-4 text-primary" />
                 ) : isIndeterminate ? (
-                  <div className="h-4 w-4 border-2 border-blue-400 rounded bg-blue-100" />
+                  <div className="h-4 w-4 border-2 border-primary/50 rounded bg-primary/10" />
                 ) : (
                   <Square className="h-4 w-4" />
                 )}
@@ -864,7 +866,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 className="h-8 w-8 p-0"
               >
                 {selectedTransactionIds.has(row.original.id) ? (
-                  <CheckSquare className="h-4 w-4 text-blue-600" />
+                  <CheckSquare className="h-4 w-4 text-primary" />
                 ) : (
                   <Square className="h-4 w-4" />
                 )}
@@ -878,40 +880,23 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       return [
         ...baseColumns,
 
-        // Date column
+        // Date column — empty for regular rows (separator handles date display); populated for grouped expense member rows
         columnHelper.accessor("date", {
-          header: ({ column }) => (
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              className="h-8 px-2 gap-1 text-sm font-medium"
-            >
-              <Calendar className="h-4 w-4" />
-              Date
-              {column.getIsSorted() === "asc" ? (
-                <ArrowUp className="ml-1 h-3 w-3 text-blue-600" />
-              ) : column.getIsSorted() === "desc" ? (
-                <ArrowDown className="ml-1 h-3 w-3 text-blue-600" />
-              ) : (
-                <ArrowUpDown className="ml-1 h-3 w-3" />
-              )}
-            </Button>
+          id: "date",
+          header: () => (
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Date</span>
           ),
-          cell: ({ getValue }) => {
-            return (
-              <div className="text-left whitespace-nowrap">
-                {formatDate(getValue())}
-              </div>
-            );
-          },
-          size: 100,
+          size: 80,
+          enableResizing: false,
+          enableSorting: false,
+          cell: () => null,
         }),
 
         // Description column (resizable)
         columnHelper.accessor("description", {
           header: () => (
-            <div className="flex items-center gap-1 text-sm font-medium">
-              <ShoppingCart className="h-4 w-4" />
+            <div className="flex items-center gap-1">
+              <FileText className="h-3 w-3" />
               Description
             </div>
           ),
@@ -1040,7 +1025,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
             return (
               <div
-                className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded"
+                className="cursor-pointer hover:bg-muted/50 p-2 rounded"
                 onClick={(e) => {
                   e.stopPropagation();
                   setEditingRow(row.original.id);
@@ -1070,11 +1055,11 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                         {description}
                       </div>
                       {isGroupedExpense && (
-                        <Layers className="h-3 w-3 text-purple-600 dark:text-purple-400 flex-shrink-0" />
+                        <Layers className="h-3 w-3 text-violet-300 flex-shrink-0" />
                       )}
                     </div>
                     {row.original.notes && (
-                      <div className="text-xs text-gray-500 truncate" title={row.original.notes}>
+                      <div className="text-xs text-muted-foreground truncate" title={row.original.notes}>
                         {row.original.notes}
                       </div>
                     )}
@@ -1091,14 +1076,14 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             <Button
               variant="ghost"
               onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              className="h-8 px-2 gap-1 text-sm font-medium justify-end w-full"
+              className="h-8 px-2 gap-1 text-xs font-medium uppercase tracking-wide justify-end w-full"
             >
-              <span className="text-lg font-bold">₹</span>
+              <IndianRupee className="size-3" />
               Amount
               {column.getIsSorted() === "asc" ? (
-                <ArrowUp className="ml-1 h-3 w-3 text-blue-600" />
+                <ArrowUp className="ml-1 h-3 w-3 text-primary" />
               ) : column.getIsSorted() === "desc" ? (
-                <ArrowDown className="ml-1 h-3 w-3 text-blue-600" />
+                <ArrowDown className="ml-1 h-3 w-3 text-primary" />
               ) : (
                 <ArrowUpDown className="ml-1 h-3 w-3" />
               )}
@@ -1158,20 +1143,20 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             return (
               <div className="flex flex-col items-end whitespace-nowrap">
                 <div className={cn(
-                  "font-semibold text-sm inline-flex items-center px-3 py-1 rounded-full",
+                  "font-mono font-semibold text-sm inline-flex items-center px-2.5 py-0.5 rounded-md tabular-nums",
                   direction === "debit"
-                    ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-                    : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                    ? "bg-[#F44D4D]/15 text-[#F44D4D]"
+                    : "bg-emerald-400/15 text-emerald-300"
                 )}>
                   {direction === "debit" ? "↓" : "↑"} {formatCurrency(displayAmount)}
                 </div>
                 {showTotal && (
-                  <div className="text-xs text-gray-500 mt-1 text-right">
+                  <div className="text-xs text-muted-foreground mt-1 text-right font-mono">
                     Total: {formatCurrency(totalAmount)}
                   </div>
                 )}
                 {showNet && (
-                  <div className="text-xs text-gray-500 mt-0.5 text-right">
+                  <div className="text-xs text-muted-foreground mt-0.5 text-right font-mono">
                     Net: {formatCurrency(netAmount)}
                   </div>
                 )}
@@ -1184,8 +1169,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         // Account column (moved after amount)
         columnHelper.accessor("account", {
           header: () => (
-            <div className="flex items-center gap-1 text-sm font-medium">
-              <Building2 className="h-4 w-4" />
+            <div className="flex items-center gap-1">
+              <Building2 className="h-3 w-3" />
               Account
             </div>
           ),
@@ -1193,20 +1178,17 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             const { processedName, icon, isCreditCard, isSplitwise } = processAccountInfo(getValue());
             return (
               <div className="whitespace-nowrap" title={getValue()}>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "text-xs font-medium inline-flex items-center max-w-[120px]",
-                    isSplitwise
-                      ? "border-purple-500 text-purple-700 bg-purple-50 dark:border-purple-400 dark:text-purple-300 dark:bg-purple-900/20"
-                      : isCreditCard
-                        ? "border-blue-500 text-blue-700 bg-blue-50 dark:border-blue-400 dark:text-blue-300 dark:bg-blue-900/20"
-                        : "border-green-500 text-green-700 bg-green-50 dark:border-green-400 dark:text-green-300 dark:bg-green-900/20"
-                  )}
-                >
+                <div className={cn(
+                  "font-semibold text-sm inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md max-w-[120px] overflow-hidden",
+                  isSplitwise
+                    ? "text-violet-300 bg-violet-400/15"
+                    : isCreditCard
+                      ? "text-amber-300 bg-amber-400/15"
+                      : "text-teal-300 bg-teal-400/15"
+                )}>
                   {icon}
                   <span className="truncate">{processedName}</span>
-                </Badge>
+                </div>
               </div>
             );
           },
@@ -1216,8 +1198,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         // Category column (moved after amount)
         columnHelper.accessor("category", {
           header: () => (
-            <div className="flex items-center gap-1 text-sm font-medium">
-              <TagIcon className="h-4 w-4" />
+            <div className="flex items-center gap-1">
+              <FolderOpen className="h-3 w-3" />
               Category
             </div>
           ),
@@ -1335,7 +1317,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
             return (
               <div
-                className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded whitespace-nowrap"
+                className="cursor-pointer hover:bg-muted/50 p-2 rounded whitespace-nowrap"
                 onClick={(e) => {
                   e.stopPropagation();
                   setEditingCategoryForTransaction(transaction.id);
@@ -1343,31 +1325,29 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 title="Click to edit category"
               >
                 {category ? (
-                  <Badge
-                    variant="secondary"
-                    className="text-xs font-medium inline-flex items-center max-w-[120px]"
+                  <div
+                    className="font-semibold text-sm inline-flex items-center px-2.5 py-0.5 rounded-md max-w-[120px] overflow-hidden"
                     style={{
                       backgroundColor: category.color ? `${category.color}20` : undefined,
-                      borderColor: category.color ? `${category.color}40` : undefined,
                       color: category.color || undefined,
                     }}
                   >
                     <span className="truncate">{category.name}</span>
-                  </Badge>
+                  </div>
                 ) : categoryName ? (
                   <span
-                    className="text-xs text-gray-500 italic"
+                    className="text-xs text-muted-foreground italic"
                     title={`${categoryName} (deleted)`}
                   >
                     {categoryName} (deleted)
                   </span>
                 ) : (
-                  <span className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                  <span className="text-xs text-muted-foreground hover:text-foreground">
                     Click to add category
                   </span>
                 )}
                 {row.original.subcategory && (
-                  <div className="text-xs text-gray-500 mt-1 truncate max-w-[120px]">
+                  <div className="text-xs text-muted-foreground mt-1 truncate max-w-[120px]">
                     {row.original.subcategory}
                   </div>
                 )}
@@ -1380,8 +1360,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         // Tags column
         columnHelper.accessor("tags", {
           header: () => (
-            <div className="flex items-center gap-1 text-sm font-medium">
-              <TagIcon className="h-4 w-4" />
+            <div className="flex items-center gap-1">
+              <TagIcon className="h-3 w-3" />
               Tags
             </div>
           ),
@@ -1500,7 +1480,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
             return (
               <div
-                className="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-thumb]:bg-gray-700 dark:hover:[&::-webkit-scrollbar-thumb]:bg-gray-600 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-1 rounded max-w-[140px]"
+                className="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30 cursor-pointer hover:bg-muted/50 p-1 rounded max-w-[140px]"
                 onClick={(e) => {
                   e.stopPropagation();
                   setEditingTagsForTransaction(transaction.id);
@@ -1534,7 +1514,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     ))}
                   </div>
                 ) : (
-                  <span className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 whitespace-nowrap">Click to add tags</span>
+                  <span className="text-xs text-muted-foreground hover:text-foreground whitespace-nowrap">Click to add tags</span>
                 )}
               </div>
             );
@@ -1586,8 +1566,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   className={cn(
                     "h-7 w-7 p-0 rounded-full transition-all duration-200",
                     transaction.is_shared
-                      ? "bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-400 dark:hover:bg-blue-800"
-                      : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
+                      ? "bg-violet-400/15 text-violet-300 hover:bg-violet-400/20 shadow-[0_0_12px_rgba(196,181,253,0.2)]"
+                      : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                     isFocusedActionsColumn && focusedActionButton === 0 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={() => {
@@ -1606,8 +1586,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   className={cn(
                     "h-7 w-7 p-0 rounded-full transition-all duration-200",
                     transaction.transaction_group_id && !transaction.is_split
-                      ? "bg-purple-100 text-purple-600 hover:bg-purple-200 dark:bg-purple-900 dark:text-purple-400 dark:hover:bg-purple-800 shadow-[0_0_12px_rgba(147,51,234,0.5)] dark:shadow-[0_0_12px_rgba(147,51,234,0.4)]"
-                      : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
+                      ? "bg-teal-400/15 text-teal-300 hover:bg-teal-400/20 shadow-[0_0_12px_rgba(45,212,191,0.2)]"
+                      : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                     isFocusedActionsColumn && focusedActionButton === 1 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={(e) => {
@@ -1633,8 +1613,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   className={cn(
                     "h-7 w-7 p-0 rounded-full transition-all duration-200",
                     isSplitGroup
-                      ? "bg-purple-100 text-purple-600 hover:bg-purple-200 dark:bg-purple-900 dark:text-purple-400 dark:hover:bg-purple-800"
-                      : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
+                      ? "bg-sky-400/15 text-sky-300 hover:bg-sky-400/20 shadow-[0_0_12px_rgba(125,211,252,0.2)]"
+                      : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                     isFocusedActionsColumn && focusedActionButton === 2 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={(e) => {
@@ -1660,8 +1640,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   className={cn(
                     "h-7 w-7 p-0 rounded-full transition-all duration-200",
                     transaction.related_mails && transaction.related_mails.length > 0
-                      ? "bg-amber-100 text-amber-600 hover:bg-amber-200 dark:bg-amber-900 dark:text-amber-400 dark:hover:bg-amber-800"
-                      : "bg-gray-100 text-gray-400 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700",
+                      ? "bg-amber-400/15 text-amber-300 hover:bg-amber-400/20 shadow-[0_0_12px_rgba(251,191,36,0.2)]"
+                      : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                     isFocusedActionsColumn && focusedActionButton === 3 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={(e) => {
@@ -1683,10 +1663,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border",
+                    "h-7 w-7 p-0 rounded-full transition-all duration-200",
                     transaction.is_flagged === true
-                      ? "border-orange-500 text-orange-600 hover:border-orange-600 hover:text-orange-700 dark:border-orange-400 dark:text-orange-400 dark:hover:border-orange-300 dark:hover:text-orange-300 bg-orange-50 dark:bg-orange-950"
-                      : "border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500 dark:border-gray-600 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-400 bg-transparent",
+                      ? "bg-[#F44D4D]/15 text-[#F44D4D] hover:bg-[#F44D4D]/20 shadow-[0_0_12px_rgba(244,77,77,0.2)]"
+                      : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                     isFocusedActionsColumn && focusedActionButton === 4 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={async (e) => {
@@ -1714,7 +1694,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:text-gray-300 bg-transparent",
+                    "h-7 w-7 p-0 rounded-full transition-all duration-200 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                     isFocusedActionsColumn && focusedActionButton === 5 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={async (e) => {
@@ -1743,7 +1723,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500 dark:border-gray-600 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-400 bg-transparent",
+                    "h-7 w-7 p-0 rounded-full transition-all duration-200 bg-muted/40 text-muted-foreground hover:bg-[#F44D4D]/15 hover:text-[#F44D4D]",
                     isFocusedActionsColumn && focusedActionButton === 6 && "ring-2 ring-blue-500 ring-inset"
                   )}
                   onClick={(e) => {
@@ -1762,7 +1742,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     variant="ghost"
                     size="sm"
                     className={cn(
-                      "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center border border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500 dark:border-gray-600 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-400 bg-transparent",
+                      "h-7 w-7 p-0 rounded-full transition-all duration-200 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                       isFocusedActionsColumn && focusedActionButton === 7 && "ring-2 ring-blue-500 ring-inset"
                     )}
                     onClick={(e) => {
@@ -1807,10 +1787,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
   if (isLoading) {
     return (
-      <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-8">
+      <div className="bg-card rounded-lg border border-border p-8">
         <div className="flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400"></div>
-          <span className="ml-2 text-gray-900 dark:text-white">Loading transactions...</span>
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+          <span className="ml-2 text-muted-foreground text-sm">Loading transactions...</span>
         </div>
       </div>
     );
@@ -1818,8 +1798,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
   if (error) {
     return (
-      <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-8">
-        <div className="text-center text-red-600 dark:text-red-400">
+      <div className="bg-card rounded-lg border border-border p-8">
+        <div className="text-center text-destructive text-sm">
           Error loading transactions: {error.message}
         </div>
       </div>
@@ -1827,51 +1807,43 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   }
 
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+    <div className="bg-card rounded-lg border border-border">
+      <div className="p-4 border-b border-border">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                Transactions ({allTransactions.length} loaded{data?.pages?.[0]?.pagination?.total ? ` of ${data.pages[0].pagination.total}` : ''})
-              </h3>
-              {isKeyboardNavigationMode && (
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs">
-                    ⌨️ Keyboard Navigation Active
-                  </Badge>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    Tab: Save & move right • Enter: Edit • Arrow keys: Navigate • Esc: Exit
-                  </span>
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
+            {isKeyboardNavigationMode && (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs flex items-center gap-1">
+                  <Keyboard className="h-3 w-3" />
+                  Keyboard Navigation Active
+                </Badge>
+                <span className="text-xs text-muted-foreground">
+                  Tab: Save & move right • Enter: Edit • Arrow keys: Navigate • Esc: Exit
+                </span>
+              </div>
+            )}
             {!isMultiSelectMode && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setIsMultiSelectMode(true);
-                    // Initialize focused row index when entering multi-select mode
-                    if (allTransactions.length > 0) {
-                      setFocusedRowIndex(0);
-                    }
-                  }}
-                  className="flex items-center gap-2"
-                >
-                  <CheckSquare className="h-4 w-4" />
-                  Multi-Select
-                </Button>
-              </>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsMultiSelectMode(true);
+                  if (allTransactions.length > 0) {
+                    setFocusedRowIndex(0);
+                  }
+                }}
+                className="flex items-center gap-2"
+              >
+                <CheckSquare className="h-4 w-4" />
+                Multi-Select
+              </Button>
             )}
             {isMultiSelectMode && (
               <>
                 <Badge variant="secondary" className="text-sm">
                   {selectionSummary.total} selected
                   {selectionSummary.total > 0 && (
-                    <span className="ml-1 text-xs text-gray-500">
+                    <span className="ml-1 text-xs text-muted-foreground">
                       ({selectionSummary.debits} debits, {selectionSummary.credits} credits)
                     </span>
                   )}
@@ -1931,14 +1903,18 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 </Button>
               </>
             )}
-            </div>
           </div>
-          {isFetchingNextPage && (
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-              Loading more...
-            </div>
-          )}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {isFetchingNextPage && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary"></div>
+                Loading more...
+              </div>
+            )}
+            <span className="text-xs text-muted-foreground">
+              {allTransactions.length} loaded{data?.pages?.[0]?.pagination?.total ? ` of ${data.pages[0].pagination.total}` : ''}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -1946,7 +1922,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         {/* Sticky Header */}
         <div
           ref={headerScrollRef}
-          className="flex-shrink-0 w-full overflow-x-auto bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-md z-50"
+          className="flex-shrink-0 w-full overflow-x-auto bg-card border-b border-border z-50"
           onScroll={handleHeaderScroll}
         >
           <table
@@ -1971,7 +1947,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   {headerGroup.headers.map((header) => (
                     <th
                       key={header.id}
-                      className="relative px-3 py-2 text-left font-semibold text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-800 h-12 align-middle text-foreground whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]"
+                      className="relative px-3 py-2 text-left font-medium text-xs text-muted-foreground bg-muted/40 h-10 align-middle uppercase tracking-wide whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]"
                       style={{
                         width: header.getSize(),
                         ...(header.column.columnDef.minSize != null && { minWidth: header.column.columnDef.minSize }),
@@ -1988,7 +1964,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                         <div
                           onMouseDown={header.getResizeHandler()}
                           onTouchStart={header.getResizeHandler()}
-                          className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none touch-none hover:bg-blue-400 active:bg-blue-500 rounded transition-colors"
+                          className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none touch-none hover:bg-primary active:bg-primary rounded transition-colors"
                           style={{ touchAction: "none" }}
                           title="Drag to resize column"
                         />
@@ -2028,24 +2004,56 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               ))}
             </colgroup>
             <tbody className="[&_tr:last-child]:border-0">
-              {rows.map((row, rowIndex) => {
-                const isFocusedRow = isKeyboardNavigationMode && focusedRowIndex === rowIndex;
-                const isGroupedExpense = row.original.is_grouped_expense;
-                const isExpanded = row.original.transaction_group_id 
-                  ? expandedGroupedExpenses.has(row.original.transaction_group_id)
-                  : false;
-                const members = row.original.transaction_group_id 
-                  ? groupMembers.get(row.original.transaction_group_id) || []
-                  : [];
-                
-                return (
-                  <React.Fragment key={row.id}>
+              {(() => {
+                // Date-grouped rendering
+                let lastDate = "";
+                const colCount = table.getHeaderGroups()[0].headers.length;
+                return rows.map((row, rowIndex) => {
+                  const isFocusedRow = isKeyboardNavigationMode && focusedRowIndex === rowIndex;
+                  const isGroupedExpense = row.original.is_grouped_expense;
+                  const isExpanded = row.original.transaction_group_id
+                    ? expandedGroupedExpenses.has(row.original.transaction_group_id)
+                    : false;
+                  const members = row.original.transaction_group_id
+                    ? groupMembers.get(row.original.transaction_group_id) || []
+                    : [];
+
+                  const rowDate = row.original.date ? row.original.date.split("T")[0] : "";
+                  const showDateHeader = rowDate !== lastDate;
+                  if (showDateHeader) lastDate = rowDate;
+
+                  // Daily debit total for the date group
+                  const dailyTotal = showDateHeader
+                    ? rows
+                        .filter(r => (r.original.date || "").split("T")[0] === rowDate && r.original.direction === "debit")
+                        .reduce((sum, r) => sum + (r.original.is_shared && r.original.split_share_amount ? r.original.split_share_amount : r.original.amount || 0), 0)
+                    : 0;
+
+                  const dateLabel = rowDate
+                    ? new Date(rowDate + "T12:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+                    : "";
+
+                  return (
+                    <React.Fragment key={row.id}>
+                      {showDateHeader && (
+                        <tr className="border-b border-border bg-muted/20">
+                          <td colSpan={colCount} className="px-4 py-1.5">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-medium text-muted-foreground">{dateLabel}</span>
+                              <div className="flex-1 h-px bg-border" />
+                              {dailyTotal > 0 && (
+                                <span className="text-xs font-mono text-muted-foreground">{formatCurrency(dailyTotal)}</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
                     <tr
                       className={cn(
-                        "group hover:bg-gray-50 dark:hover:bg-gray-800 border-b border-gray-100 dark:border-gray-800 transition-colors duration-150 h-12 cursor-pointer",
-                        editingRow === row.original.id && "bg-blue-50 dark:bg-blue-900/20",
-                        highlightedTransactionIds.has(row.original.id) && "bg-blue-50 dark:bg-blue-900/10 border-l-2 border-l-blue-500",
-                        isFocusedRow && "bg-blue-100 dark:bg-blue-900/30 border-l-2 border-l-blue-500"
+                        "group hover:bg-muted/20 border-b border-border transition-colors duration-150 h-12 cursor-pointer",
+                        editingRow === row.original.id && "bg-primary/5",
+                        highlightedTransactionIds.has(row.original.id) && "bg-primary/5 border-l-2 border-l-primary",
+                        isFocusedRow && "bg-primary/10 border-l-2 border-l-primary"
                       )}
                     // onClick={() => handleRowClick(row.original)}
                     >
@@ -2058,7 +2066,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                               "px-3 py-2 text-sm align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
                               editingTagsForTransaction === row.original.id && cell.column.id === "tags" && "relative",
                               editingCategoryForTransaction === row.original.id && cell.column.id === "category" && "relative",
-                              isFocusedCell && "ring-2 ring-blue-500 ring-inset bg-blue-50 dark:bg-blue-900/20"
+                              isFocusedCell && "ring-2 ring-primary ring-inset bg-primary/5"
                             )}
                           >
                             {flexRender(
@@ -2074,49 +2082,49 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     {isGroupedExpense && isExpanded && members.length > 0 && members.map((member) => (
                       <tr
                         key={`member-${member.id}`}
-                        className="bg-purple-50/50 dark:bg-purple-950/10 border-l-2 border-purple-300 dark:border-purple-700 hover:bg-purple-100/50 dark:hover:bg-purple-900/20"
+                        className="bg-muted/10 border-l-2 border-l-chart-4 hover:bg-muted/20 border-b border-border"
                       >
                         {isMultiSelectMode && <td className="px-3 py-2"></td>}
-                        <td className="px-3 py-2 text-xs text-gray-600 dark:text-gray-400 pl-8">
+                        <td className="px-3 py-2 text-xs text-muted-foreground/60">
                           {format(new Date(member.date), "dd MMM yy")}
                         </td>
-                        <td className="px-3 py-2 pl-12 min-w-0">
+                        <td className="px-3 py-2 pl-8 min-w-0">
                           <div className="text-sm truncate">{member.description}</div>
                           {member.notes && (
-                            <div className="text-xs text-gray-500 truncate">{member.notes}</div>
+                            <div className="text-xs text-muted-foreground truncate">{member.notes}</div>
                           )}
                         </td>
                         <td className="px-3 py-2 text-sm">
                           <Badge
                             variant="outline"
                             className={cn(
-                              "text-xs",
+                              "text-xs font-mono",
                               member.direction === "debit"
-                                ? "border-red-500 text-red-600 dark:text-red-400"
-                                : "border-green-500 text-green-600 dark:text-green-400"
+                                ? "border-[#F44D4D]/40 text-[#F44D4D]"
+                                : "border-emerald-400/40 text-emerald-300"
                             )}
                           >
                             {formatCurrency(member.amount)}
                           </Badge>
                         </td>
-                        <td className="px-3 py-2 text-xs">{member.account.split(" ").slice(0, -2).join(" ")}</td>
-                        <td className="px-3 py-2 text-xs">{member.category || "Uncategorized"}</td>
-                        <td className="px-3 py-2"></td>
-                        <td className="px-3 py-2"></td>
+                        <td className="px-3 py-2 text-xs text-muted-foreground">{member.account.split(" ").slice(0, -2).join(" ")}</td>
+                        <td className="px-3 py-2 text-xs text-muted-foreground">{member.category || "Uncategorized"}</td>
+                        <td colSpan={colCount - (isMultiSelectMode ? 6 : 5)} className="px-3 py-2"></td>
                       </tr>
                     ))}
                   </React.Fragment>
                 );
-              })}
+              });
+              })()}
             </tbody>
           </table>
         </div>
       </div>
 
       {!hasNextPage && allTransactions.length > 0 && (
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700 text-center">
-          <div className="text-sm text-gray-500 dark:text-gray-400">
-            All transactions loaded ({allTransactions.length} total)
+        <div className="p-3 border-t border-border text-center">
+          <div className="text-xs text-muted-foreground">
+            All {allTransactions.length} transactions loaded
           </div>
         </div>
       )}

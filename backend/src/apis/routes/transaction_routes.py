@@ -503,6 +503,7 @@ async def get_transactions(
     is_flagged: Optional[bool] = Query(None, description="Filter transactions by flagged status"),
     is_shared: Optional[bool] = Query(None, description="Filter transactions by shared status"),
     is_split: Optional[bool] = Query(None, description="Filter transactions by split status (False to exclude split transactions)"),
+    is_grouped_expense: Optional[bool] = Query(None, description="Filter transactions by grouped expense status (True to show only grouped transactions)"),
     participants: Optional[str] = Query(None, description="Comma-separated participant names to include"),
     exclude_participants: Optional[str] = Query(None, description="Comma-separated participant names to exclude"),
     sort_field: Optional[str] = Query("date", description="Field to sort by"),
@@ -539,7 +540,7 @@ async def get_transactions(
             participant_filter_values or exclude_participant_values or
             amount_min is not None or amount_max is not None or
             direction or transaction_type or search or
-            is_flagged is not None or is_shared is not None or is_split is not None
+            is_flagged is not None or is_shared is not None or is_split is not None or is_grouped_expense is not None
         )
 
         # If filters are present, fetch ALL transactions first, then filter and paginate
@@ -694,7 +695,15 @@ async def get_transactions(
                     transaction_is_split = False
                 if bool(transaction_is_split) != is_split:
                     continue
-            
+
+            # Apply is_grouped_expense filter (e.g., to show only grouped transactions)
+            if is_grouped_expense is not None:
+                transaction_is_grouped = transaction.get('is_grouped_expense')
+                if transaction_is_grouped is None:
+                    transaction_is_grouped = False
+                if bool(transaction_is_grouped) != is_grouped_expense:
+                    continue
+
             # Apply participants filter
             if participant_filter_values or exclude_participant_values:
                 transaction_participants = get_transaction_participants(transaction)
