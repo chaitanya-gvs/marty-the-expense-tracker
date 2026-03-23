@@ -3496,15 +3496,32 @@ class StatementLogOperations:
             await session.close()
 
 
-async def update_participant_splitwise_balance(
-    session: AsyncSession, splitwise_id: int, balance: float, synced_at: datetime
-) -> None:
-    """Update the cached Splitwise balance for a participant."""
-    await session.execute(
-        text("""
-            UPDATE participants
-            SET splitwise_balance = :balance, balance_synced_at = :synced_at
-            WHERE splitwise_id = :splitwise_id
-        """),
-        {"balance": balance, "synced_at": synced_at, "splitwise_id": splitwise_id}
-    )
+class ParticipantOperations:
+    """Operations for managing participants."""
+
+    @staticmethod
+    async def update_splitwise_balance(
+        splitwise_id: int, balance: float, synced_at: datetime
+    ) -> None:
+        """Update the cached Splitwise balance for a participant."""
+        session_factory = get_session_factory()
+        session = session_factory()
+        try:
+            await session.execute(
+                text("""
+                    UPDATE participants
+                    SET splitwise_balance = :balance, balance_synced_at = :synced_at
+                    WHERE splitwise_id = :splitwise_id
+                """),
+                {"balance": balance, "synced_at": synced_at, "splitwise_id": splitwise_id},
+            )
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            logger.error(
+                f"Failed to update Splitwise balance for splitwise_id={splitwise_id}",
+                exc_info=True,
+            )
+            raise
+        finally:
+            await session.close()
