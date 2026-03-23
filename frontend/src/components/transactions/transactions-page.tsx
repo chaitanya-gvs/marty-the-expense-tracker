@@ -167,40 +167,40 @@ export function TransactionsPage() {
       </div>
 
       {/* Stats Bar */}
-      <div className="grid grid-cols-4 divide-x divide-border rounded-lg border border-border bg-card overflow-hidden">
-        <div className="px-3 py-4 min-w-0">
-          <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-            <TrendingDown className="h-3 w-3" />
+      <div className="grid grid-cols-2 sm:grid-cols-4 rounded-lg border border-border overflow-hidden bg-border gap-px">
+        <div className="bg-card px-3 py-4 min-w-0 overflow-hidden">
+          <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1 whitespace-nowrap">
+            <TrendingDown className="h-3 w-3 shrink-0" />
             Total Spent
           </p>
-          <p className="font-mono text-base font-semibold text-foreground tabular-nums">
+          <p className="font-mono text-sm font-semibold text-foreground tabular-nums truncate">
             {formatCurrency(totalDebits)}
           </p>
         </div>
-        <div className="px-3 py-4 min-w-0">
-          <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-            <TrendingUp className="h-3 w-3" />
+        <div className="bg-card px-3 py-4 min-w-0 overflow-hidden">
+          <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1 whitespace-nowrap">
+            <TrendingUp className="h-3 w-3 shrink-0" />
             Total In
           </p>
-          <p className="font-mono text-base font-semibold text-foreground tabular-nums">
+          <p className="font-mono text-sm font-semibold text-foreground tabular-nums truncate">
             {formatCurrency(totalCredits)}
           </p>
         </div>
-        <div className="px-3 py-4 min-w-0">
-          <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-            <ArrowRightLeft className="h-3 w-3" />
+        <div className="bg-card px-3 py-4 min-w-0 overflow-hidden">
+          <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1 whitespace-nowrap">
+            <ArrowRightLeft className="h-3 w-3 shrink-0" />
             Net
           </p>
-          <p className={`font-mono text-base font-semibold tabular-nums ${net >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+          <p className={`font-mono text-sm font-semibold tabular-nums truncate ${net >= 0 ? "text-emerald-500" : "text-destructive"}`}>
             {formatCurrency(Math.abs(net))}
           </p>
         </div>
-        <div className="px-3 py-4 min-w-0">
-          <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-            <Hash className="h-3 w-3" />
+        <div className="bg-card px-3 py-4 min-w-0 overflow-hidden">
+          <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1 whitespace-nowrap">
+            <Hash className="h-3 w-3 shrink-0" />
             Transactions
           </p>
-          <p className="font-mono text-base font-semibold text-foreground tabular-nums">
+          <p className="font-mono text-sm font-semibold text-foreground tabular-nums">
             {count}
           </p>
         </div>
