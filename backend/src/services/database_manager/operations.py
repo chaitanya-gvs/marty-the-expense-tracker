@@ -3494,3 +3494,17 @@ class StatementLogOperations:
             return 0
         finally:
             await session.close()
+
+
+async def update_participant_splitwise_balance(
+    session: AsyncSession, splitwise_id: int, balance: float, synced_at: datetime
+) -> None:
+    """Update the cached Splitwise balance for a participant."""
+    await session.execute(
+        text("""
+            UPDATE participants
+            SET splitwise_balance = :balance, balance_synced_at = :synced_at
+            WHERE splitwise_id = :splitwise_id
+        """),
+        {"balance": balance, "synced_at": synced_at, "splitwise_id": splitwise_id}
+    )
