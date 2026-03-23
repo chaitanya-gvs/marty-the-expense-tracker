@@ -109,7 +109,7 @@ class SplitwiseAPIClient:
                 amount = next(
                     (_safe_float(b.get("amount")) for b in balances if b.get("currency_code") == "INR"),
                     next(
-                        (_safe_float(b.get("amount")) for b in balances if _safe_float(b.get("amount")) != 0.0),
+                        (v for b in balances if (v := _safe_float(b.get("amount"))) != 0.0),
                         0.0,
                     ),
                 )
@@ -121,7 +121,7 @@ class SplitwiseAPIClient:
                 })
             logger.info(f"Fetched balances for {len(result)} friends from Splitwise")
             return result
-        except Exception as e:
+        except Exception:
             logger.error("Failed to fetch friends with balances", exc_info=True)
             raise
 
