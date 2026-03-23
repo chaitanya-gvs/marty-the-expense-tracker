@@ -901,7 +901,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               )}
             </Button>
           ),
-          size: 80,
+          size: 120,
           enableResizing: false,
           enableSorting: true,
           sortingFn: (rowA, rowB) =>
