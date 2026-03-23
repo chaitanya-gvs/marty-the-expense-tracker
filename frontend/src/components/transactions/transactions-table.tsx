@@ -31,6 +31,7 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  CalendarDays,
   Tag as TagIcon,
   Users,
   Edit3,
@@ -883,12 +884,28 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         // Date column — empty for regular rows (separator handles date display); populated for grouped expense member rows
         columnHelper.accessor("date", {
           id: "date",
-          header: () => (
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Date</span>
+          header: ({ column }) => (
+            <Button
+              variant="ghost"
+              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+              className="h-8 px-2 gap-1 text-xs font-medium uppercase tracking-wide w-full justify-start"
+            >
+              <CalendarDays className="size-3" />
+              Date
+              {column.getIsSorted() === "asc" ? (
+                <ArrowUp className="ml-1 h-3 w-3 text-primary" />
+              ) : column.getIsSorted() === "desc" ? (
+                <ArrowDown className="ml-1 h-3 w-3 text-primary" />
+              ) : (
+                <ArrowUpDown className="ml-1 h-3 w-3" />
+              )}
+            </Button>
           ),
           size: 80,
           enableResizing: false,
-          enableSorting: false,
+          enableSorting: true,
+          sortingFn: (rowA, rowB) =>
+            rowA.original.date.localeCompare(rowB.original.date),
           cell: () => null,
         }),
 
