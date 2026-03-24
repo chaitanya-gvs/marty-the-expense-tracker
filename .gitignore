@@ -14,5 +14,7 @@ node_modules/
 *.swp
 *.swo
 
-# Playwright
+# Claude and Claude plugins
+.claude/
 .playwright-mcp/
+.superpowers/
