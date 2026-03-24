@@ -140,7 +140,7 @@ function SettlementsPageContent() {
             <span className="text-gray-600">I owe:</span>
             <span className="text-red-600 font-medium">{formatCurrency(settlement.amount_i_owe)}</span>
           </div>
-          {settlement.splitwise_balance !== undefined && (
+          {settlement.splitwise_balance != null && (
             <div className="flex justify-between text-xs text-gray-500 pt-1 border-t border-gray-50">
               <span>Splitwise says:</span>
               <span className={settlement.splitwise_balance >= 0 ? 'text-green-500' : 'text-red-500'}>
@@ -396,7 +396,7 @@ function SettlementsPageContent() {
                         <span className="text-gray-600">Number of transactions:</span>
                         <span className="ml-2 font-medium">{settlementDetail.transactions.length}</span>
                       </div>
-                      {settlementDetail.splitwise_balance !== undefined && (
+                      {settlementDetail.splitwise_balance != null && (
                         <>
                           <div className="col-span-2 border-t pt-3 mt-1">
                             <div className="flex items-center justify-between text-sm">

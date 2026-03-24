@@ -450,20 +450,24 @@ async def get_participant_settlement(
             is_payment_transaction = transaction.get("direction") == "credit"
 
             if is_payment_transaction:
-                # Settlement payment — collect into payment_history and subtract from balances
                 payment_amount = transaction["amount"]
-                payment_history_entries.append(PaymentHistoryEntry(
-                    id=transaction["id"],
-                    date=transaction["date"],
-                    amount=payment_amount,
-                    description=transaction["description"],
-                    paid_by=paid_by or "Unknown",
-                ))
                 if is_paid_by_participant:
-                    # They paid me back — reduce their debt to me
+                    payment_history_entries.append(PaymentHistoryEntry(
+                        id=transaction["id"],
+                        date=transaction["date"],
+                        amount=payment_amount,
+                        description=transaction.get("description", "Settlement"),
+                        paid_by=participant
+                    ))
                     amount_owed_to_me -= payment_amount
                 elif is_paid_by_me:
-                    # I paid them back — reduce my debt to them
+                    payment_history_entries.append(PaymentHistoryEntry(
+                        id=transaction["id"],
+                        date=transaction["date"],
+                        amount=payment_amount,
+                        description=transaction.get("description", "Settlement"),
+                        paid_by="me"
+                    ))
                     amount_i_owe -= payment_amount
                 continue
 
