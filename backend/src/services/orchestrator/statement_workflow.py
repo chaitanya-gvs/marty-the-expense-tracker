@@ -16,14 +16,14 @@ import os
 import re
 import shutil
 import tempfile
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Any
 
 import pandas as pd
 from googleapiclient.discovery import build
 
-from src.services.database_manager.operations import AccountOperations, StatementLogOperations, TransactionOperations
+from src.services.database_manager.operations import AccountOperations, ParticipantOperations, StatementLogOperations, TransactionOperations
 from src.services.email_ingestion.client import EmailClient
 from src.services.email_ingestion.token_manager import TokenManager
 from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
@@ -1131,6 +1131,21 @@ class StatementWorkflow:
                         "cloud_path": cloud_path,
                     },
                 )
+
+                # Sync Splitwise friend balances into participants table
+                try:
+                    logger.info("Syncing Splitwise friend balances...", extra=self._log_extra())
+                    friends_with_balances = self.splitwise_service.get_friends_with_balances()
+                    synced_at = datetime.now(timezone.utc)
+                    for friend in friends_with_balances:
+                        if friend["id"] is not None:
+                            await ParticipantOperations.update_splitwise_balance(
+                                friend["id"], friend["net_balance"], synced_at
+                            )
+                    logger.info(f"Synced balances for {len(friends_with_balances)} Splitwise friends", extra=self._log_extra())
+                except Exception:
+                    logger.error("Failed to sync Splitwise friend balances", exc_info=True, extra=self._log_extra())
+
                 return {
                     "success": True,
                     "cloud_path": cloud_path,
@@ -1969,6 +1984,7 @@ class StatementWorkflow:
         self,
         custom_start_date: Optional[datetime] = None,
         custom_end_date: Optional[datetime] = None,
+        job_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Run Splitwise-only workflow: fetch → GCS → standardize → DB insert."""
         logger.info("Starting Splitwise-only workflow", extra=self._log_extra())

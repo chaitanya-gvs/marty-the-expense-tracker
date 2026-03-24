@@ -1,4 +1,4 @@
-import { ApiResponse, Transaction, Budget, Category, Tag, TransactionFilters, TransactionSort, PaginationParams, TransferSuggestion, RefundSuggestion, SplitBreakdown, EmailMetadata, EmailDetails, EmailSearchFilters, ExpenseAnalytics, ExpenseAnalyticsFilters } from "@/lib/types";
+import { ApiResponse, Transaction, Budget, Category, Tag, TransactionFilters, TransactionSort, PaginationParams, TransferSuggestion, RefundSuggestion, SplitBreakdown, EmailMetadata, EmailDetails, EmailSearchFilters, ExpenseAnalytics, ExpenseAnalyticsFilters, SplitwiseFriend, SplitwiseFriendExpense } from "@/lib/types";
 import type {
   WorkflowRunRequest,
   WorkflowRunResponse,
@@ -554,6 +554,15 @@ class ApiClient {
 
   async getSettlementParticipants(): Promise<ApiResponse<{ participants: string[] }>> {
     return this.request<{ participants: string[] }>('/settlements/participants');
+  }
+
+  async getSplitwiseFriends(): Promise<SplitwiseFriend[]> {
+    // Backend returns a plain JSON array, not wrapped in ApiResponse
+    return this.request<SplitwiseFriend[]>('/splitwise/friends') as unknown as Promise<SplitwiseFriend[]>;
+  }
+
+  async getSplitwiseFriendExpenses(splitwiseId: number): Promise<SplitwiseFriendExpense[]> {
+    return this.request<SplitwiseFriendExpense[]>(`/splitwise/friend/${splitwiseId}/expenses`) as unknown as Promise<SplitwiseFriendExpense[]>;
   }
 
   // Email linking

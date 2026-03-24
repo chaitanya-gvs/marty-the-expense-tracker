@@ -6,6 +6,7 @@ from src.apis.routes.transaction_routes import router as transaction_router
 from src.apis.routes.settlement_routes import router as settlement_router
 from src.apis.routes.participant_routes import router as participant_router
 from src.apis.routes.workflow_routes import router as workflow_router
+from src.apis.routes.splitwise_routes import router as splitwise_router
 from src.utils.settings import get_settings
 
 settings = get_settings()
@@ -30,6 +31,7 @@ app.include_router(transaction_router, prefix="/api")
 app.include_router(settlement_router, prefix="/api")
 app.include_router(participant_router, prefix="/api")
 app.include_router(workflow_router, prefix="/api")
+app.include_router(splitwise_router, prefix="/api/splitwise")
 
 
 if __name__ == "__main__":

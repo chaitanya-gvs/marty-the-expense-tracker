@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { SettlementSummary, SettlementDetail } from '@/lib/types';
+import { SettlementSummary, SettlementDetail, SplitwiseFriend, SplitwiseFriendExpense } from '@/lib/types';
 import { apiClient } from '@/lib/api/client';
 
 interface SettlementFilters {
@@ -101,4 +101,66 @@ export function useSettlementParticipants() {
     error,
     refetch: fetchParticipants
   };
+}
+
+export function useSplitwiseFriends() {
+  const [friends, setFriends] = useState<SplitwiseFriend[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchFriends = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // getSplitwiseFriends() returns the array directly (not wrapped in ApiResponse)
+      const data = await apiClient.getSplitwiseFriends();
+      setFriends(data ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load Splitwise friends');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchFriends();
+  }, []);
+
+  return { friends, loading, error, refetch: fetchFriends };
+}
+
+export function useSplitwiseFriendExpenses(splitwiseId: number | null) {
+  const [expenses, setExpenses] = useState<SplitwiseFriendExpense[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (splitwiseId === null) {
+      setExpenses([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchExpenses = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // getSplitwiseFriendExpenses() returns the array directly
+        const data = await apiClient.getSplitwiseFriendExpenses(splitwiseId);
+        if (!cancelled) setExpenses(data ?? []);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load expenses');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchExpenses();
+    return () => { cancelled = true; };
+  }, [splitwiseId]);
+
+  return { expenses, loading, error };
 }

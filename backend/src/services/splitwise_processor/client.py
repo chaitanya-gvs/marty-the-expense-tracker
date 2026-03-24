@@ -14,6 +14,14 @@ from src.services.splitwise_processor.schemas import SplitwiseExpense, Splitwise
 logger = get_logger(__name__)
 
 
+def _safe_float(value: Any, fallback: float = 0.0) -> float:
+    """Convert value to float, returning fallback on ValueError or None."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
 class SplitwiseAPIClient:
     """Client for interacting with Splitwise API."""
     
@@ -88,6 +96,35 @@ class SplitwiseAPIClient:
             logger.error("Failed to fetch friends", exc_info=True)
             raise
     
+    def get_friends_with_balances(self) -> List[Dict[str, Any]]:
+        """Returns friends with their current net balance (positive = they owe you)."""
+        try:
+            logger.info("Fetching friends with balances from Splitwise...")
+            response = requests.get(f"{self.base_url}/get_friends", headers=self.headers)
+            response.raise_for_status()
+            result = []
+            for f in response.json().get("friends", []):
+                balances = f.get("balance", [])
+                # Pick INR balance; fallback to first non-zero currency
+                amount = next(
+                    (_safe_float(b.get("amount")) for b in balances if b.get("currency_code") == "INR"),
+                    next(
+                        (v for b in balances if (v := _safe_float(b.get("amount"))) != 0.0),
+                        0.0,
+                    ),
+                )
+                result.append({
+                    "id": f.get("id"),
+                    "first_name": f.get("first_name", ""),
+                    "last_name": f.get("last_name", ""),
+                    "net_balance": amount,
+                })
+            logger.info(f"Fetched balances for {len(result)} friends from Splitwise")
+            return result
+        except Exception:
+            logger.error("Failed to fetch friends with balances", exc_info=True)
+            raise
+
     def get_expenses(
         self,
         start_date: Optional[datetime] = None,

@@ -88,6 +88,10 @@ export interface SettlementEntry {
   amount_i_owe: number;
   net_balance: number;
   transaction_count: number;
+  payment_count?: number;
+  splitwise_balance?: number;
+  balance_synced_at?: string;
+  has_discrepancy?: boolean;
 }
 
 export interface SettlementSummary {
@@ -107,6 +111,15 @@ export interface SettlementTransaction {
   participant_share: number;
   paid_by: string;
   split_breakdown: SplitBreakdown;
+  group_name?: string;
+}
+
+export interface PaymentHistoryEntry {
+  id: string;
+  date: string;
+  amount: number;
+  description: string;
+  paid_by?: string;
 }
 
 export interface SettlementDetail {
@@ -114,6 +127,10 @@ export interface SettlementDetail {
   net_balance: number;
   transactions: SettlementTransaction[];
   total_shared_amount: number;
+  payment_history: PaymentHistoryEntry[];
+  splitwise_balance?: number;
+  balance_synced_at?: string;
+  has_discrepancy?: boolean;
 }
 
 export interface TransactionFilters {
@@ -308,4 +325,25 @@ export interface ExpenseAnalyticsFilters {
   exclude_tags?: string[];
   direction?: "debit" | "credit";
   group_by?: "category" | "tag" | "month" | "account" | "category_month" | "tag_month" | "tag_category";
+}
+
+export interface SplitwiseFriend {
+  id: number;
+  first_name: string;
+  last_name: string | null;    // null when absent in Splitwise
+  net_balance: number;          // positive = they owe you, negative = you owe them
+}
+
+export interface SplitwiseFriendExpense {
+  id: number;
+  description: string;
+  cost: number;
+  date: string;                 // ISO date string (YYYY-MM-DD)
+  group_name: string | null;
+  category: string | null;
+  users: {
+    name: string;               // first_name + " " + last_name, trimmed
+    paid_share: number;
+    owed_share: number;
+  }[];
 }
