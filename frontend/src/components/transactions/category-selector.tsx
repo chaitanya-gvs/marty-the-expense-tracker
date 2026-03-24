@@ -113,7 +113,7 @@ export function CategorySelector({
     <>
       <div className="flex gap-0.5 w-full max-w-full overflow-hidden">
         <Select value={value || ""} onValueChange={onValueChange} disabled={categoriesLoading}>
-          <SelectTrigger className={cn("flex-1 min-w-0 h-8 text-xs", className)}>
+          <SelectTrigger size="sm" className={cn("flex-1 min-w-0 h-8 text-xs", className)}>
             <SelectValue placeholder={categoriesLoading ? "Loading..." : placeholder}>
               {selectedCategory && (
                 <div className="flex items-center gap-1 truncate">
