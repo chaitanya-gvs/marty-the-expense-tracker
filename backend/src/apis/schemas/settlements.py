@@ -41,7 +41,6 @@ class SettlementTransaction(BaseModel):
     paid_by: Optional[str] = Field(None, description="Who paid for this transaction")
     split_breakdown: Dict[str, Any] = Field(..., description="Original split breakdown")
     group_name: Optional[str] = Field(None, description="Splitwise group name for this transaction")
-    is_payment: bool = Field(False, description="True if this is a repayment transaction, not an expense")
 
 
 class PaymentHistoryEntry(BaseModel):
@@ -50,6 +49,7 @@ class PaymentHistoryEntry(BaseModel):
     date: str = Field(..., description="Payment date")
     amount: float = Field(..., description="Amount paid")
     description: str = Field(..., description="Payment description")
+    paid_by: Optional[str] = Field(None, description="Who made this payment")
 
 
 class SettlementDetail(BaseModel):

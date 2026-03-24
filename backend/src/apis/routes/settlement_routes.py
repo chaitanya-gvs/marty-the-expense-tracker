@@ -24,6 +24,9 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/settlements", tags=["settlements"])
 
+# Tolerance for balance discrepancy between local calculation and Splitwise API (one cent)
+BALANCE_DISCREPANCY_THRESHOLD = 0.01
+
 _settings = get_settings()
 CURRENT_USER_NAMES = {name.strip() for name in _settings.CURRENT_USER_NAMES.split(",")}
 
@@ -276,12 +279,11 @@ def _calculate_settlements(transactions: List[Dict[str, Any]]) -> SettlementSumm
                 if is_paid_by_participant:
                     # They paid me back — reduce their debt to me
                     participant_balances[participant]["amount_owed_to_me"] -= payment_amount
+                    participant_balances[participant]["payment_count"] += 1
                 elif is_paid_by_me:
                     # I paid them — reduce my debt to them
                     participant_balances[participant]["amount_i_owe"] -= payment_amount
-                participant_balances[participant]["payment_count"] = (
-                    participant_balances[participant].get("payment_count", 0) + 1
-                )
+                    participant_balances[participant]["payment_count"] += 1
             else:
                 # Regular expense
                 if is_paid_by_me:
@@ -365,17 +367,17 @@ async def get_settlement_summary(
         # Build a lookup: normalized_name -> (balance, synced_at)
         splitwise_balance_map = {}
         for row in splitwise_balances.fetchall():
-            normalized = _normalize_participant_name(row.name)
+            normalized = _normalize_participant_name(row.name).lower()
             synced_str = row.balance_synced_at.isoformat() if row.balance_synced_at else None
             splitwise_balance_map[normalized] = (float(row.splitwise_balance), synced_str)
 
         # Enrich each settlement entry with Splitwise balance data
         enriched_settlements = []
         for entry in settlement_summary.settlements:
-            sw_data = splitwise_balance_map.get(entry.participant)
+            sw_data = splitwise_balance_map.get(entry.participant.lower())
             if sw_data:
                 sw_balance, synced_at = sw_data
-                has_discrepancy = abs(entry.net_balance - sw_balance) > 0.01
+                has_discrepancy = abs(entry.net_balance - sw_balance) > BALANCE_DISCREPANCY_THRESHOLD
                 enriched_entry = entry.model_copy(update={
                     "splitwise_balance": sw_balance,
                     "balance_synced_at": synced_at,
@@ -455,6 +457,7 @@ async def get_participant_settlement(
                     date=transaction["date"],
                     amount=payment_amount,
                     description=transaction["description"],
+                    paid_by=paid_by or "Unknown",
                 ))
                 if is_paid_by_participant:
                     # They paid me back — reduce their debt to me
@@ -480,7 +483,6 @@ async def get_participant_settlement(
                     paid_by=paid_by or "Unknown",  # Show inferred payer or "Unknown" if still can't determine
                     split_breakdown=split_breakdown,
                     group_name=transaction.get("group_name"),
-                    is_payment=False,
                 )
 
                 expense_transactions.append(settlement_transaction)
@@ -518,7 +520,7 @@ async def get_participant_settlement(
         if sw_row and sw_row.splitwise_balance is not None:
             sw_balance = float(sw_row.splitwise_balance)
             synced_at_str = sw_row.balance_synced_at.isoformat() if sw_row.balance_synced_at else None
-            has_discrepancy = abs(net_balance - sw_balance) > 0.01
+            has_discrepancy = abs(net_balance - sw_balance) > BALANCE_DISCREPANCY_THRESHOLD
 
         settlement_detail = SettlementDetail(
             participant=participant,
