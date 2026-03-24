@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { DollarSignIcon, UsersIcon, TrendingUpIcon, TrendingDownIcon, TrendingUp, TrendingDown, Clock, CheckCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { TrendingUp, TrendingDown, Minus, Users, Clock, CheckCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { useSettlements, useSettlementDetail } from '@/hooks/use-settlements';
 import { formatCurrency } from '@/lib/format-utils';
 import { SettlementEntry, SettlementTransaction } from '@/lib/types';
 import { SettlementFilters } from '@/components/settlements/settlement-filters';
+import { cn } from '@/lib/utils';
 
 interface SettlementFiltersState {
   date_range_start?: string;
@@ -20,15 +20,26 @@ interface SettlementFiltersState {
   show_shared_only?: boolean;
 }
 
-export function ManualTab() {
-  const [selectedParticipant, setSelectedParticipant] = useState<string | null>(null);
-  const [settlementFilters, setSettlementFilters] = useState<SettlementFiltersState>({});
+interface ParticipantRowProps {
+  settlement: SettlementEntry;
+  isExpanded: boolean;
+  onToggle: () => void;
+  filters: SettlementFiltersState;
+}
+
+function ParticipantRow({ settlement, isExpanded, onToggle, filters }: ParticipantRowProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  const { settlementSummary, loading: summaryLoading, error: summaryError } = useSettlements(settlementFilters);
-  const { settlementDetail, loading: detailLoading } = useSettlementDetail(
-    selectedParticipant || '',
-    settlementFilters
+  // Narrow to only the three fields useSettlementDetail accepts; stabilise reference for query key
+  const detailFilters = useMemo(() => ({
+    date_range_start: filters.date_range_start,
+    date_range_end: filters.date_range_end,
+    min_amount: filters.min_amount,
+  }), [filters.date_range_start, filters.date_range_end, filters.min_amount]);
+
+  const { settlementDetail, loading, error } = useSettlementDetail(
+    isExpanded ? settlement.participant : '',
+    detailFilters
   );
 
   const transactionGroups = useMemo<Record<string, SettlementTransaction[]>>(() => {
@@ -42,126 +53,220 @@ export function ManualTab() {
     return groups;
   }, [settlementDetail]);
 
-  useEffect(() => {
-    if (settlementDetail) {
-      const groupKeys = new Set<string>();
-      settlementDetail.transactions.forEach(t => {
-        groupKeys.add(t.group_name || 'No Group');
-      });
-      setExpandedGroups(groupKeys);
-    }
-  }, [settlementDetail]);
-
   const toggleGroup = (groupName: string) => {
     setExpandedGroups(prev => {
       const next = new Set(prev);
-      if (next.has(groupName)) {
-        next.delete(groupName);
-      } else {
-        next.add(groupName);
-      }
+      if (next.has(groupName)) next.delete(groupName);
+      else next.add(groupName);
       return next;
     });
   };
 
-  const formatBalance = (amount: number) => {
-    const isPositive = amount > 0;
-    return (
-      <span className={`font-medium ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-        {isPositive ? '+' : ''}{formatCurrency(amount)}
-      </span>
-    );
-  };
+  const initials = settlement.participant.split(' ').map(n => n[0] ?? '').join('').toUpperCase().slice(0, 2) || '?';
 
-  const getBalanceIcon = (amount: number) => {
-    if (amount > 0) return <TrendingUpIcon className="h-4 w-4 text-green-600" />;
-    if (amount < 0) return <TrendingDownIcon className="h-4 w-4 text-red-600" />;
-    return <DollarSignIcon className="h-4 w-4 text-gray-600" />;
-  };
-
-  const getParticipantAvatar = (participant: string) => {
-    const initials = participant.split(' ').map(n => n[0]).join('').toUpperCase();
-    const colors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-pink-500', 'bg-indigo-500'];
-    const colorIndex = participant.charCodeAt(0) % colors.length;
-
-    return (
-      <div className={`w-10 h-10 rounded-full ${colors[colorIndex]} flex items-center justify-center text-white font-semibold text-sm`}>
-        {initials}
-      </div>
-    );
-  };
-
-  const SettlementCard = ({ settlement }: { settlement: SettlementEntry }) => (
-    <Card
-      className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-[1.02] border-l-4 border-l-blue-500 group"
-      onClick={() => setSelectedParticipant(settlement.participant)}
-    >
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {getParticipantAvatar(settlement.participant)}
-            <div>
-              <CardTitle className="text-lg group-hover:text-blue-600 transition-colors">
-                {settlement.participant}
-              </CardTitle>
-              <p className="text-sm text-gray-500">
-                {settlement.transaction_count} expense{settlement.transaction_count !== 1 ? 's' : ''}
-                {settlement.payment_count && settlement.payment_count > 0
-                  ? ` · ${settlement.payment_count} payment${settlement.payment_count !== 1 ? 's' : ''}`
-                  : ''}
-              </p>
-            </div>
+  return (
+    <div className="border border-border rounded-xl overflow-hidden">
+      {/* Collapsed header — always visible */}
+      <button
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors cursor-pointer"
+        onClick={onToggle}
+        aria-expanded={isExpanded}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary text-xs font-semibold shrink-0">
+            {initials}
           </div>
-          <div className="flex flex-col items-end gap-1">
-            <div className="flex items-center gap-2">
-              {getBalanceIcon(settlement.net_balance)}
-              <span className="text-lg font-semibold">
-                {formatBalance(settlement.net_balance)}
+          <div className="text-left min-w-0">
+            <p className="text-sm font-semibold text-foreground truncate">{settlement.participant}</p>
+            <p className="text-xs text-muted-foreground">
+              {settlement.transaction_count} expense{settlement.transaction_count !== 1 ? 's' : ''}
+              {settlement.payment_count && settlement.payment_count > 0
+                ? ` · ${settlement.payment_count} payment${settlement.payment_count !== 1 ? 's' : ''}`
+                : ''}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 shrink-0 ml-4">
+          <p className={cn(
+            'font-mono text-sm font-semibold tabular-nums',
+            settlement.net_balance > 0 ? 'text-green-600' : settlement.net_balance < 0 ? 'text-red-600' : 'text-foreground'
+          )}>
+            {settlement.net_balance > 0 ? '+' : ''}{formatCurrency(settlement.net_balance)}
+          </p>
+          <ChevronDown className={cn(
+            'h-4 w-4 text-muted-foreground transition-transform duration-200',
+            isExpanded && 'rotate-180'
+          )} />
+        </div>
+      </button>
+
+      {/* Expanded body */}
+      {isExpanded && (
+        <div className="border-t border-border bg-muted/10 px-4 py-4 space-y-4">
+          {/* Summary strip — rendered immediately from SettlementEntry prop, no fetch wait */}
+          <div className="flex items-center gap-6 text-xs">
+            <span className="text-muted-foreground">
+              Owed to me:{' '}
+              <span className="font-mono tabular-nums text-green-600 font-semibold">
+                {formatCurrency(settlement.amount_owed_to_me)}
               </span>
+            </span>
+            <span className="text-muted-foreground">
+              I owe:{' '}
+              <span className="font-mono tabular-nums text-red-600 font-semibold">
+                {formatCurrency(settlement.amount_i_owe)}
+              </span>
+            </span>
+          </div>
+
+          {/* Loading skeleton */}
+          {loading && (
+            <div className="space-y-2">
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-full" />
             </div>
-          </div>
+          )}
+
+          {/* Error state */}
+          {error && (
+            <p className="text-sm text-destructive">{error}</p>
+          )}
+
+          {/* Payment history */}
+          {!loading && settlementDetail && settlementDetail.payment_history.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-3.5 w-3.5 text-green-600" />
+                <p className="text-xs font-medium text-foreground">Payment History</p>
+              </div>
+              <div className="space-y-1.5">
+                {settlementDetail.payment_history.map(payment => (
+                  <div key={payment.id} className="flex items-center justify-between border-l-2 border-green-600/40 pl-3 py-0.5">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{payment.description}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(payment.date).toLocaleDateString('en-IN', {
+                          day: 'numeric', month: 'short', year: 'numeric'
+                        })}
+                        {payment.paid_by && payment.paid_by !== 'Unknown' && ` · paid by ${payment.paid_by}`}
+                      </p>
+                    </div>
+                    <span className="font-mono text-sm font-semibold tabular-nums text-green-600 ml-4 shrink-0">
+                      {formatCurrency(payment.amount)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Transaction groups accordion */}
+          {!loading && Object.entries(transactionGroups).length > 0 && (
+            <div className="space-y-2">
+              {Object.entries(transactionGroups).map(([groupName, txns]) => {
+                const isGroupExpanded = expandedGroups.has(groupName);
+                return (
+                  <div key={groupName} className="border border-border rounded-lg overflow-hidden">
+                    <button
+                      className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium text-foreground hover:bg-muted/40 transition-colors"
+                      onClick={() => toggleGroup(groupName)}
+                      aria-expanded={isGroupExpanded}
+                    >
+                      <span>
+                        {groupName}{' '}
+                        <span className="text-muted-foreground font-normal">({txns.length})</span>
+                      </span>
+                      {isGroupExpanded
+                        ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                    </button>
+                    {isGroupExpanded && (
+                      <div className="divide-y divide-border">
+                        {txns.map(transaction => (
+                          <div key={transaction.id} className="px-3 py-3">
+                            <div className="flex justify-between items-start mb-1.5">
+                              <div className="min-w-0 mr-3">
+                                <p className="text-sm font-medium text-foreground truncate">{transaction.description}</p>
+                                <p className="text-xs text-muted-foreground">{transaction.date}</p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="font-mono text-sm font-semibold tabular-nums text-foreground">
+                                  {formatCurrency(transaction.amount)}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Paid by {transaction.paid_by || 'Unknown'}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex justify-between text-xs text-muted-foreground pt-1.5 border-t border-border">
+                              <span>
+                                My share:{' '}
+                                <span className="font-mono tabular-nums text-foreground">
+                                  {formatCurrency(transaction.my_share)}
+                                </span>
+                              </span>
+                              <span>
+                                {settlement.participant}&apos;s share:{' '}
+                                <span className="font-mono tabular-nums text-foreground">
+                                  {formatCurrency(transaction.participant_share)}
+                                </span>
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Empty state (loaded but no transactions) */}
+          {!loading && !error && settlementDetail && settlementDetail.transactions.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-2">No transactions found for this period.</p>
+          )}
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-600">Owed to me:</span>
-            <span className="text-green-600 font-medium">{formatCurrency(settlement.amount_owed_to_me)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600">I owe:</span>
-            <span className="text-red-600 font-medium">{formatCurrency(settlement.amount_i_owe)}</span>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+      )}
+    </div>
   );
+}
+
+export function ManualTab() {
+  const [expandedParticipant, setExpandedParticipant] = useState<string | null>(null);
+  const [settlementFilters, setSettlementFilters] = useState<SettlementFiltersState>({});
+
+  const { settlementSummary, loading: summaryLoading, error: summaryError } = useSettlements(settlementFilters);
+
+  const handleToggle = (participant: string) => {
+    setExpandedParticipant(prev => (prev === participant ? null : participant));
+  };
+
+  const visibleSettlements = settlementSummary?.settlements.filter(s => {
+    if (settlementFilters.show_owed_to_me_only && s.net_balance <= 0) return false;
+    if (settlementFilters.show_shared_only && s.transaction_count === 0) return false;
+    return true;
+  }) ?? [];
 
   if (summaryError) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600 mb-4">Error Loading Settlements</h1>
-          <p className="text-gray-600">{summaryError}</p>
-        </div>
+      <div className="flex flex-col items-center justify-center h-40 space-y-2 mt-4">
+        <p className="text-sm font-medium text-destructive">Error Loading Settlements</p>
+        <p className="text-xs text-muted-foreground">{summaryError}</p>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center gap-4 text-sm text-gray-500">
-        <div className="flex items-center gap-1">
-          <Clock className="h-3 w-3" />
-          <span>Last synced: {new Date().toLocaleDateString('en-IN', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          })}</span>
-        </div>
-        <span>•</span>
+    <div className="space-y-6 mt-4">
+      {/* Last synced row */}
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Clock className="h-3 w-3" />
+        <span>Last synced: {new Date().toLocaleDateString('en-IN', {
+          month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+        })}</span>
+        <span>·</span>
         <span>Auto-updates every 24 hrs</span>
       </div>
 
@@ -172,303 +277,133 @@ export function ManualTab() {
         onClearFilters={() => setSettlementFilters({})}
       />
 
-      {/* Summary Stats */}
-      {settlementSummary && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Card
-                  className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-[1.02] border-l-4 border-l-green-500"
-                  onClick={() => {
-                    // Filter to show only participants who owe money
-                    setSettlementFilters(prev => ({
-                      ...prev,
-                      participant: undefined // Clear participant filter to show all
-                    }));
-                  }}
-                >
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium flex items-center gap-2">
-                      <span>💸</span>
-                      Total Owed to Me
-                    </CardTitle>
-                    <TrendingUp className="h-4 w-4 text-green-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-green-600 tracking-tight">
-                      {formatCurrency(settlementSummary.total_amount_owed_to_me)}
-                    </div>
-                  </CardContent>
-                </Card>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Sum of positive balances from shared transactions</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+      {/* KPI Cards */}
+      {summaryLoading ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <Card key={i} className="py-5">
+              <CardContent className="px-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-7 w-7 rounded-md" />
+                </div>
+                <Skeleton className="h-7 w-20" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : settlementSummary && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card className="py-5">
+            <CardContent className="px-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Owed to Me</p>
+                <div className="flex items-center justify-center w-7 h-7 rounded-md bg-green-500/10 text-green-600">
+                  <TrendingUp className="h-3.5 w-3.5" />
+                </div>
+              </div>
+              <p className="font-mono text-lg font-semibold text-green-600 tabular-nums">
+                {formatCurrency(settlementSummary.total_amount_owed_to_me)}
+              </p>
+            </CardContent>
+          </Card>
 
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Card
-                  className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-[1.02] border-l-4 border-l-red-500"
-                  onClick={() => {
-                    // Filter to show only participants you owe money to
-                    const oweParticipants = settlementSummary.settlements
-                      .filter(s => s.net_balance < 0)
-                      .map(s => s.participant);
-                    if (oweParticipants.length > 0) {
-                      setSettlementFilters(prev => ({
-                        ...prev,
-                        participant: oweParticipants[0] // Show first participant you owe
-                      }));
-                    }
-                  }}
-                >
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium flex items-center gap-2">
-                      <span>🧾</span>
-                      Total I Owe
-                    </CardTitle>
-                    <TrendingDown className="h-4 w-4 text-red-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-red-600 tracking-tight">
-                      {formatCurrency(settlementSummary.total_amount_i_owe)}
-                    </div>
-                  </CardContent>
-                </Card>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Sum of negative balances (amounts you owe)</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <Card className="py-5">
+            <CardContent className="px-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">I Owe</p>
+                <div className="flex items-center justify-center w-7 h-7 rounded-md bg-red-500/10 text-red-600">
+                  <TrendingDown className="h-3.5 w-3.5" />
+                </div>
+              </div>
+              <p className="font-mono text-lg font-semibold text-red-600 tabular-nums">
+                {formatCurrency(settlementSummary.total_amount_i_owe)}
+              </p>
+            </CardContent>
+          </Card>
 
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Card className={`cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-[1.02] border-l-4 ${
-                  settlementSummary.net_total_balance > 0 ? 'border-l-green-500' :
-                  settlementSummary.net_total_balance < 0 ? 'border-l-red-500' : 'border-l-gray-500'
-                }`}>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium flex items-center gap-2">
-                      <span>⚖️</span>
-                      Net Balance
-                    </CardTitle>
-                    {getBalanceIcon(settlementSummary.net_total_balance)}
-                  </CardHeader>
-                  <CardContent>
-                    <div className={`text-2xl font-bold tracking-tight ${
-                      settlementSummary.net_total_balance > 0 ? 'text-green-600' :
-                      settlementSummary.net_total_balance < 0 ? 'text-red-600' : 'text-gray-600'
-                    }`}>
-                      {formatBalance(settlementSummary.net_total_balance)}
-                    </div>
-                  </CardContent>
-                </Card>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Difference between what's owed to you and what you owe</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <Card className="py-5">
+            <CardContent className="px-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Net Balance</p>
+                <div className={cn(
+                  'flex items-center justify-center w-7 h-7 rounded-md',
+                  settlementSummary.net_total_balance > 0
+                    ? 'bg-green-500/10 text-green-600'
+                    : settlementSummary.net_total_balance < 0
+                      ? 'bg-red-500/10 text-red-600'
+                      : 'bg-muted text-muted-foreground'
+                )}>
+                  <Minus className="h-3.5 w-3.5" />
+                </div>
+              </div>
+              <p className={cn(
+                'font-mono text-lg font-semibold tabular-nums',
+                settlementSummary.net_total_balance > 0
+                  ? 'text-green-600'
+                  : settlementSummary.net_total_balance < 0
+                    ? 'text-red-600'
+                    : 'text-foreground'
+              )}>
+                {settlementSummary.net_total_balance > 0 ? '+' : ''}
+                {formatCurrency(settlementSummary.net_total_balance)}
+              </p>
+            </CardContent>
+          </Card>
 
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Card className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-[1.02] border-l-4 border-l-blue-500">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium flex items-center gap-2">
-                      <span>👥</span>
-                      Participants
-                    </CardTitle>
-                    <UsersIcon className="h-4 w-4 text-blue-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-blue-600 tracking-tight">
-                      {settlementSummary.participant_count}
-                    </div>
-                  </CardContent>
-                </Card>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Number of people with outstanding balances</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <Card className="py-5">
+            <CardContent className="px-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Participants</p>
+                <div className="flex items-center justify-center w-7 h-7 rounded-md bg-primary/10 text-primary">
+                  <Users className="h-3.5 w-3.5" />
+                </div>
+              </div>
+              <p className="font-mono text-lg font-semibold text-foreground tabular-nums">
+                {settlementSummary.participant_count}
+              </p>
+            </CardContent>
+          </Card>
         </div>
       )}
 
-      {/* Main Content */}
-      <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="overview" className="transition-all duration-200">Overview</TabsTrigger>
-          <TabsTrigger value="details" disabled={!selectedParticipant} className="transition-all duration-200">
-            Details {selectedParticipant && `(${selectedParticipant})`}
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="overview" className="space-y-4 animate-in fade-in-50 duration-300">
-          {summaryLoading ? (
-            <div className="text-center py-8">
-              <div className="text-gray-600">Loading settlements...</div>
-            </div>
-          ) : settlementSummary?.settlements.length === 0 ? (
-            <Card>
-              <CardContent className="text-center py-8">
-                <p className="text-gray-600">No outstanding settlements found.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {settlementSummary?.settlements
-                .filter((settlement) => {
-                  // Apply show_owed_to_me_only filter
-                  if (settlementFilters.show_owed_to_me_only && settlement.net_balance <= 0) {
-                    return false;
-                  }
-
-                  // Apply show_shared_only filter (if implemented in backend)
-                  if (settlementFilters.show_shared_only && settlement.transaction_count === 0) {
-                    return false;
-                  }
-
-                  return true;
-                })
-                .map((settlement) => (
-                  <div key={settlement.participant} className="animate-in slide-in-from-bottom-4 duration-300">
-                    <SettlementCard settlement={settlement} />
-                  </div>
-                ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="details" className="space-y-4 animate-in fade-in-50 duration-300">
-          {selectedParticipant ? (
-            detailLoading ? (
-              <div className="text-center py-8">
-                <div className="text-gray-600">Loading details for {selectedParticipant}...</div>
+      {/* Participant row list */}
+      {summaryLoading ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="border border-border rounded-xl px-4 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-8 w-8 rounded-full" />
+                <div className="space-y-1.5">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
               </div>
-            ) : settlementDetail ? (
-              <div className="space-y-4">
-                {/* Balance info card */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Settlement with {selectedParticipant}</CardTitle>
-                    <CardDescription>
-                      Net balance: {formatBalance(settlementDetail.net_balance)}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-600">Total shared amount:</span>
-                        <span className="ml-2 font-medium">{formatCurrency(settlementDetail.total_shared_amount)}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Number of transactions:</span>
-                        <span className="ml-2 font-medium">{settlementDetail.transactions.length}</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Payment History card */}
-                {settlementDetail.payment_history && settlementDetail.payment_history.length > 0 && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <CheckCircle className="h-5 w-5 text-green-600" />
-                        Payment History
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        {settlementDetail.payment_history.map((payment) => (
-                          <div key={payment.id} className="flex items-center justify-between border-l-2 border-green-400 pl-3 py-1">
-                            <div>
-                              <p className="text-sm font-medium">{payment.description}</p>
-                              <p className="text-xs text-gray-500">
-                                {new Date(payment.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                {payment.paid_by && payment.paid_by !== 'Unknown' && ` · paid by ${payment.paid_by}`}
-                              </p>
-                            </div>
-                            <span className="text-green-600 font-medium text-sm">{formatCurrency(payment.amount)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Transaction History card grouped by group_name */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Transaction History</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {Object.entries(transactionGroups).map(([groupName, txns]) => {
-                      const isExpanded = expandedGroups.has(groupName);
-                      return (
-                        <div key={groupName} className="mb-4 last:mb-0">
-                          <h4
-                            className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1 cursor-pointer select-none hover:text-gray-600"
-                            onClick={() => toggleGroup(groupName)}
-                          >
-                            {isExpanded
-                              ? <ChevronDown className="h-3 w-3" />
-                              : <ChevronRight className="h-3 w-3" />
-                            }
-                            {groupName} ({txns.length} expense{txns.length !== 1 ? 's' : ''})
-                          </h4>
-                          {isExpanded && (
-                            <div className="space-y-3">
-                              {txns.map(transaction => (
-                                <div key={transaction.id} className="border rounded-lg p-3">
-                                  <div className="flex justify-between items-start mb-2">
-                                    <div>
-                                      <h4 className="font-medium">{transaction.description}</h4>
-                                      <p className="text-sm text-gray-600">{transaction.date}</p>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="font-medium">{formatCurrency(transaction.amount)}</p>
-                                      <p className="text-sm text-gray-600">Paid by: {transaction.paid_by || 'Unknown'}</p>
-                                    </div>
-                                  </div>
-                                  <div className="flex justify-between text-sm text-gray-600">
-                                    <span>My share: {formatCurrency(transaction.my_share)}</span>
-                                    <span>{selectedParticipant}'s share: {formatCurrency(transaction.participant_share)}</span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </CardContent>
-                </Card>
-              </div>
-            ) : (
-              <Card>
-                <CardContent className="text-center py-8">
-                  <p className="text-gray-600">No settlement details found for {selectedParticipant}.</p>
-                </CardContent>
-              </Card>
-            )
-          ) : (
-            <Card>
-              <CardContent className="text-center py-8">
-                <p className="text-gray-600">Select a participant from the overview to see detailed settlement information.</p>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-      </Tabs>
+              <Skeleton className="h-4 w-20" />
+            </div>
+          ))}
+        </div>
+      ) : visibleSettlements.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-40 space-y-2">
+          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-muted">
+            <Users className="h-5 w-5 text-muted-foreground" />
+          </div>
+          <p className="text-sm font-medium text-foreground">No outstanding settlements</p>
+          <p className="text-xs text-muted-foreground">All balances are cleared for the selected period</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {visibleSettlements.map(settlement => (
+            <ParticipantRow
+              key={settlement.participant}
+              settlement={settlement}
+              isExpanded={expandedParticipant === settlement.participant}
+              onToggle={() => handleToggle(settlement.participant)}
+              filters={settlementFilters}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
