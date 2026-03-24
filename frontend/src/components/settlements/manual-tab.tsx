@@ -37,7 +37,8 @@ function ParticipantRow({ settlement, isExpanded, onToggle }: ParticipantRowProp
           <div className="text-left min-w-0">
             <p className="text-sm font-semibold text-foreground truncate">{settlement.participant}</p>
             <p className="text-xs text-muted-foreground">
-              {settlement.transaction_count} expense{settlement.transaction_count !== 1 ? 's' : ''}
+              {settlement.net_balance > 0 ? 'owes you' : settlement.net_balance < 0 ? 'you owe' : 'settled'}
+              {' · '}{settlement.transaction_count} expense{settlement.transaction_count !== 1 ? 's' : ''}
               {settlement.payment_count && settlement.payment_count > 0
                 ? ` · ${settlement.payment_count} payment${settlement.payment_count !== 1 ? 's' : ''}`
                 : ''}
@@ -192,6 +193,7 @@ function ParticipantRow({ settlement, isExpanded, onToggle }: ParticipantRowProp
 
 export function ManualTab() {
   const [expandedParticipant, setExpandedParticipant] = useState<string | null>(null);
+  const [settledExpanded, setSettledExpanded] = useState(false);
 
   const { settlementSummary, loading: summaryLoading, error: summaryError } = useSettlements({});
 
@@ -199,7 +201,8 @@ export function ManualTab() {
     setExpandedParticipant(prev => (prev === participant ? null : participant));
   };
 
-  const visibleSettlements = settlementSummary?.settlements ?? [];
+  const activeSettlements = (settlementSummary?.settlements ?? []).filter(s => s.net_balance !== 0);
+  const settledSettlements = (settlementSummary?.settlements ?? []).filter(s => s.net_balance === 0);
 
   if (summaryError) {
     return (
@@ -295,7 +298,7 @@ export function ManualTab() {
             </div>
           ))}
         </div>
-      ) : visibleSettlements.length === 0 ? (
+      ) : activeSettlements.length === 0 && settledSettlements.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-40 space-y-2">
           <div className="flex items-center justify-center w-10 h-10 rounded-full bg-muted">
             <Users className="h-5 w-5 text-muted-foreground" />
@@ -305,7 +308,7 @@ export function ManualTab() {
         </div>
       ) : (
         <div className="space-y-2">
-          {visibleSettlements.map(settlement => (
+          {activeSettlements.map(settlement => (
             <ParticipantRow
               key={settlement.participant}
               settlement={settlement}
@@ -313,6 +316,29 @@ export function ManualTab() {
               onToggle={() => handleToggle(settlement.participant)}
             />
           ))}
+          {settledSettlements.length > 0 && (
+            <>
+              <button
+                className="w-full flex items-center gap-1.5 px-1 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setSettledExpanded(v => !v)}
+              >
+                <ChevronDown className={cn('h-3 w-3 transition-transform duration-200', settledExpanded && 'rotate-180')} />
+                Settled ({settledSettlements.length})
+              </button>
+              {settledExpanded && (
+                <div className="space-y-2 opacity-60">
+                  {settledSettlements.map(settlement => (
+                    <ParticipantRow
+                      key={settlement.participant}
+                      settlement={settlement}
+                      isExpanded={expandedParticipant === settlement.participant}
+                      onToggle={() => handleToggle(settlement.participant)}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

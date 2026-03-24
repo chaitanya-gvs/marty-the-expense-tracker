@@ -153,6 +153,7 @@ function SplitwiseFriendRow({ friend, isExpanded, onToggle }: SplitwiseFriendRow
 
 export function SplitwiseTab() {
   const [expandedFriendId, setExpandedFriendId] = useState<number | null>(null);
+  const [settledExpanded, setSettledExpanded] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const pollInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -167,10 +168,10 @@ export function SplitwiseTab() {
   const net = owedToMe - iOwe;
   const peopleCount = friends.filter(f => f.net_balance !== 0).length;
 
-  const sortedFriends = [
-    ...friends.filter(f => f.net_balance !== 0).sort((a, b) => Math.abs(b.net_balance) - Math.abs(a.net_balance)),
-    ...friends.filter(f => f.net_balance === 0),
-  ];
+  const activeFriends = friends
+    .filter(f => f.net_balance !== 0)
+    .sort((a, b) => Math.abs(b.net_balance) - Math.abs(a.net_balance));
+  const settledFriends = friends.filter(f => f.net_balance === 0);
 
   const stopPolling = () => {
     if (pollInterval.current) {
@@ -301,7 +302,7 @@ export function SplitwiseTab() {
 
       {/* Friend rows */}
       {!loading && !error && (
-        sortedFriends.length === 0 ? (
+        activeFriends.length === 0 && settledFriends.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 space-y-2">
             <div className="flex items-center justify-center w-10 h-10 rounded-full bg-muted">
               <Users className="h-5 w-5 text-muted-foreground" />
@@ -311,7 +312,7 @@ export function SplitwiseTab() {
           </div>
         ) : (
           <div className="space-y-2">
-            {sortedFriends.map(friend => (
+            {activeFriends.map(friend => (
               <SplitwiseFriendRow
                 key={friend.id}
                 friend={friend}
@@ -319,6 +320,29 @@ export function SplitwiseTab() {
                 onToggle={() => handleToggle(friend.id)}
               />
             ))}
+            {settledFriends.length > 0 && (
+              <>
+                <button
+                  className="w-full flex items-center gap-1.5 px-1 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setSettledExpanded(v => !v)}
+                >
+                  <ChevronDown className={cn('h-3 w-3 transition-transform duration-200', settledExpanded && 'rotate-180')} />
+                  Settled ({settledFriends.length})
+                </button>
+                {settledExpanded && (
+                  <div className="space-y-2 opacity-60">
+                    {settledFriends.map(friend => (
+                      <SplitwiseFriendRow
+                        key={friend.id}
+                        friend={friend}
+                        isExpanded={expandedFriendId === friend.id}
+                        onToggle={() => handleToggle(friend.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )
       )}
