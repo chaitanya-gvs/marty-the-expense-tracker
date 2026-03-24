@@ -1984,6 +1984,7 @@ class StatementWorkflow:
         self,
         custom_start_date: Optional[datetime] = None,
         custom_end_date: Optional[datetime] = None,
+        job_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Run Splitwise-only workflow: fetch → GCS → standardize → DB insert."""
         logger.info("Starting Splitwise-only workflow", extra=self._log_extra())
