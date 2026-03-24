@@ -165,13 +165,14 @@ async def _get_settlement_transactions(
     
     # Build the base query
     query = """
-        SELECT 
-            id, transaction_date, 
+        SELECT
+            id, transaction_date,
             COALESCE(user_description, description) as description,
             amount, split_share_amount,
-            split_breakdown, paid_by, account, direction, transaction_type
-        FROM transactions 
-        WHERE is_shared = true 
+            split_breakdown, paid_by, account, direction, transaction_type,
+            raw_data->'group'->>'name' as group_name
+        FROM transactions
+        WHERE is_shared = true
         AND split_breakdown IS NOT NULL
         AND is_deleted = false
     """
@@ -212,6 +213,7 @@ async def _get_settlement_transactions(
             "account": row.account,
             "direction": row.direction,
             "transaction_type": row.transaction_type,
+            "group_name": row.group_name,
         }
         
         # Filter by participant if specified (use normalized comparison)
@@ -251,27 +253,45 @@ def _calculate_settlements(transactions: List[Dict[str, Any]]) -> SettlementSumm
                 participant_balances[participant] = {
                     "amount_owed_to_me": 0.0,
                     "amount_i_owe": 0.0,
-                    "transaction_count": 0
+                    "transaction_count": 0,
+                    "payment_count": 0,
                 }
-            
+
             # Calculate shares using original participant names from entries
             participant_share = _calculate_participant_share(split_breakdown, participant, total_amount)
             my_share = _calculate_participant_share(split_breakdown, "me", total_amount)
-            
+
             # Handle settlement calculation based on who paid
             # Only include transactions where either I paid or the participant paid
             is_paid_by_me = normalized_paid_by == "me"
             is_paid_by_participant = normalized_paid_by == participant or (paid_by and paid_by == participant)
-            
-            if is_paid_by_me:
-                # I paid for the participant's share, so they owe me their share
-                participant_balances[participant]["amount_owed_to_me"] += participant_share
-                participant_balances[participant]["transaction_count"] += 1
-            elif is_paid_by_participant:
-                # Participant paid for my share, so I owe them my share
-                participant_balances[participant]["amount_i_owe"] += my_share
-                participant_balances[participant]["transaction_count"] += 1
-            # If paid_by is someone else, we don't track that in our settlements (skip transaction)
+
+            # Check if this is a settlement payment (incoming credit — someone paid you back)
+            is_payment_transaction = transaction.get("transaction_type") == "credit"
+
+            if is_payment_transaction:
+                # Settlement payment — subtract from the payer's outstanding debt
+                payment_amount = transaction["amount"]
+                if is_paid_by_participant:
+                    # They paid me back — reduce their debt to me
+                    participant_balances[participant]["amount_owed_to_me"] -= payment_amount
+                elif is_paid_by_me:
+                    # I paid them — reduce my debt to them
+                    participant_balances[participant]["amount_i_owe"] -= payment_amount
+                participant_balances[participant]["payment_count"] = (
+                    participant_balances[participant].get("payment_count", 0) + 1
+                )
+            else:
+                # Regular expense
+                if is_paid_by_me:
+                    # I paid for the participant's share, so they owe me their share
+                    participant_balances[participant]["amount_owed_to_me"] += participant_share
+                    participant_balances[participant]["transaction_count"] += 1
+                elif is_paid_by_participant:
+                    # Participant paid for my share, so I owe them my share
+                    participant_balances[participant]["amount_i_owe"] += my_share
+                    participant_balances[participant]["transaction_count"] += 1
+                # If paid_by is someone else, we don't track that in our settlements (skip transaction)
     
     # Convert to settlement entries
     settlements = []
