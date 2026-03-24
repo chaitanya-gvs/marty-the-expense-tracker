@@ -6,8 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { FieldAutocomplete } from "./field-autocomplete";
 import { CategorySelector } from "./category-selector";
 import { MultiTagSelector } from "./multi-tag-selector";
@@ -15,6 +13,7 @@ import { useCreateTransaction } from "@/hooks/use-transactions";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface AddTransactionModalProps {
   isOpen: boolean;
@@ -29,7 +28,6 @@ export function AddTransactionModal({
   const [account, setAccount] = useState<string>("");
   const [description, setDescription] = useState<string>("");
   const [category, setCategory] = useState<string>("");
-  const [subcategory, setSubcategory] = useState<string>("");
   const [direction, setDirection] = useState<"debit" | "credit">("debit");
   const [amount, setAmount] = useState<string>("");
   const [tags, setTags] = useState<string[]>([]);
@@ -40,14 +38,12 @@ export function AddTransactionModal({
 
   const createTransaction = useCreateTransaction();
 
-  // Reset form when modal opens
   useEffect(() => {
     if (isOpen) {
       setDate(format(new Date(), "yyyy-MM-dd"));
       setAccount("");
       setDescription("");
       setCategory("");
-      setSubcategory("");
       setDirection("debit");
       setAmount("");
       setTags([]);
@@ -61,19 +57,9 @@ export function AddTransactionModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validation
-    if (!account.trim()) {
-      toast.error("Account is required");
-      return;
-    }
-    if (!description.trim()) {
-      toast.error("Description is required");
-      return;
-    }
-    if (!amount || parseFloat(amount) <= 0) {
-      toast.error("Amount must be greater than 0");
-      return;
-    }
+    if (!account.trim()) { toast.error("Account is required"); return; }
+    if (!description.trim()) { toast.error("Description is required"); return; }
+    if (!amount || parseFloat(amount) <= 0) { toast.error("Amount must be greater than 0"); return; }
 
     try {
       await createTransaction.mutateAsync({
@@ -81,7 +67,6 @@ export function AddTransactionModal({
         account: account.trim(),
         description: description.trim(),
         category: category || undefined,
-        subcategory: subcategory || undefined,
         direction,
         amount: parseFloat(amount),
         tags,
@@ -109,7 +94,7 @@ export function AddTransactionModal({
     }
   };
 
-  const isValid = 
+  const isValid =
     account.trim() !== "" &&
     description.trim() !== "" &&
     amount !== "" &&
@@ -128,8 +113,8 @@ export function AddTransactionModal({
       <form onSubmit={handleSubmit}>
         <Modal.Body>
           <div className="space-y-4">
-            {/* Date and Direction Row */}
-            <div className="grid grid-cols-2 gap-4">
+            {/* Date | Amount | Direction */}
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="date">Date</Label>
                 <Input
@@ -143,19 +128,47 @@ export function AddTransactionModal({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="direction">Direction</Label>
-                <Select
-                  value={direction}
-                  onValueChange={(value) => setDirection(value as "debit" | "credit")}
-                >
-                  <SelectTrigger id="direction">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="debit">Debit (Money Out)</SelectItem>
-                    <SelectItem value="credit">Credit (Money In)</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="amount">Amount (₹) *</Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.00"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Direction</Label>
+                <div className="flex rounded-md border border-border overflow-hidden h-9 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => setDirection("debit")}
+                    className={cn(
+                      "flex-1 transition-colors text-xs font-medium",
+                      direction === "debit"
+                        ? "bg-destructive/20 text-destructive"
+                        : "bg-muted text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Debit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDirection("credit")}
+                    className={cn(
+                      "flex-1 transition-colors text-xs font-medium border-l border-border",
+                      direction === "credit"
+                        ? "bg-emerald-500/20 text-emerald-400"
+                        : "bg-muted text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Credit
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -183,41 +196,14 @@ export function AddTransactionModal({
               />
             </div>
 
-            {/* Category and Amount Row */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="category">Category</Label>
-                <CategorySelector
-                  value={category}
-                  onValueChange={setCategory}
-                  placeholder="Select category..."
-                  transactionDirection={direction}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="amount">Amount (₹) *</Label>
-                <Input
-                  id="amount"
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0.00"
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Subcategory */}
+            {/* Category */}
             <div className="space-y-2">
-              <Label htmlFor="subcategory">Subcategory</Label>
-              <Input
-                id="subcategory"
-                value={subcategory}
-                onChange={(e) => setSubcategory(e.target.value)}
-                placeholder="Enter subcategory (optional)..."
+              <Label>Category</Label>
+              <CategorySelector
+                value={category}
+                onValueChange={setCategory}
+                placeholder="Select category..."
+                transactionDirection={direction}
               />
             </div>
 
@@ -239,70 +225,40 @@ export function AddTransactionModal({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Add any additional notes..."
-                rows={3}
+                rows={2}
               />
             </div>
 
-            {/* Options Row */}
-            <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="is_shared"
-                  checked={isShared}
-                  onCheckedChange={(checked) => setIsShared(checked === true)}
-                />
-                <Label
-                  htmlFor="is_shared"
-                  className="text-sm font-normal cursor-pointer"
+            {/* Flags */}
+            <div className="flex items-center gap-2 pt-1 border-t border-border flex-wrap">
+              {[
+                { id: "is_shared", label: "Shared", value: isShared, set: setIsShared },
+                { id: "is_refund", label: "Refund", value: isRefund, set: setIsRefund },
+                { id: "is_flagged", label: "Flagged", value: isFlagged, set: setIsFlagged },
+              ].map(({ id, label, value, set }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => set(!value)}
+                  className={cn(
+                    "px-3 py-1 rounded-full text-xs font-medium border transition-colors",
+                    value
+                      ? "bg-primary/15 text-primary border-primary/30"
+                      : "bg-transparent border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground"
+                  )}
                 >
-                  Shared expense
-                </Label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="is_refund"
-                  checked={isRefund}
-                  onCheckedChange={(checked) => setIsRefund(checked === true)}
-                />
-                <Label
-                  htmlFor="is_refund"
-                  className="text-sm font-normal cursor-pointer"
-                >
-                  This is a refund
-                </Label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="is_flagged"
-                  checked={isFlagged}
-                  onCheckedChange={(checked) => setIsFlagged(checked === true)}
-                />
-                <Label
-                  htmlFor="is_flagged"
-                  className="text-sm font-normal cursor-pointer"
-                >
-                  Flag for review
-                </Label>
-              </div>
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
         </Modal.Body>
 
         <Modal.Footer>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onClose}
-            disabled={createTransaction.isPending}
-          >
+          <Button type="button" variant="outline" onClick={onClose} disabled={createTransaction.isPending}>
             Cancel
           </Button>
-          <Button
-            type="submit"
-            disabled={!isValid || createTransaction.isPending}
-          >
+          <Button type="submit" disabled={!isValid || createTransaction.isPending}>
             {createTransaction.isPending ? "Creating..." : "Create Transaction"}
           </Button>
         </Modal.Footer>
@@ -310,4 +266,3 @@ export function AddTransactionModal({
     </Modal>
   );
 }
-
