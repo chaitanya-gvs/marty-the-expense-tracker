@@ -23,7 +23,7 @@ from typing import Callable, Dict, List, Optional, Any
 import pandas as pd
 from googleapiclient.discovery import build
 
-from src.services.database_manager.operations import AccountOperations, StatementLogOperations, TransactionOperations
+from src.services.database_manager.operations import AccountOperations, ParticipantOperations, StatementLogOperations, TransactionOperations
 from src.services.email_ingestion.client import EmailClient
 from src.services.email_ingestion.token_manager import TokenManager
 from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
@@ -1131,6 +1131,21 @@ class StatementWorkflow:
                         "cloud_path": cloud_path,
                     },
                 )
+
+                # Sync Splitwise friend balances into participants table
+                try:
+                    logger.info("Syncing Splitwise friend balances...")
+                    friends_with_balances = self.splitwise_service.client.get_friends_with_balances()
+                    synced_at = datetime.utcnow()
+                    for friend in friends_with_balances:
+                        if friend["id"] is not None:
+                            await ParticipantOperations.update_splitwise_balance(
+                                friend["id"], friend["net_balance"], synced_at
+                            )
+                    logger.info(f"Synced balances for {len(friends_with_balances)} Splitwise friends")
+                except Exception:
+                    logger.error("Failed to sync Splitwise friend balances", exc_info=True)
+
                 return {
                     "success": True,
                     "cloud_path": cloud_path,
