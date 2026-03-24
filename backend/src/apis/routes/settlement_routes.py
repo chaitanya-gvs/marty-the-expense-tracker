@@ -95,15 +95,26 @@ def _calculate_participant_share(split_breakdown: Dict[str, Any], participant: s
 def _infer_paid_by(transaction: Dict[str, Any]) -> Optional[str]:
     """
     Infer who paid for a transaction when paid_by is None.
-    
+
     Logic:
-    1. If account is not "Splitwise", it's likely from a bank statement, so "me" paid
-    2. Otherwise, check split_breakdown entries to find who has the highest paid_share
+    1. Use the transaction DB paid_by column if set
+    2. Use split_breakdown.paid_by if explicitly set (e.g. manually-split bank transactions
+       where the user chose a participant as payer in the split editor)
+    3. If account is not "Splitwise", it's likely from a bank statement, so "me" paid
+    4. Otherwise, check split_breakdown entries to find who has the highest paid_share
     """
     paid_by = transaction.get("paid_by")
     if paid_by:
         return paid_by
-    
+
+    # Check split_breakdown.paid_by — this is set by the split editor when the user
+    # explicitly marks a participant (not themselves) as the payer on a bank transaction.
+    split_breakdown = transaction.get("split_breakdown", {})
+    if split_breakdown and isinstance(split_breakdown, dict):
+        sb_paid_by = split_breakdown.get("paid_by")
+        if sb_paid_by:
+            return sb_paid_by
+
     # If account is not Splitwise, it's from a bank statement, so I likely paid
     account = transaction.get("account", "")
     if account and account.lower() != "splitwise":
@@ -175,7 +186,10 @@ async def _get_settlement_transactions(
 ) -> List[Dict[str, Any]]:
     """Get transactions for settlement calculations."""
     
-    # Build the base query
+    # Build the base query.
+    # Exclude parent transactions that have been split into children:
+    # when is_split = true children share the same transaction_group_id as a parent
+    # (is_split IS NULL or false), both would otherwise appear. We keep only the children.
     query = """
         SELECT
             id, transaction_date,
@@ -187,6 +201,16 @@ async def _get_settlement_transactions(
         WHERE is_shared = true
         AND split_breakdown IS NOT NULL
         AND is_deleted = false
+        AND NOT (
+            (is_split IS NULL OR is_split = false)
+            AND transaction_group_id IS NOT NULL
+            AND EXISTS (
+                SELECT 1 FROM transactions t2
+                WHERE t2.transaction_group_id = transactions.transaction_group_id
+                AND t2.is_split = true
+                AND t2.is_deleted = false
+            )
+        )
     """
     
     params = {}

@@ -1,43 +1,23 @@
 "use client";
 
-import { useState, useMemo } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
+import { useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TrendingUp, TrendingDown, Minus, Users, Clock, CheckCircle, ChevronDown, Receipt } from 'lucide-react';
 import { useSettlements, useSettlementDetail } from '@/hooks/use-settlements';
 import { formatCurrency } from '@/lib/format-utils';
 import { SettlementEntry, SettlementTransaction } from '@/lib/types';
-import { SettlementFilters } from '@/components/settlements/settlement-filters';
 import { cn } from '@/lib/utils';
-
-interface SettlementFiltersState {
-  date_range_start?: string;
-  date_range_end?: string;
-  min_amount?: number;
-  participant?: string;
-  participants?: string[];
-  show_owed_to_me_only?: boolean;
-  show_shared_only?: boolean;
-}
 
 interface ParticipantRowProps {
   settlement: SettlementEntry;
   isExpanded: boolean;
   onToggle: () => void;
-  filters: SettlementFiltersState;
 }
 
-function ParticipantRow({ settlement, isExpanded, onToggle, filters }: ParticipantRowProps) {
-  // Narrow to only the three fields useSettlementDetail accepts; stabilise reference for query key
-  const detailFilters = useMemo(() => ({
-    date_range_start: filters.date_range_start,
-    date_range_end: filters.date_range_end,
-    min_amount: filters.min_amount,
-  }), [filters.date_range_start, filters.date_range_end, filters.min_amount]);
-
+function ParticipantRow({ settlement, isExpanded, onToggle }: ParticipantRowProps) {
   const { settlementDetail, loading, error } = useSettlementDetail(
     isExpanded ? settlement.participant : '',
-    detailFilters
+    {}
   );
 
   const initials = settlement.participant.split(' ').map(n => n[0] ?? '').join('').toUpperCase().slice(0, 2) || '?';
@@ -120,34 +100,54 @@ function ParticipantRow({ settlement, isExpanded, onToggle, filters }: Participa
                   Expenses ({settlementDetail.transactions.length})
                 </p>
               </div>
-              <div className="space-y-1">
+              <div className="space-y-0">
                 {settlementDetail.transactions.map((tx: SettlementTransaction) => {
-                  // Backend guarantees each tx was paid by either me or the participant.
-                  // If paid_by matches the participant's name → they paid; otherwise → I paid.
                   const isPaidByParticipant = (tx.paid_by ?? '').toLowerCase().trim() === settlement.participant.toLowerCase().trim();
                   const myShare = tx.my_share ?? 0;
                   const theirShare = tx.participant_share ?? 0;
-                  const displayAmount = isPaidByParticipant ? myShare : theirShare;
-                  const isOwed = !isPaidByParticipant; // green if I paid (they owe me)
                   return (
-                    <div key={tx.id} className="flex items-start justify-between py-2 border-b border-border/50 last:border-0">
-                      <div className="min-w-0 flex-1 pr-4">
-                        <p className="text-sm text-foreground truncate">{tx.description}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
+                    <div key={tx.id} className="py-2.5 border-b border-border/50 last:border-0">
+                      {/* Row 1: description + total */}
+                      <div className="flex items-start justify-between gap-4">
+                        <p className="text-sm text-foreground truncate min-w-0 flex-1">{tx.description}</p>
+                        <p className="font-mono text-xs text-muted-foreground tabular-nums shrink-0">
+                          {formatCurrency(tx.amount)}
+                        </p>
+                      </div>
+                      {/* Row 2: date/paid-by + share breakdown */}
+                      <div className="flex items-center justify-between mt-0.5 gap-4">
+                        <p className="text-xs text-muted-foreground min-w-0 truncate">
                           {new Date(tx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                           {tx.paid_by && ` · paid by ${tx.paid_by}`}
                         </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="font-mono text-xs text-muted-foreground tabular-nums">
-                          {formatCurrency(tx.amount)}
-                        </p>
-                        <p className={cn(
-                          'font-mono text-sm font-semibold tabular-nums',
-                          isOwed ? 'text-green-600' : 'text-red-600'
-                        )}>
-                          {isOwed ? '+' : '-'}{formatCurrency(displayAmount)}
-                        </p>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="text-xs text-muted-foreground">
+                            my share:{' '}
+                            <span className={cn(
+                              'font-mono font-semibold tabular-nums',
+                              myShare === 0
+                                ? 'text-muted-foreground'
+                                : isPaidByParticipant
+                                  ? 'text-red-600'
+                                  : 'text-foreground'
+                            )}>
+                              {isPaidByParticipant && myShare > 0 ? '-' : ''}{formatCurrency(myShare)}
+                            </span>
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            theirs:{' '}
+                            <span className={cn(
+                              'font-mono font-semibold tabular-nums',
+                              theirShare === 0
+                                ? 'text-muted-foreground'
+                                : isPaidByParticipant
+                                  ? 'text-foreground'
+                                  : 'text-green-600'
+                            )}>
+                              {!isPaidByParticipant && theirShare > 0 ? '+' : ''}{formatCurrency(theirShare)}
+                            </span>
+                          </span>
+                        </div>
                       </div>
                     </div>
                   );
@@ -192,19 +192,14 @@ function ParticipantRow({ settlement, isExpanded, onToggle, filters }: Participa
 
 export function ManualTab() {
   const [expandedParticipant, setExpandedParticipant] = useState<string | null>(null);
-  const [settlementFilters, setSettlementFilters] = useState<SettlementFiltersState>({});
 
-  const { settlementSummary, loading: summaryLoading, error: summaryError } = useSettlements(settlementFilters);
+  const { settlementSummary, loading: summaryLoading, error: summaryError } = useSettlements({});
 
   const handleToggle = (participant: string) => {
     setExpandedParticipant(prev => (prev === participant ? null : participant));
   };
 
-  const visibleSettlements = settlementSummary?.settlements.filter(s => {
-    if (settlementFilters.show_owed_to_me_only && s.net_balance <= 0) return false;
-    if (settlementFilters.show_shared_only && s.transaction_count === 0) return false;
-    return true;
-  }) ?? [];
+  const visibleSettlements = settlementSummary?.settlements ?? [];
 
   if (summaryError) {
     return (
@@ -227,100 +222,60 @@ export function ManualTab() {
         <span>Auto-updates every 24 hrs</span>
       </div>
 
-      {/* Filters */}
-      <SettlementFilters
-        filters={settlementFilters}
-        onFiltersChange={setSettlementFilters}
-        onClearFilters={() => setSettlementFilters({})}
-      />
-
-      {/* KPI Cards */}
+      {/* KPI compact grid */}
       {summaryLoading ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 rounded-lg border border-border overflow-hidden bg-border gap-px">
           {[1, 2, 3, 4].map(i => (
-            <Card key={i} className="py-5">
-              <CardContent className="px-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <Skeleton className="h-3 w-24" />
-                  <Skeleton className="h-7 w-7 rounded-md" />
-                </div>
-                <Skeleton className="h-7 w-20" />
-              </CardContent>
-            </Card>
+            <div key={i} className="bg-card px-3 py-4 space-y-2">
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="h-5 w-20" />
+            </div>
           ))}
         </div>
       ) : settlementSummary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card className="py-5">
-            <CardContent className="px-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Owed to Me</p>
-                <div className="flex items-center justify-center w-7 h-7 rounded-md bg-green-500/10 text-green-600">
-                  <TrendingUp className="h-3.5 w-3.5" />
-                </div>
-              </div>
-              <p className="font-mono text-lg font-semibold text-green-600 tabular-nums">
-                {formatCurrency(settlementSummary.total_amount_owed_to_me)}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="py-5">
-            <CardContent className="px-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">I Owe</p>
-                <div className="flex items-center justify-center w-7 h-7 rounded-md bg-red-500/10 text-red-600">
-                  <TrendingDown className="h-3.5 w-3.5" />
-                </div>
-              </div>
-              <p className="font-mono text-lg font-semibold text-red-600 tabular-nums">
-                {formatCurrency(settlementSummary.total_amount_i_owe)}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="py-5">
-            <CardContent className="px-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Net Balance</p>
-                <div className={cn(
-                  'flex items-center justify-center w-7 h-7 rounded-md',
-                  settlementSummary.net_total_balance > 0
-                    ? 'bg-green-500/10 text-green-600'
-                    : settlementSummary.net_total_balance < 0
-                      ? 'bg-red-500/10 text-red-600'
-                      : 'bg-muted text-muted-foreground'
-                )}>
-                  <Minus className="h-3.5 w-3.5" />
-                </div>
-              </div>
-              <p className={cn(
-                'font-mono text-lg font-semibold tabular-nums',
-                settlementSummary.net_total_balance > 0
-                  ? 'text-green-600'
-                  : settlementSummary.net_total_balance < 0
-                    ? 'text-red-600'
-                    : 'text-foreground'
-              )}>
-                {settlementSummary.net_total_balance > 0 ? '+' : ''}
-                {formatCurrency(settlementSummary.net_total_balance)}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="py-5">
-            <CardContent className="px-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Participants</p>
-                <div className="flex items-center justify-center w-7 h-7 rounded-md bg-primary/10 text-primary">
-                  <Users className="h-3.5 w-3.5" />
-                </div>
-              </div>
-              <p className="font-mono text-lg font-semibold text-foreground tabular-nums">
-                {settlementSummary.participant_count}
-              </p>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-2 sm:grid-cols-4 rounded-lg border border-border overflow-hidden bg-border gap-px">
+          <div className="bg-card px-3 py-4">
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              <TrendingUp className="h-3 w-3" />
+              Owed to Me
+            </p>
+            <p className="font-mono text-sm font-semibold text-green-600 tabular-nums">
+              {formatCurrency(settlementSummary.total_amount_owed_to_me)}
+            </p>
+          </div>
+          <div className="bg-card px-3 py-4">
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              <TrendingDown className="h-3 w-3" />
+              I Owe
+            </p>
+            <p className="font-mono text-sm font-semibold text-red-600 tabular-nums">
+              {formatCurrency(settlementSummary.total_amount_i_owe)}
+            </p>
+          </div>
+          <div className="bg-card px-3 py-4">
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              <Minus className="h-3 w-3" />
+              Net Balance
+            </p>
+            <p className={cn(
+              "font-mono text-sm font-semibold tabular-nums",
+              settlementSummary.net_total_balance > 0 ? "text-green-600" :
+              settlementSummary.net_total_balance < 0 ? "text-red-600" :
+              "text-foreground"
+            )}>
+              {settlementSummary.net_total_balance > 0 ? '+' : ''}
+              {formatCurrency(settlementSummary.net_total_balance)}
+            </p>
+          </div>
+          <div className="bg-card px-3 py-4">
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              <Users className="h-3 w-3" />
+              Participants
+            </p>
+            <p className="font-mono text-sm font-semibold text-foreground tabular-nums">
+              {settlementSummary.participant_count}
+            </p>
+          </div>
         </div>
       )}
 
@@ -356,7 +311,6 @@ export function ManualTab() {
               settlement={settlement}
               isExpanded={expandedParticipant === settlement.participant}
               onToggle={() => handleToggle(settlement.participant)}
-              filters={settlementFilters}
             />
           ))}
         </div>
