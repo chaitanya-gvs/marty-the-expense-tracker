@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { DollarSignIcon, UsersIcon, TrendingUpIcon, TrendingDownIcon, TrendingUp, TrendingDown, Clock, CheckCircle, ChevronDown, ChevronRight } from 'lucide-react';
-import { useSettlements, useSettlementDetail, useSettlementParticipants } from '@/hooks/use-settlements';
+import { useSettlements, useSettlementDetail } from '@/hooks/use-settlements';
 import { formatCurrency } from '@/lib/format-utils';
 import { SettlementEntry, SettlementTransaction } from '@/lib/types';
 import { SettlementFilters } from '@/components/settlements/settlement-filters';
@@ -26,7 +26,6 @@ export function ManualTab() {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const { settlementSummary, loading: summaryLoading, error: summaryError } = useSettlements(settlementFilters);
-  const { participants, loading: participantsLoading } = useSettlementParticipants();
   const { settlementDetail, loading: detailLoading } = useSettlementDetail(
     selectedParticipant || '',
     settlementFilters
@@ -151,25 +150,19 @@ export function ManualTab() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Settlements & Balances</h1>
-          <p className="text-gray-600 mt-1">Track what you owe and what others owe you</p>
-          <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
-            <div className="flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              <span>Last synced: {new Date().toLocaleDateString('en-IN', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              })}</span>
-            </div>
-            <span>•</span>
-            <span>Auto-updates every 24 hrs</span>
-          </div>
+      <div className="flex items-center gap-4 text-sm text-gray-500">
+        <div className="flex items-center gap-1">
+          <Clock className="h-3 w-3" />
+          <span>Last synced: {new Date().toLocaleDateString('en-IN', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })}</span>
         </div>
+        <span>•</span>
+        <span>Auto-updates every 24 hrs</span>
       </div>
 
       {/* Filters */}

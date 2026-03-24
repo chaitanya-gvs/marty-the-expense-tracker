@@ -63,9 +63,7 @@ export function SplitwiseTab() {
     setSyncing(true);
     try {
       const res = await apiClient.startWorkflow({ mode: 'splitwise_only' });
-      // WorkflowRunResponse has job_id as a direct top-level field
-      const jobId = (res as unknown as { job_id?: string }).job_id
-        ?? (res as unknown as { data?: { job_id?: string } }).data?.job_id;
+      const jobId = (res as unknown as { job_id: string }).job_id;
       if (!jobId) throw new Error('No job_id returned');
 
       pollInterval.current = setInterval(async () => {
