@@ -6,10 +6,10 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
-import { DollarSignIcon, UsersIcon, TrendingUpIcon, TrendingDownIcon, TrendingUp, TrendingDown, Minus, Calendar, Clock } from 'lucide-react';
+import { DollarSignIcon, UsersIcon, TrendingUpIcon, TrendingDownIcon, TrendingUp, TrendingDown, Minus, Calendar, Clock, AlertTriangle, CheckCircle } from 'lucide-react';
 import { useSettlements, useSettlementDetail, useSettlementParticipants } from '@/hooks/use-settlements';
 import { formatCurrency } from '@/lib/format-utils';
-import { SettlementEntry } from '@/lib/types';
+import { SettlementEntry, PaymentHistoryEntry } from '@/lib/types';
 import { SettlementFilters } from '@/components/settlements/settlement-filters';
 import { MainLayout } from '@/components/layout/main-layout';
 
@@ -30,7 +30,7 @@ function SettlementsPageContent() {
   const { settlementSummary, loading: summaryLoading, error: summaryError } = useSettlements(settlementFilters);
   const { participants, loading: participantsLoading } = useSettlementParticipants();
   const { settlementDetail, loading: detailLoading } = useSettlementDetail(
-    selectedParticipant || '', 
+    selectedParticipant || '',
     settlementFilters
   );
 
@@ -53,7 +53,7 @@ function SettlementsPageContent() {
     const initials = participant.split(' ').map(n => n[0]).join('').toUpperCase();
     const colors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-pink-500', 'bg-indigo-500'];
     const colorIndex = participant.charCodeAt(0) % colors.length;
-    
+
     return (
       <div className={`w-10 h-10 rounded-full ${colors[colorIndex]} flex items-center justify-center text-white font-semibold text-sm`}>
         {initials}
@@ -62,7 +62,7 @@ function SettlementsPageContent() {
   };
 
   const SettlementCard = ({ settlement }: { settlement: SettlementEntry }) => (
-    <Card 
+    <Card
       className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-[1.02] border-l-4 border-l-blue-500 group"
       onClick={() => setSelectedParticipant(settlement.participant)}
     >
@@ -74,14 +74,27 @@ function SettlementsPageContent() {
               <CardTitle className="text-lg group-hover:text-blue-600 transition-colors">
                 {settlement.participant}
               </CardTitle>
-              <p className="text-sm text-gray-500">{settlement.transaction_count} transactions</p>
+              <p className="text-sm text-gray-500">
+                {settlement.transaction_count} expense{settlement.transaction_count !== 1 ? 's' : ''}
+                {settlement.payment_count && settlement.payment_count > 0
+                  ? ` · ${settlement.payment_count} payment${settlement.payment_count !== 1 ? 's' : ''}`
+                  : ''}
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {getBalanceIcon(settlement.net_balance)}
-            <span className="text-lg font-semibold">
-              {formatBalance(settlement.net_balance)}
-            </span>
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex items-center gap-2">
+              {getBalanceIcon(settlement.net_balance)}
+              <span className="text-lg font-semibold">
+                {formatBalance(settlement.net_balance)}
+              </span>
+            </div>
+            {settlement.has_discrepancy && (
+              <span title="Splitwise has applied simplified debts" className="text-xs text-amber-600 flex items-center gap-0.5">
+                <AlertTriangle className="h-3 w-3" />
+                Simplified
+              </span>
+            )}
           </div>
         </div>
       </CardHeader>
@@ -95,23 +108,16 @@ function SettlementsPageContent() {
             <span className="text-gray-600">I owe:</span>
             <span className="text-red-600 font-medium">{formatCurrency(settlement.amount_i_owe)}</span>
           </div>
+          {settlement.splitwise_balance !== undefined && (
+            <div className="flex justify-between text-xs text-gray-500 pt-1 border-t border-gray-50">
+              <span>Splitwise says:</span>
+              <span className={settlement.splitwise_balance >= 0 ? 'text-green-500' : 'text-red-500'}>
+                {formatCurrency(Math.abs(settlement.splitwise_balance))}
+                {settlement.splitwise_balance >= 0 ? ' owed to me' : ' I owe'}
+              </span>
+            </div>
+          )}
         </div>
-        
-        {settlement.net_balance > 0 && (
-          <div className="mt-4 pt-3 border-t border-gray-100">
-            <Button 
-              size="sm" 
-              className="w-full bg-green-600 hover:bg-green-700 text-white"
-              onClick={(e) => {
-                e.stopPropagation();
-                // TODO: Implement settlement functionality
-                console.log(`Settle up with ${settlement.participant} for ${formatCurrency(settlement.net_balance)}`);
-              }}
-            >
-              Mark ₹{formatCurrency(settlement.net_balance)} received from {settlement.participant}
-            </Button>
-          </div>
-        )}
       </CardContent>
     </Card>
   );
@@ -136,9 +142,9 @@ function SettlementsPageContent() {
           <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
             <div className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
-              <span>Last synced: {new Date().toLocaleDateString('en-IN', { 
-                month: 'short', 
-                day: 'numeric', 
+              <span>Last synced: {new Date().toLocaleDateString('en-IN', {
+                month: 'short',
+                day: 'numeric',
                 year: 'numeric',
                 hour: '2-digit',
                 minute: '2-digit'
@@ -163,7 +169,7 @@ function SettlementsPageContent() {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Card 
+                <Card
                   className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-[1.02] border-l-4 border-l-green-500"
                   onClick={() => {
                     // Filter to show only participants who owe money
@@ -192,11 +198,11 @@ function SettlementsPageContent() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          
+
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Card 
+                <Card
                   className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-[1.02] border-l-4 border-l-red-500"
                   onClick={() => {
                     // Filter to show only participants you owe money to
@@ -230,12 +236,12 @@ function SettlementsPageContent() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          
+
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Card className={`cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-[1.02] border-l-4 ${
-                  settlementSummary.net_total_balance > 0 ? 'border-l-green-500' : 
+                  settlementSummary.net_total_balance > 0 ? 'border-l-green-500' :
                   settlementSummary.net_total_balance < 0 ? 'border-l-red-500' : 'border-l-gray-500'
                 }`}>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -247,7 +253,7 @@ function SettlementsPageContent() {
                   </CardHeader>
                   <CardContent>
                     <div className={`text-2xl font-bold tracking-tight ${
-                      settlementSummary.net_total_balance > 0 ? 'text-green-600' : 
+                      settlementSummary.net_total_balance > 0 ? 'text-green-600' :
                       settlementSummary.net_total_balance < 0 ? 'text-red-600' : 'text-gray-600'
                     }`}>
                       {formatBalance(settlementSummary.net_total_balance)}
@@ -260,7 +266,7 @@ function SettlementsPageContent() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          
+
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -315,12 +321,12 @@ function SettlementsPageContent() {
                   if (settlementFilters.show_owed_to_me_only && settlement.net_balance <= 0) {
                     return false;
                   }
-                  
+
                   // Apply show_shared_only filter (if implemented in backend)
                   if (settlementFilters.show_shared_only && settlement.transaction_count === 0) {
                     return false;
                   }
-                  
+
                   return true;
                 })
                 .map((settlement) => (
@@ -340,6 +346,7 @@ function SettlementsPageContent() {
               </div>
             ) : settlementDetail ? (
               <div className="space-y-4">
+                {/* Balance info card */}
                 <Card>
                   <CardHeader>
                     <CardTitle>Settlement with {selectedParticipant}</CardTitle>
@@ -357,35 +364,114 @@ function SettlementsPageContent() {
                         <span className="text-gray-600">Number of transactions:</span>
                         <span className="ml-2 font-medium">{settlementDetail.transactions.length}</span>
                       </div>
+                      {settlementDetail.splitwise_balance !== undefined && (
+                        <>
+                          <div className="col-span-2 border-t pt-3 mt-1">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-gray-600">Local computed balance:</span>
+                              <span className="font-medium">{formatCurrency(Math.abs(settlementDetail.net_balance))}
+                                {settlementDetail.net_balance >= 0 ? ' owed to me' : ' I owe'}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-sm mt-1">
+                              <span className="text-gray-600">
+                                Splitwise balance:
+                                {settlementDetail.balance_synced_at && (
+                                  <span className="text-xs text-gray-400 ml-1">
+                                    (synced {new Date(settlementDetail.balance_synced_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })})
+                                  </span>
+                                )}
+                              </span>
+                              <span className={`font-medium ${settlementDetail.splitwise_balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {formatCurrency(Math.abs(settlementDetail.splitwise_balance))}
+                                {settlementDetail.splitwise_balance >= 0 ? ' owed to me' : ' I owe'}
+                              </span>
+                            </div>
+                            {settlementDetail.has_discrepancy && (
+                              <div className="flex items-center gap-1 text-xs text-amber-600 mt-2 p-2 bg-amber-50 rounded">
+                                <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                                <span>Splitwise has applied simplified debts. The Splitwise balance is authoritative.</span>
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
 
+                {/* Payment History card */}
+                {settlementDetail.payment_history && settlementDetail.payment_history.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <CheckCircle className="h-5 w-5 text-green-600" />
+                        Payment History
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {settlementDetail.payment_history.map((payment) => (
+                          <div key={payment.id} className="flex items-center justify-between border-l-2 border-green-400 pl-3 py-1">
+                            <div>
+                              <p className="text-sm font-medium">{payment.description}</p>
+                              <p className="text-xs text-gray-500">
+                                {payment.date}
+                                {payment.paid_by && payment.paid_by !== 'Unknown' && ` · paid by ${payment.paid_by}`}
+                              </p>
+                            </div>
+                            <span className="text-green-600 font-medium text-sm">{formatCurrency(payment.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Transaction History card grouped by group_name */}
                 <Card>
                   <CardHeader>
                     <CardTitle>Transaction History</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-3">
-                      {settlementDetail.transactions.map((transaction) => (
-                        <div key={transaction.id} className="border rounded-lg p-3">
-                          <div className="flex justify-between items-start mb-2">
-                            <div>
-                              <h4 className="font-medium">{transaction.description}</h4>
-                              <p className="text-sm text-gray-600">{transaction.date}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="font-medium">{formatCurrency(transaction.amount)}</p>
-                              <p className="text-sm text-gray-600">Paid by: {transaction.paid_by || 'Unknown'}</p>
-                            </div>
+                    {(() => {
+                      // Group transactions by group_name
+                      const groups: Record<string, typeof settlementDetail.transactions> = {};
+                      settlementDetail.transactions.forEach(t => {
+                        const key = t.group_name || 'No Group';
+                        if (!groups[key]) groups[key] = [];
+                        groups[key].push(t);
+                      });
+
+                      return Object.entries(groups).map(([groupName, txns]) => (
+                        <div key={groupName} className="mb-4 last:mb-0">
+                          {Object.keys(groups).length > 1 && (
+                            <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                              <span>📁</span> {groupName} ({txns.length})
+                            </h4>
+                          )}
+                          <div className="space-y-3">
+                            {txns.map(transaction => (
+                              <div key={transaction.id} className="border rounded-lg p-3">
+                                <div className="flex justify-between items-start mb-2">
+                                  <div>
+                                    <h4 className="font-medium">{transaction.description}</h4>
+                                    <p className="text-sm text-gray-600">{transaction.date}</p>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="font-medium">{formatCurrency(transaction.amount)}</p>
+                                    <p className="text-sm text-gray-600">Paid by: {transaction.paid_by || 'Unknown'}</p>
+                                  </div>
+                                </div>
+                                <div className="flex justify-between text-sm text-gray-600">
+                                  <span>My share: {formatCurrency(transaction.my_share)}</span>
+                                  <span>{selectedParticipant}'s share: {formatCurrency(transaction.participant_share)}</span>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                            <div className="flex justify-between text-sm text-gray-600">
-                              <span>My share: {formatCurrency(transaction.my_share)}</span>
-                              <span>{selectedParticipant}'s share: {formatCurrency(transaction.participant_share)}</span>
-                            </div>
                         </div>
-                      ))}
-                    </div>
+                      ));
+                    })()}
                   </CardContent>
                 </Card>
               </div>

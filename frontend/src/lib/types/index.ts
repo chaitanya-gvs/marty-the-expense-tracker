@@ -88,6 +88,10 @@ export interface SettlementEntry {
   amount_i_owe: number;
   net_balance: number;
   transaction_count: number;
+  payment_count?: number;
+  splitwise_balance?: number;
+  balance_synced_at?: string;
+  has_discrepancy?: boolean;
 }
 
 export interface SettlementSummary {
@@ -107,6 +111,15 @@ export interface SettlementTransaction {
   participant_share: number;
   paid_by: string;
   split_breakdown: SplitBreakdown;
+  group_name?: string;
+}
+
+export interface PaymentHistoryEntry {
+  id: string;
+  date: string;
+  amount: number;
+  description: string;
+  paid_by?: string;
 }
 
 export interface SettlementDetail {
@@ -114,6 +127,10 @@ export interface SettlementDetail {
   net_balance: number;
   transactions: SettlementTransaction[];
   total_shared_amount: number;
+  payment_history?: PaymentHistoryEntry[];
+  splitwise_balance?: number;
+  balance_synced_at?: string;
+  has_discrepancy?: boolean;
 }
 
 export interface TransactionFilters {
