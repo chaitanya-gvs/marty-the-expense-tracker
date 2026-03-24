@@ -1,14 +1,13 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { DollarSignIcon, UsersIcon, TrendingUpIcon, TrendingDownIcon, TrendingUp, TrendingDown, Minus, Calendar, Clock, AlertTriangle, CheckCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { DollarSignIcon, UsersIcon, TrendingUpIcon, TrendingDownIcon, TrendingUp, TrendingDown, Clock, AlertTriangle, CheckCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { useSettlements, useSettlementDetail, useSettlementParticipants } from '@/hooks/use-settlements';
 import { formatCurrency } from '@/lib/format-utils';
-import { SettlementEntry, PaymentHistoryEntry } from '@/lib/types';
+import { SettlementEntry, SettlementTransaction } from '@/lib/types';
 import { SettlementFilters } from '@/components/settlements/settlement-filters';
 import { MainLayout } from '@/components/layout/main-layout';
 
@@ -33,6 +32,17 @@ function SettlementsPageContent() {
     selectedParticipant || '',
     settlementFilters
   );
+
+  const transactionGroups = useMemo<Record<string, SettlementTransaction[]>>(() => {
+    if (!settlementDetail) return {};
+    const groups: Record<string, SettlementTransaction[]> = {};
+    settlementDetail.transactions.forEach(t => {
+      const key = t.group_name || 'No Group';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(t);
+    });
+    return groups;
+  }, [settlementDetail]);
 
   useEffect(() => {
     if (settlementDetail) {
@@ -437,7 +447,7 @@ function SettlementsPageContent() {
                             <div>
                               <p className="text-sm font-medium">{payment.description}</p>
                               <p className="text-xs text-gray-500">
-                                {payment.date}
+                                {new Date(payment.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                                 {payment.paid_by && payment.paid_by !== 'Unknown' && ` · paid by ${payment.paid_by}`}
                               </p>
                             </div>
@@ -455,55 +465,45 @@ function SettlementsPageContent() {
                     <CardTitle>Transaction History</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {(() => {
-                      // Group transactions by group_name
-                      const groups: Record<string, typeof settlementDetail.transactions> = {};
-                      settlementDetail.transactions.forEach(t => {
-                        const key = t.group_name || 'No Group';
-                        if (!groups[key]) groups[key] = [];
-                        groups[key].push(t);
-                      });
-
-                      return Object.entries(groups).map(([groupName, txns]) => {
-                        const isExpanded = expandedGroups.has(groupName);
-                        return (
-                          <div key={groupName} className="mb-4 last:mb-0">
-                            <h4
-                              className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1 cursor-pointer select-none hover:text-gray-600"
-                              onClick={() => toggleGroup(groupName)}
-                            >
-                              {isExpanded
-                                ? <ChevronDown className="h-3 w-3" />
-                                : <ChevronRight className="h-3 w-3" />
-                              }
-                              {groupName} ({txns.length} expense{txns.length !== 1 ? 's' : ''})
-                            </h4>
-                            {isExpanded && (
-                              <div className="space-y-3">
-                                {txns.map(transaction => (
-                                  <div key={transaction.id} className="border rounded-lg p-3">
-                                    <div className="flex justify-between items-start mb-2">
-                                      <div>
-                                        <h4 className="font-medium">{transaction.description}</h4>
-                                        <p className="text-sm text-gray-600">{transaction.date}</p>
-                                      </div>
-                                      <div className="text-right">
-                                        <p className="font-medium">{formatCurrency(transaction.amount)}</p>
-                                        <p className="text-sm text-gray-600">Paid by: {transaction.paid_by || 'Unknown'}</p>
-                                      </div>
+                    {Object.entries(transactionGroups).map(([groupName, txns]) => {
+                      const isExpanded = expandedGroups.has(groupName);
+                      return (
+                        <div key={groupName} className="mb-4 last:mb-0">
+                          <h4
+                            className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1 cursor-pointer select-none hover:text-gray-600"
+                            onClick={() => toggleGroup(groupName)}
+                          >
+                            {isExpanded
+                              ? <ChevronDown className="h-3 w-3" />
+                              : <ChevronRight className="h-3 w-3" />
+                            }
+                            {groupName} ({txns.length} expense{txns.length !== 1 ? 's' : ''})
+                          </h4>
+                          {isExpanded && (
+                            <div className="space-y-3">
+                              {txns.map(transaction => (
+                                <div key={transaction.id} className="border rounded-lg p-3">
+                                  <div className="flex justify-between items-start mb-2">
+                                    <div>
+                                      <h4 className="font-medium">{transaction.description}</h4>
+                                      <p className="text-sm text-gray-600">{transaction.date}</p>
                                     </div>
-                                    <div className="flex justify-between text-sm text-gray-600">
-                                      <span>My share: {formatCurrency(transaction.my_share)}</span>
-                                      <span>{selectedParticipant}'s share: {formatCurrency(transaction.participant_share)}</span>
+                                    <div className="text-right">
+                                      <p className="font-medium">{formatCurrency(transaction.amount)}</p>
+                                      <p className="text-sm text-gray-600">Paid by: {transaction.paid_by || 'Unknown'}</p>
                                     </div>
                                   </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      });
-                    })()}
+                                  <div className="flex justify-between text-sm text-gray-600">
+                                    <span>My share: {formatCurrency(transaction.my_share)}</span>
+                                    <span>{selectedParticipant}'s share: {formatCurrency(transaction.participant_share)}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </CardContent>
                 </Card>
               </div>
