@@ -326,3 +326,24 @@ export interface ExpenseAnalyticsFilters {
   direction?: "debit" | "credit";
   group_by?: "category" | "tag" | "month" | "account" | "category_month" | "tag_month" | "tag_category";
 }
+
+export interface SplitwiseFriend {
+  id: number;
+  first_name: string;
+  last_name: string | null;    // null when absent in Splitwise
+  net_balance: number;          // positive = they owe you, negative = you owe them
+}
+
+export interface SplitwiseFriendExpense {
+  id: number;
+  description: string;
+  cost: number;
+  date: string;                 // ISO date string (YYYY-MM-DD)
+  group_name: string | null;
+  category: string | null;
+  users: {
+    name: string;               // first_name + " " + last_name, trimmed
+    paid_share: number;
+    owed_share: number;
+  }[];
+}
