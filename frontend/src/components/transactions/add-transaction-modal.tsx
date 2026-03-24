@@ -104,7 +104,7 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
           <div className="space-y-3">
 
             {/* ── Row 1: Date · Amount · Direction ── */}
-            <div className="grid grid-cols-[1fr_1fr_1fr] gap-3">
+            <div className="grid grid-cols-[auto_1fr_160px] gap-3 items-end">
 
               {/* Date */}
               <div>
@@ -113,7 +113,7 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full text-sm"
+                  className="w-auto text-sm"
                   required
                 />
               </div>
