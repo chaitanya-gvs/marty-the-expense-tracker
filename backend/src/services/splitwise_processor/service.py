@@ -29,6 +29,10 @@ class SplitwiseService:
         if not self._current_user:
             self._current_user = self.client.get_current_user()
         return self._current_user
+
+    def get_friends_with_balances(self):
+        """Get all friends with their current net balances."""
+        return self.client.get_friends_with_balances()
     
     def get_transactions_for_past_month(
         self, 

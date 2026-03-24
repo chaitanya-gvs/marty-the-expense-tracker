@@ -16,7 +16,7 @@ import os
 import re
 import shutil
 import tempfile
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Any
 
@@ -1134,17 +1134,17 @@ class StatementWorkflow:
 
                 # Sync Splitwise friend balances into participants table
                 try:
-                    logger.info("Syncing Splitwise friend balances...")
-                    friends_with_balances = self.splitwise_service.client.get_friends_with_balances()
-                    synced_at = datetime.utcnow()
+                    logger.info("Syncing Splitwise friend balances...", extra=self._log_extra())
+                    friends_with_balances = self.splitwise_service.get_friends_with_balances()
+                    synced_at = datetime.now(timezone.utc)
                     for friend in friends_with_balances:
                         if friend["id"] is not None:
                             await ParticipantOperations.update_splitwise_balance(
                                 friend["id"], friend["net_balance"], synced_at
                             )
-                    logger.info(f"Synced balances for {len(friends_with_balances)} Splitwise friends")
+                    logger.info(f"Synced balances for {len(friends_with_balances)} Splitwise friends", extra=self._log_extra())
                 except Exception:
-                    logger.error("Failed to sync Splitwise friend balances", exc_info=True)
+                    logger.error("Failed to sync Splitwise friend balances", exc_info=True, extra=self._log_extra())
 
                 return {
                     "success": True,
