@@ -267,7 +267,7 @@ def _calculate_settlements(transactions: List[Dict[str, Any]]) -> SettlementSumm
             is_paid_by_participant = normalized_paid_by == participant or (paid_by and paid_by == participant)
 
             # Check if this is a settlement payment (incoming credit — someone paid you back)
-            is_payment_transaction = transaction.get("transaction_type") == "credit"
+            is_payment_transaction = transaction.get("direction") == "credit"
 
             if is_payment_transaction:
                 # Settlement payment — subtract from the payer's outstanding debt
@@ -407,10 +407,35 @@ async def get_participant_settlement(
             is_paid_by_me = normalized_paid_by == "me"
             is_paid_by_participant = normalized_paid_by == normalized_participant or (paid_by and paid_by == participant)
             
+            # Check if this is a settlement payment (direction == "credit" for Splitwise payments)
+            is_payment_transaction = transaction.get("direction") == "credit"
+
+            if is_payment_transaction:
+                # Settlement payment — skip the normal is_paid_by gate and subtract from balances
+                payment_amount = transaction["amount"]
+                settlement_transaction = SettlementTransaction(
+                    id=transaction["id"],
+                    date=transaction["date"],
+                    description=transaction["description"],
+                    amount=payment_amount,
+                    my_share=0.0,
+                    participant_share=0.0,
+                    paid_by=paid_by or "Unknown",
+                    split_breakdown=split_breakdown
+                )
+                participant_transactions.append(settlement_transaction)
+                if is_paid_by_participant:
+                    # They paid me back — reduce their debt to me
+                    amount_owed_to_me -= payment_amount
+                elif is_paid_by_me:
+                    # I paid them back — reduce my debt to them
+                    amount_i_owe -= payment_amount
+                continue
+
             # Skip transactions where neither I nor the participant paid
             if not (is_paid_by_me or is_paid_by_participant):
                 continue
-            
+
             # Only include if there's a meaningful share for either party
             if participant_share > 0 or my_share > 0:
                 settlement_transaction = SettlementTransaction(
@@ -423,7 +448,7 @@ async def get_participant_settlement(
                     paid_by=paid_by or "Unknown",  # Show inferred payer or "Unknown" if still can't determine
                     split_breakdown=split_breakdown
                 )
-                
+
                 participant_transactions.append(settlement_transaction)
                 # Only add the relevant shares to total, not the full amount
                 if is_paid_by_me:
@@ -432,7 +457,7 @@ async def get_participant_settlement(
                 elif is_paid_by_participant:
                     # Participant paid for my share
                     total_shared_amount += my_share
-                
+
                 if is_paid_by_me:
                     # I paid for the participant's share, so they owe me their share
                     amount_owed_to_me += participant_share
