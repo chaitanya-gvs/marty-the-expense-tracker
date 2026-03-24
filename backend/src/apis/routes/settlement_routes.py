@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apis.schemas.common import ApiResponse
 from src.apis.schemas.settlements import (
+    PaymentHistoryEntry,
     SettlementDetail,
     SettlementEntry,
     SettlementFilters,
@@ -314,7 +315,8 @@ def _calculate_settlements(transactions: List[Dict[str, Any]]) -> SettlementSumm
             amount_owed_to_me=balance["amount_owed_to_me"],
             amount_i_owe=balance["amount_i_owe"],
             net_balance=net_balance,
-            transaction_count=balance["transaction_count"]
+            transaction_count=balance["transaction_count"],
+            payment_count=balance.get("payment_count", 0),
         )
         
         settlements.append(settlement_entry)
@@ -351,7 +353,41 @@ async def get_settlement_summary(
         
         transactions = await _get_settlement_transactions(db_session, filters)
         settlement_summary = _calculate_settlements(transactions)
-        
+
+        # Fetch cached Splitwise balances from participants table
+        splitwise_balances = await db_session.execute(
+            text("""
+                SELECT name, splitwise_balance, balance_synced_at
+                FROM participants
+                WHERE splitwise_balance IS NOT NULL
+            """)
+        )
+        # Build a lookup: normalized_name -> (balance, synced_at)
+        splitwise_balance_map = {}
+        for row in splitwise_balances.fetchall():
+            normalized = _normalize_participant_name(row.name)
+            synced_str = row.balance_synced_at.isoformat() if row.balance_synced_at else None
+            splitwise_balance_map[normalized] = (float(row.splitwise_balance), synced_str)
+
+        # Enrich each settlement entry with Splitwise balance data
+        enriched_settlements = []
+        for entry in settlement_summary.settlements:
+            sw_data = splitwise_balance_map.get(entry.participant)
+            if sw_data:
+                sw_balance, synced_at = sw_data
+                has_discrepancy = abs(entry.net_balance - sw_balance) > 0.01
+                enriched_entry = entry.model_copy(update={
+                    "splitwise_balance": sw_balance,
+                    "balance_synced_at": synced_at,
+                    "has_discrepancy": has_discrepancy,
+                })
+                enriched_settlements.append(enriched_entry)
+            else:
+                enriched_settlements.append(entry)
+
+        # Replace settlements list with enriched version
+        settlement_summary = settlement_summary.model_copy(update={"settlements": enriched_settlements})
+
         return ApiResponse(
             data=settlement_summary.model_dump(),
             message="Settlement summary retrieved successfully"
@@ -380,50 +416,46 @@ async def get_participant_settlement(
         )
         
         transactions = await _get_settlement_transactions(db_session, filters, participant)
-        
+
         # Calculate detailed settlement for this participant
-        participant_transactions = []
+        expense_transactions = []
+        payment_history_entries = []
         total_shared_amount = 0.0
         amount_owed_to_me = 0.0
         amount_i_owe = 0.0
-        
+
         for transaction in transactions:
             split_breakdown = transaction.get("split_breakdown", {})
             if not split_breakdown:
                 continue
-            
+
             total_amount = transaction["amount"]
             # Normalize participant name for comparison
             normalized_participant = _normalize_participant_name(participant)
             participant_share = _calculate_participant_share(split_breakdown, normalized_participant, total_amount)
             my_share = _calculate_participant_share(split_breakdown, "me", total_amount)
-            
+
             # Infer who paid if paid_by is None
             paid_by = _infer_paid_by(transaction)
             normalized_paid_by = _normalize_participant_name(paid_by) if paid_by else None
-            
+
             # Only include transactions where either I paid or the participant paid
             # This ensures we don't show duplicate transactions paid by someone else
             is_paid_by_me = normalized_paid_by == "me"
             is_paid_by_participant = normalized_paid_by == normalized_participant or (paid_by and paid_by == participant)
-            
+
             # Check if this is a settlement payment (direction == "credit" for Splitwise payments)
             is_payment_transaction = transaction.get("direction") == "credit"
 
             if is_payment_transaction:
-                # Settlement payment — skip the normal is_paid_by gate and subtract from balances
+                # Settlement payment — collect into payment_history and subtract from balances
                 payment_amount = transaction["amount"]
-                settlement_transaction = SettlementTransaction(
+                payment_history_entries.append(PaymentHistoryEntry(
                     id=transaction["id"],
                     date=transaction["date"],
-                    description=transaction["description"],
                     amount=payment_amount,
-                    my_share=0.0,
-                    participant_share=0.0,
-                    paid_by=paid_by or "Unknown",
-                    split_breakdown=split_breakdown
-                )
-                participant_transactions.append(settlement_transaction)
+                    description=transaction["description"],
+                ))
                 if is_paid_by_participant:
                     # They paid me back — reduce their debt to me
                     amount_owed_to_me -= payment_amount
@@ -446,10 +478,12 @@ async def get_participant_settlement(
                     my_share=my_share,
                     participant_share=participant_share,
                     paid_by=paid_by or "Unknown",  # Show inferred payer or "Unknown" if still can't determine
-                    split_breakdown=split_breakdown
+                    split_breakdown=split_breakdown,
+                    group_name=transaction.get("group_name"),
+                    is_payment=False,
                 )
 
-                participant_transactions.append(settlement_transaction)
+                expense_transactions.append(settlement_transaction)
                 # Only add the relevant shares to total, not the full amount
                 if is_paid_by_me:
                     # I paid for the participant's share
@@ -464,14 +498,37 @@ async def get_participant_settlement(
                 elif is_paid_by_participant:
                     # Participant paid for my share, so I owe them my share
                     amount_i_owe += my_share
-        
+
         net_balance = amount_owed_to_me - amount_i_owe
-        
+
+        # Fetch Splitwise balance for this participant from the participants table
+        sw_result = await db_session.execute(
+            text("""
+                SELECT splitwise_balance, balance_synced_at
+                FROM participants
+                WHERE LOWER(name) = LOWER(:name)
+                LIMIT 1
+            """),
+            {"name": _normalize_participant_name(participant)},
+        )
+        sw_row = sw_result.fetchone()
+        sw_balance: Optional[float] = None
+        synced_at_str: Optional[str] = None
+        has_discrepancy: bool = False
+        if sw_row and sw_row.splitwise_balance is not None:
+            sw_balance = float(sw_row.splitwise_balance)
+            synced_at_str = sw_row.balance_synced_at.isoformat() if sw_row.balance_synced_at else None
+            has_discrepancy = abs(net_balance - sw_balance) > 0.01
+
         settlement_detail = SettlementDetail(
             participant=participant,
             net_balance=net_balance,
-            transactions=participant_transactions,
-            total_shared_amount=total_shared_amount
+            transactions=expense_transactions,
+            total_shared_amount=total_shared_amount,
+            payment_history=payment_history_entries,
+            splitwise_balance=sw_balance,
+            balance_synced_at=synced_at_str,
+            has_discrepancy=has_discrepancy,
         )
         
         return ApiResponse(
