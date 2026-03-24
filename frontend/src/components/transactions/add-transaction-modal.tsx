@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { FieldAutocomplete } from "./field-autocomplete";
 import { CategorySelector } from "./category-selector";
 import { MultiTagSelector } from "./multi-tag-selector";
@@ -36,7 +35,6 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
   const [direction, setDirection] = useState<"debit" | "credit">("debit");
   const [amount, setAmount] = useState<string>("");
   const [tags, setTags] = useState<string[]>([]);
-  const [notes, setNotes] = useState<string>("");
 
   const createTransaction = useCreateTransaction();
 
@@ -49,7 +47,6 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
       setDirection("debit");
       setAmount("");
       setTags([]);
-      setNotes("");
     }
   }, [isOpen]);
 
@@ -68,7 +65,7 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
         direction,
         amount: parseFloat(amount),
         tags,
-        notes: notes.trim() || undefined,
+        notes: undefined,
         is_shared: false,
         is_refund: false,
         is_split: false,
@@ -93,7 +90,7 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
   const isValid = account.trim() !== "" && description.trim() !== "" && amount !== "" && parseFloat(amount) > 0;
 
   return (
-    <Modal open={isOpen} onClose={onClose} size="lg">
+    <Modal open={isOpen} onClose={onClose} size="md">
       <Modal.Header
         icon={<Plus className="h-4 w-4" />}
         title="Add Transaction"
@@ -104,7 +101,7 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
 
       <form onSubmit={handleSubmit}>
         <Modal.Body>
-          <div className="space-y-5">
+          <div className="space-y-3">
 
             {/* ── Row 1: Date · Amount · Direction ── */}
             <div className="grid grid-cols-[1fr_1fr_1fr] gap-3">
@@ -180,7 +177,6 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
               </div>
             </div>
 
-            <div className="h-px bg-border/50" />
 
             {/* ── Row 2: Account ── */}
             <div>
@@ -206,39 +202,25 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
               />
             </div>
 
-            <div className="h-px bg-border/50" />
-
-            {/* ── Row 4: Category ── */}
-            <div>
-              <FieldLabel>Category</FieldLabel>
-              <CategorySelector
-                value={category}
-                onValueChange={setCategory}
-                placeholder="Select category…"
-                transactionDirection={direction}
-              />
-            </div>
-
-            {/* ── Row 5: Tags ── */}
-            <div>
-              <FieldLabel>Tags</FieldLabel>
-              <MultiTagSelector
-                selectedTags={tags}
-                onTagsChange={setTags}
-                placeholder="Select or add tags…"
-              />
-            </div>
-
-            {/* ── Row 6: Notes ── */}
-            <div>
-              <FieldLabel>Notes</FieldLabel>
-              <Textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Any additional notes…"
-                rows={2}
-                className="text-sm resize-none"
-              />
+            {/* ── Row 4: Category + Tags ── */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Category</FieldLabel>
+                <CategorySelector
+                  value={category}
+                  onValueChange={setCategory}
+                  placeholder="Select category…"
+                  transactionDirection={direction}
+                />
+              </div>
+              <div>
+                <FieldLabel>Tags</FieldLabel>
+                <MultiTagSelector
+                  selectedTags={tags}
+                  onTagsChange={setTags}
+                  placeholder="Select or add tags…"
+                />
+              </div>
             </div>
 
           </div>
