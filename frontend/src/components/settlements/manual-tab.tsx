@@ -263,7 +263,7 @@ export function ManualTab() {
       {/* Last synced row */}
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Clock className="h-3 w-3" />
-        <span>Last synced: {new Date().toLocaleDateString('en-IN', {
+        <span>Last synced: {new Date().toLocaleString('en-IN', {
           month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
         })}</span>
         <span>·</span>
