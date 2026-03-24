@@ -127,7 +127,7 @@ export interface SettlementDetail {
   net_balance: number;
   transactions: SettlementTransaction[];
   total_shared_amount: number;
-  payment_history?: PaymentHistoryEntry[];
+  payment_history: PaymentHistoryEntry[];
   splitwise_balance?: number;
   balance_synced_at?: string;
   has_discrepancy?: boolean;

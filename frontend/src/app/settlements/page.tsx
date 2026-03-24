@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Button } from '@/components/ui/button';
-import { DollarSignIcon, UsersIcon, TrendingUpIcon, TrendingDownIcon, TrendingUp, TrendingDown, Minus, Calendar, Clock, AlertTriangle, CheckCircle } from 'lucide-react';
+import { DollarSignIcon, UsersIcon, TrendingUpIcon, TrendingDownIcon, TrendingUp, TrendingDown, Minus, Calendar, Clock, AlertTriangle, CheckCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { useSettlements, useSettlementDetail, useSettlementParticipants } from '@/hooks/use-settlements';
 import { formatCurrency } from '@/lib/format-utils';
 import { SettlementEntry, PaymentHistoryEntry } from '@/lib/types';
@@ -26,6 +25,7 @@ interface SettlementFiltersState {
 function SettlementsPageContent() {
   const [selectedParticipant, setSelectedParticipant] = useState<string | null>(null);
   const [settlementFilters, setSettlementFilters] = useState<SettlementFiltersState>({});
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const { settlementSummary, loading: summaryLoading, error: summaryError } = useSettlements(settlementFilters);
   const { participants, loading: participantsLoading } = useSettlementParticipants();
@@ -33,6 +33,28 @@ function SettlementsPageContent() {
     selectedParticipant || '',
     settlementFilters
   );
+
+  useEffect(() => {
+    if (settlementDetail) {
+      const groupKeys = new Set<string>();
+      settlementDetail.transactions.forEach(t => {
+        groupKeys.add(t.group_name || 'No Group');
+      });
+      setExpandedGroups(groupKeys);
+    }
+  }, [settlementDetail]);
+
+  const toggleGroup = (groupName: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupName)) {
+        next.delete(groupName);
+      } else {
+        next.add(groupName);
+      }
+      return next;
+    });
+  };
 
   const formatBalance = (amount: number) => {
     const isPositive = amount > 0;
@@ -442,35 +464,45 @@ function SettlementsPageContent() {
                         groups[key].push(t);
                       });
 
-                      return Object.entries(groups).map(([groupName, txns]) => (
-                        <div key={groupName} className="mb-4 last:mb-0">
-                          {Object.keys(groups).length > 1 && (
-                            <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">
-                              <span>📁</span> {groupName} ({txns.length})
+                      return Object.entries(groups).map(([groupName, txns]) => {
+                        const isExpanded = expandedGroups.has(groupName);
+                        return (
+                          <div key={groupName} className="mb-4 last:mb-0">
+                            <h4
+                              className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1 cursor-pointer select-none hover:text-gray-600"
+                              onClick={() => toggleGroup(groupName)}
+                            >
+                              {isExpanded
+                                ? <ChevronDown className="h-3 w-3" />
+                                : <ChevronRight className="h-3 w-3" />
+                              }
+                              {groupName} ({txns.length} expense{txns.length !== 1 ? 's' : ''})
                             </h4>
-                          )}
-                          <div className="space-y-3">
-                            {txns.map(transaction => (
-                              <div key={transaction.id} className="border rounded-lg p-3">
-                                <div className="flex justify-between items-start mb-2">
-                                  <div>
-                                    <h4 className="font-medium">{transaction.description}</h4>
-                                    <p className="text-sm text-gray-600">{transaction.date}</p>
+                            {isExpanded && (
+                              <div className="space-y-3">
+                                {txns.map(transaction => (
+                                  <div key={transaction.id} className="border rounded-lg p-3">
+                                    <div className="flex justify-between items-start mb-2">
+                                      <div>
+                                        <h4 className="font-medium">{transaction.description}</h4>
+                                        <p className="text-sm text-gray-600">{transaction.date}</p>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="font-medium">{formatCurrency(transaction.amount)}</p>
+                                        <p className="text-sm text-gray-600">Paid by: {transaction.paid_by || 'Unknown'}</p>
+                                      </div>
+                                    </div>
+                                    <div className="flex justify-between text-sm text-gray-600">
+                                      <span>My share: {formatCurrency(transaction.my_share)}</span>
+                                      <span>{selectedParticipant}'s share: {formatCurrency(transaction.participant_share)}</span>
+                                    </div>
                                   </div>
-                                  <div className="text-right">
-                                    <p className="font-medium">{formatCurrency(transaction.amount)}</p>
-                                    <p className="text-sm text-gray-600">Paid by: {transaction.paid_by || 'Unknown'}</p>
-                                  </div>
-                                </div>
-                                <div className="flex justify-between text-sm text-gray-600">
-                                  <span>My share: {formatCurrency(transaction.my_share)}</span>
-                                  <span>{selectedParticipant}'s share: {formatCurrency(transaction.participant_share)}</span>
-                                </div>
+                                ))}
                               </div>
-                            ))}
+                            )}
                           </div>
-                        </div>
-                      ));
+                        );
+                      });
                     })()}
                   </CardContent>
                 </Card>
