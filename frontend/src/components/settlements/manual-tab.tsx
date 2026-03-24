@@ -3,10 +3,10 @@
 import { useState, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { TrendingUp, TrendingDown, Minus, Users, Clock, CheckCircle, ChevronDown } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Users, Clock, CheckCircle, ChevronDown, Receipt } from 'lucide-react';
 import { useSettlements, useSettlementDetail } from '@/hooks/use-settlements';
 import { formatCurrency } from '@/lib/format-utils';
-import { SettlementEntry } from '@/lib/types';
+import { SettlementEntry, SettlementTransaction } from '@/lib/types';
 import { SettlementFilters } from '@/components/settlements/settlement-filters';
 import { cn } from '@/lib/utils';
 
@@ -109,6 +109,51 @@ function ParticipantRow({ settlement, isExpanded, onToggle, filters }: Participa
           {/* Error state */}
           {error && (
             <p className="text-sm text-destructive">{error}</p>
+          )}
+
+          {/* Transactions list */}
+          {!loading && settlementDetail && settlementDetail.transactions.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Receipt className="h-3.5 w-3.5 text-muted-foreground" />
+                <p className="text-xs font-medium text-foreground">
+                  Expenses ({settlementDetail.transactions.length})
+                </p>
+              </div>
+              <div className="space-y-1">
+                {settlementDetail.transactions.map((tx: SettlementTransaction) => {
+                  // Backend guarantees each tx was paid by either me or the participant.
+                  // If paid_by matches the participant's name → they paid; otherwise → I paid.
+                  const isPaidByParticipant = (tx.paid_by ?? '').toLowerCase().trim() === settlement.participant.toLowerCase().trim();
+                  const myShare = tx.my_share ?? 0;
+                  const theirShare = tx.participant_share ?? 0;
+                  const displayAmount = isPaidByParticipant ? myShare : theirShare;
+                  const isOwed = !isPaidByParticipant; // green if I paid (they owe me)
+                  return (
+                    <div key={tx.id} className="flex items-start justify-between py-2 border-b border-border/50 last:border-0">
+                      <div className="min-w-0 flex-1 pr-4">
+                        <p className="text-sm text-foreground truncate">{tx.description}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {new Date(tx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          {tx.paid_by && ` · paid by ${tx.paid_by}`}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-mono text-xs text-muted-foreground tabular-nums">
+                          {formatCurrency(tx.amount)}
+                        </p>
+                        <p className={cn(
+                          'font-mono text-sm font-semibold tabular-nums',
+                          isOwed ? 'text-green-600' : 'text-red-600'
+                        )}>
+                          {isOwed ? '+' : '-'}{formatCurrency(displayAmount)}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           {/* Payment history */}
