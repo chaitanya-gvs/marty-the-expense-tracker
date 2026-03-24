@@ -3,12 +3,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, TrendingUp, TrendingDown, Users, DollarSign, ChevronDown, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { RefreshCw, TrendingUp, TrendingDown, Users, Minus, ChevronDown, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useSplitwiseFriends, useSplitwiseFriendExpenses } from '@/hooks/use-settlements';
 import { apiClient } from '@/lib/api/client';
 import { formatCurrency } from '@/lib/format-utils';
 import { SplitwiseFriend } from '@/lib/types';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 type SubTab = 'overview' | 'details';
 
@@ -23,12 +25,10 @@ export function SplitwiseTab() {
   const { friends, loading, error, refetch } = useSplitwiseFriends();
   const { expenses, loading: expLoading, error: expError } = useSplitwiseFriendExpenses(selectedFriendId);
 
-  // Cleanup polling on unmount
   useEffect(() => {
     return () => { if (pollInterval.current) clearInterval(pollInterval.current); };
   }, []);
 
-  // Computed stats
   const owedToMe = friends.filter(f => f.net_balance > 0).reduce((sum, f) => sum + f.net_balance, 0);
   const iOwe = friends.filter(f => f.net_balance < 0).reduce((sum, f) => sum + Math.abs(f.net_balance), 0);
   const net = owedToMe - iOwe;
@@ -99,7 +99,6 @@ export function SplitwiseTab() {
     });
   };
 
-  // Group expenses by group_name
   const expenseGroups: Record<string, typeof expenses> = {};
   expenses.forEach(e => {
     const key = e.group_name ?? 'No Group';
@@ -109,120 +108,160 @@ export function SplitwiseTab() {
 
   return (
     <div className="space-y-4 mt-4">
-      {/* Tab header with Sync Now */}
+      {/* Header row */}
       <div className="flex items-center justify-between">
-        <div className="text-sm text-gray-500">Live from Splitwise</div>
+        <p className="text-xs text-muted-foreground">Live from Splitwise</p>
         <Button
           variant="outline"
           size="sm"
           onClick={handleSyncNow}
           disabled={syncing}
         >
-          <RefreshCw className={`h-4 w-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
+          <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", syncing && "animate-spin")} />
           {syncing ? 'Syncing…' : 'Sync Now'}
         </Button>
       </div>
 
       {activeSubTab === 'overview' && (
         <>
-          {/* Stats row */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-green-600" />
-                  <div>
-                    <p className="text-xs text-gray-500">Owed to Me</p>
-                    <p className="font-semibold text-green-600">{formatCurrency(owedToMe)}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <TrendingDown className="h-4 w-4 text-red-600" />
-                  <div>
-                    <p className="text-xs text-gray-500">I Owe</p>
-                    <p className="font-semibold text-red-600">{formatCurrency(iOwe)}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <DollarSign className="h-4 w-4 text-blue-600" />
-                  <div>
-                    <p className="text-xs text-gray-500">Net</p>
-                    <p className={`font-semibold ${net >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {net >= 0 ? '+' : ''}{formatCurrency(net)}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-purple-600" />
-                  <div>
-                    <p className="text-xs text-gray-500">People</p>
-                    <p className="font-semibold text-purple-600">{peopleCount}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          {/* Stats bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 rounded-lg border border-border overflow-hidden bg-border gap-px">
+            <div className="bg-card px-3 py-4">
+              <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                <TrendingUp className="h-3 w-3" />
+                Owed to Me
+              </p>
+              <p className="font-mono text-sm font-semibold text-green-600 tabular-nums">
+                {formatCurrency(owedToMe)}
+              </p>
+            </div>
+            <div className="bg-card px-3 py-4">
+              <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                <TrendingDown className="h-3 w-3" />
+                I Owe
+              </p>
+              <p className="font-mono text-sm font-semibold text-red-600 tabular-nums">
+                {formatCurrency(iOwe)}
+              </p>
+            </div>
+            <div className="bg-card px-3 py-4">
+              <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                <Minus className="h-3 w-3" />
+                Net
+              </p>
+              <p className={cn(
+                "font-mono text-sm font-semibold tabular-nums",
+                net > 0 ? "text-green-600" : net < 0 ? "text-red-600" : "text-foreground"
+              )}>
+                {net > 0 ? '+' : ''}{formatCurrency(net)}
+              </p>
+            </div>
+            <div className="bg-card px-3 py-4">
+              <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                <Users className="h-3 w-3" />
+                People
+              </p>
+              <p className="font-mono text-sm font-semibold text-foreground tabular-nums">
+                {peopleCount}
+              </p>
+            </div>
           </div>
 
-          {/* Loading / error */}
-          {loading && <p className="text-sm text-gray-500">Loading friends…</p>}
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {/* Loading skeletons */}
+          {loading && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {[1, 2, 3].map(i => (
+                <Card key={i} className="py-4">
+                  <CardContent className="px-4 space-y-2">
+                    <Skeleton className="h-4 w-28" />
+                    <Skeleton className="h-6 w-20" />
+                    <Skeleton className="h-3 w-16" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Error state */}
+          {error && (
+            <div className="flex items-center justify-center h-24">
+              <p className="text-sm text-destructive">{error}</p>
+            </div>
+          )}
 
           {!loading && !error && (
             <>
               {/* Friend cards grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {nonZeroFriends.map(friend => (
-                  <Card
-                    key={friend.id}
-                    className="cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => handleFriendClick(friend)}
-                  >
-                    <CardContent className="pt-4">
-                      <div className="font-semibold">{friendDisplayName(friend)}</div>
-                      <div className={`text-lg font-bold mt-1 ${friend.net_balance > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {friend.net_balance > 0 ? '+' : ''}{formatCurrency(friend.net_balance)}
-                      </div>
-                      <div className="text-xs text-gray-400 mt-1">
-                        {friend.net_balance > 0 ? 'owes you' : 'you owe'}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+              {nonZeroFriends.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-40 space-y-2">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-full bg-muted">
+                    <Users className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm font-medium text-foreground">All settled up</p>
+                  <p className="text-xs text-muted-foreground">No outstanding balances with friends</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {nonZeroFriends.map(friend => (
+                    <Card
+                      key={friend.id}
+                      className="cursor-pointer hover:bg-muted/30 transition-colors py-4"
+                      onClick={() => handleFriendClick(friend)}
+                    >
+                      <CardContent className="px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary text-xs font-semibold shrink-0">
+                            {friendDisplayName(friend).charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-foreground truncate">{friendDisplayName(friend)}</p>
+                            <p className={cn(
+                              "font-mono text-sm font-semibold tabular-nums",
+                              friend.net_balance > 0 ? "text-green-600" : "text-red-600"
+                            )}>
+                              {friend.net_balance > 0 ? '+' : ''}{formatCurrency(friend.net_balance)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {friend.net_balance > 0 ? 'owes you' : 'you owe'}
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
 
               {/* Settled accordion */}
               {zeroFriends.length > 0 && (
-                <div className="border rounded-lg">
+                <div className="border border-border rounded-lg">
                   <button
-                    className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-500 hover:bg-gray-50"
+                    className="w-full flex items-center justify-between px-4 py-3 text-sm text-muted-foreground hover:bg-muted/40 transition-colors rounded-lg"
                     onClick={() => setSettledExpanded(v => !v)}
                   >
                     <span>Settled ({zeroFriends.length})</span>
-                    {settledExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    {settledExpanded
+                      ? <ChevronDown className="h-4 w-4" />
+                      : <ChevronRight className="h-4 w-4" />}
                   </button>
                   {settledExpanded && (
                     <div className="px-4 pb-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                       {zeroFriends.map(friend => (
                         <Card
                           key={friend.id}
-                          className="cursor-pointer hover:shadow-sm transition-shadow opacity-60"
+                          className="cursor-pointer opacity-60 hover:opacity-100 hover:bg-muted/30 transition-all py-3"
                           onClick={() => handleFriendClick(friend)}
                         >
-                          <CardContent className="pt-3 pb-3">
-                            <div className="font-medium text-sm">{friendDisplayName(friend)}</div>
-                            <div className="text-xs text-gray-400">Settled</div>
+                          <CardContent className="px-3">
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center justify-center w-7 h-7 rounded-full bg-muted text-muted-foreground text-xs font-semibold shrink-0">
+                                {friendDisplayName(friend).charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-foreground truncate">{friendDisplayName(friend)}</p>
+                                <p className="text-xs text-muted-foreground">Settled</p>
+                              </div>
+                            </div>
                           </CardContent>
                         </Card>
                       ))}
@@ -239,12 +278,16 @@ export function SplitwiseTab() {
         <div className="space-y-4">
           {/* Header */}
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" onClick={handleBack}>
-              <ArrowLeft className="h-4 w-4 mr-1" /> Back
+            <Button variant="ghost" size="sm" onClick={handleBack} className="gap-1">
+              <ArrowLeft className="h-4 w-4" />
+              Back
             </Button>
             <div>
-              <h2 className="text-xl font-bold">{friendDisplayName(selectedFriend)}</h2>
-              <p className={`text-sm font-medium ${selectedFriend.net_balance > 0 ? 'text-green-600' : 'text-red-600'}`}>
+              <h2 className="text-lg font-semibold text-foreground">{friendDisplayName(selectedFriend)}</h2>
+              <p className={cn(
+                "text-sm font-mono tabular-nums",
+                selectedFriend.net_balance > 0 ? "text-green-600" : "text-red-600"
+              )}>
                 {selectedFriend.net_balance > 0
                   ? `${formatCurrency(selectedFriend.net_balance)} owed to you`
                   : `You owe ${formatCurrency(Math.abs(selectedFriend.net_balance))}`}
@@ -252,43 +295,68 @@ export function SplitwiseTab() {
             </div>
           </div>
 
-          {/* Expenses */}
-          {expLoading && <p className="text-sm text-gray-500">Loading expenses…</p>}
-          {expError && <p className="text-sm text-red-500">{expError}</p>}
+          {/* Loading skeletons */}
+          {expLoading && (
+            <div className="space-y-3">
+              {[1, 2].map(i => (
+                <div key={i} className="border border-border rounded-lg p-4 space-y-2">
+                  <Skeleton className="h-4 w-32" />
+                  <div className="space-y-2 pt-2">
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-3 w-3/4" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {expError && (
+            <p className="text-sm text-destructive">{expError}</p>
+          )}
 
           {!expLoading && !expError && expenses.length === 0 && (
-            <p className="text-sm text-gray-400">No recent expenses found.</p>
+            <div className="flex flex-col items-center justify-center h-32 space-y-2">
+              <p className="text-sm font-medium text-foreground">No recent expenses found</p>
+              <p className="text-xs text-muted-foreground">Sync to fetch latest Splitwise data</p>
+            </div>
           )}
 
           {!expLoading && Object.entries(expenseGroups).map(([groupName, groupExpenses]) => (
-            <div key={groupName} className="border rounded-lg">
+            <div key={groupName} className="border border-border rounded-lg overflow-hidden">
               <button
-                className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-gray-50"
+                className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/40 transition-colors"
                 onClick={() => toggleGroup(groupName)}
               >
-                <span>{groupName} ({groupExpenses.length})</span>
-                {expandedGroups.has(groupName) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <span>{groupName} <span className="text-muted-foreground font-normal">({groupExpenses.length})</span></span>
+                {expandedGroups.has(groupName)
+                  ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
               </button>
               {expandedGroups.has(groupName) && (
-                <div className="divide-y">
+                <div className="divide-y divide-border">
                   {groupExpenses.map(expense => (
                     <div key={expense.id} className="px-4 py-3">
                       <div className="flex justify-between items-start">
-                        <div>
-                          <div className="font-medium text-sm">{expense.description}</div>
-                          <div className="text-xs text-gray-400">{expense.date}</div>
+                        <div className="min-w-0 mr-4">
+                          <p className="text-sm font-medium text-foreground truncate">{expense.description}</p>
+                          <p className="text-xs text-muted-foreground">{expense.date}</p>
                           {expense.category && (
-                            <div className="text-xs text-blue-500 mt-0.5">{expense.category}</div>
+                            <span className="inline-flex items-center rounded-md bg-primary/10 text-primary text-xs px-2 py-0.5 mt-1">
+                              {expense.category}
+                            </span>
                           )}
                         </div>
-                        <div className="text-sm font-semibold">{formatCurrency(expense.cost)}</div>
+                        <p className="font-mono text-sm font-semibold text-foreground tabular-nums shrink-0">
+                          {formatCurrency(expense.cost)}
+                        </p>
                       </div>
-                      {/* User shares */}
                       <div className="mt-2 space-y-1">
                         {expense.users.map((user, i) => (
-                          <div key={i} className="flex justify-between text-xs text-gray-500">
+                          <div key={i} className="flex justify-between text-xs text-muted-foreground">
                             <span>{user.name}</span>
-                            <span>paid {formatCurrency(user.paid_share)} · owes {formatCurrency(user.owed_share)}</span>
+                            <span className="font-mono tabular-nums">
+                              paid {formatCurrency(user.paid_share)} · owes {formatCurrency(user.owed_share)}
+                            </span>
                           </div>
                         ))}
                       </div>

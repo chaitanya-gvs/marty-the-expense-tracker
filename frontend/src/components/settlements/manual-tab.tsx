@@ -3,10 +3,10 @@
 import { useState, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { TrendingUp, TrendingDown, Minus, Users, Clock, CheckCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Users, Clock, CheckCircle, ChevronDown } from 'lucide-react';
 import { useSettlements, useSettlementDetail } from '@/hooks/use-settlements';
 import { formatCurrency } from '@/lib/format-utils';
-import { SettlementEntry, SettlementTransaction } from '@/lib/types';
+import { SettlementEntry } from '@/lib/types';
 import { SettlementFilters } from '@/components/settlements/settlement-filters';
 import { cn } from '@/lib/utils';
 
@@ -28,8 +28,6 @@ interface ParticipantRowProps {
 }
 
 function ParticipantRow({ settlement, isExpanded, onToggle, filters }: ParticipantRowProps) {
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-
   // Narrow to only the three fields useSettlementDetail accepts; stabilise reference for query key
   const detailFilters = useMemo(() => ({
     date_range_start: filters.date_range_start,
@@ -41,26 +39,6 @@ function ParticipantRow({ settlement, isExpanded, onToggle, filters }: Participa
     isExpanded ? settlement.participant : '',
     detailFilters
   );
-
-  const transactionGroups = useMemo<Record<string, SettlementTransaction[]>>(() => {
-    if (!settlementDetail) return {};
-    const groups: Record<string, SettlementTransaction[]> = {};
-    settlementDetail.transactions.forEach(t => {
-      const key = t.group_name || 'No Group';
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(t);
-    });
-    return groups;
-  }, [settlementDetail]);
-
-  const toggleGroup = (groupName: string) => {
-    setExpandedGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(groupName)) next.delete(groupName);
-      else next.add(groupName);
-      return next;
-    });
-  };
 
   const initials = settlement.participant.split(' ').map(n => n[0] ?? '').join('').toUpperCase().slice(0, 2) || '?';
 
@@ -161,72 +139,6 @@ function ParticipantRow({ settlement, isExpanded, onToggle, filters }: Participa
             </div>
           )}
 
-          {/* Transaction groups accordion */}
-          {!loading && Object.entries(transactionGroups).length > 0 && (
-            <div className="space-y-2">
-              {Object.entries(transactionGroups).map(([groupName, txns]) => {
-                const isGroupExpanded = expandedGroups.has(groupName);
-                return (
-                  <div key={groupName} className="border border-border rounded-lg overflow-hidden">
-                    <button
-                      className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium text-foreground hover:bg-muted/40 transition-colors"
-                      onClick={() => toggleGroup(groupName)}
-                      aria-expanded={isGroupExpanded}
-                    >
-                      <span>
-                        {groupName}{' '}
-                        <span className="text-muted-foreground font-normal">({txns.length})</span>
-                      </span>
-                      {isGroupExpanded
-                        ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                    </button>
-                    {isGroupExpanded && (
-                      <div className="divide-y divide-border">
-                        {txns.map(transaction => (
-                          <div key={transaction.id} className="px-3 py-3">
-                            <div className="flex justify-between items-start mb-1.5">
-                              <div className="min-w-0 mr-3">
-                                <p className="text-sm font-medium text-foreground truncate">{transaction.description}</p>
-                                <p className="text-xs text-muted-foreground">{transaction.date}</p>
-                              </div>
-                              <div className="text-right shrink-0">
-                                <p className="font-mono text-sm font-semibold tabular-nums text-foreground">
-                                  {formatCurrency(transaction.amount)}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  Paid by {transaction.paid_by || 'Unknown'}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex justify-between text-xs text-muted-foreground pt-1.5 border-t border-border">
-                              <span>
-                                My share:{' '}
-                                <span className="font-mono tabular-nums text-foreground">
-                                  {formatCurrency(transaction.my_share)}
-                                </span>
-                              </span>
-                              <span>
-                                {settlement.participant}&apos;s share:{' '}
-                                <span className="font-mono tabular-nums text-foreground">
-                                  {formatCurrency(transaction.participant_share)}
-                                </span>
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Empty state (loaded but no transactions) */}
-          {!loading && !error && settlementDetail && settlementDetail.transactions.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-2">No transactions found for this period.</p>
-          )}
         </div>
       )}
     </div>

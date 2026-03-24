@@ -73,12 +73,20 @@ def _calculate_participant_share(split_breakdown: Dict[str, Any], participant: s
         return 0.0
     elif mode == "custom":
         # Custom split: find the participant's specific amount
-        # Use case-insensitive comparison for participant matching
         normalized_participant = _normalize_participant_name(participant)
+        is_looking_for_me = normalized_participant == "me"
         for entry in entries:
             entry_participant = entry.get("participant")
-            if entry_participant and _normalize_participant_name(entry_participant) == normalized_participant:
-                return float(entry.get("amount", 0))
+            if not entry_participant:
+                continue
+            if is_looking_for_me:
+                # Match literal "me" OR any variant of the current user's name
+                # (Splitwise-synced splits may store the user's real name instead of "me")
+                if _normalize_participant_name(entry_participant) == "me" or _is_current_user(entry_participant):
+                    return float(entry.get("amount", 0))
+            else:
+                if _normalize_participant_name(entry_participant) == normalized_participant:
+                    return float(entry.get("amount", 0))
         return 0.0
     
     return 0.0
@@ -274,16 +282,13 @@ def _calculate_settlements(transactions: List[Dict[str, Any]]) -> SettlementSumm
             is_payment_transaction = transaction.get("direction") == "credit"
 
             if is_payment_transaction:
-                # Settlement payment — subtract from the payer's outstanding debt
+                # Credit = participant paid me. Use direction as the authoritative signal.
+                # paid_by defaults to "me" in the split editor for all transaction types,
+                # so it cannot be trusted for credit transactions. A credit in my account
+                # always means the participant sent money to me.
                 payment_amount = transaction["amount"]
-                if is_paid_by_participant:
-                    # They paid me back — reduce their debt to me
-                    participant_balances[participant]["amount_owed_to_me"] -= payment_amount
-                    participant_balances[participant]["payment_count"] += 1
-                elif is_paid_by_me:
-                    # I paid them — reduce my debt to them
-                    participant_balances[participant]["amount_i_owe"] -= payment_amount
-                    participant_balances[participant]["payment_count"] += 1
+                participant_balances[participant]["amount_owed_to_me"] -= payment_amount
+                participant_balances[participant]["payment_count"] += 1
             else:
                 # Regular expense
                 if is_paid_by_me:
@@ -450,25 +455,18 @@ async def get_participant_settlement(
             is_payment_transaction = transaction.get("direction") == "credit"
 
             if is_payment_transaction:
+                # Credit = participant paid me. Use direction as the authoritative signal;
+                # paid_by defaults to "me" in the UI for all transaction types so it cannot
+                # be trusted here. A credit in my account always means the participant paid.
                 payment_amount = transaction["amount"]
-                if is_paid_by_participant:
-                    payment_history_entries.append(PaymentHistoryEntry(
-                        id=transaction["id"],
-                        date=transaction["date"],
-                        amount=payment_amount,
-                        description=transaction.get("description", "Settlement"),
-                        paid_by=participant
-                    ))
-                    amount_owed_to_me -= payment_amount
-                elif is_paid_by_me:
-                    payment_history_entries.append(PaymentHistoryEntry(
-                        id=transaction["id"],
-                        date=transaction["date"],
-                        amount=payment_amount,
-                        description=transaction.get("description", "Settlement"),
-                        paid_by="me"
-                    ))
-                    amount_i_owe -= payment_amount
+                payment_history_entries.append(PaymentHistoryEntry(
+                    id=transaction["id"],
+                    date=transaction["date"],
+                    amount=payment_amount,
+                    description=transaction.get("description", "Settlement"),
+                    paid_by=participant
+                ))
+                amount_owed_to_me -= payment_amount
                 continue
 
             # Skip transactions where neither I nor the participant paid
