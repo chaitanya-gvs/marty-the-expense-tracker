@@ -148,6 +148,7 @@ class TransactionResponse(BaseModel):
     status: str = "reviewed"
     is_deleted: bool = False
     deleted_at: Optional[str] = None
+    original_date: Optional[str] = None
 
 
 class TransactionFilters(BaseModel):
@@ -435,7 +436,8 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
         updated_at=transaction.get('updated_at', '').isoformat() if transaction.get('updated_at') else '',
         status="reviewed",
         is_deleted=is_deleted,
-        deleted_at=transaction.get('deleted_at', '').isoformat() if transaction.get('deleted_at') else None
+        deleted_at=transaction.get('deleted_at', '').isoformat() if transaction.get('deleted_at') else None,
+        original_date=transaction.get('original_date', '').isoformat() if transaction.get('original_date') else None
     )
 
 

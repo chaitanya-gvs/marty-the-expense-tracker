@@ -27,6 +27,7 @@ export interface Transaction {
   status: "reviewed" | "needs_review" | "uncertain";
   is_deleted?: boolean;
   deleted_at?: string | null;
+  original_date?: string | null;
 }
 
 export interface SplitEntry {

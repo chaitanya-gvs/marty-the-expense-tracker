@@ -739,13 +739,24 @@ class TransactionOperations:
             set_clauses = []
             params = {"transaction_id": transaction_id}
             
+            # When updating transaction_date, preserve the original date (only set once)
+            if 'transaction_date' in updates:
+                result = await session.execute(
+                    text("SELECT transaction_date, original_date FROM transactions WHERE id = :id"),
+                    {"id": transaction_id}
+                )
+                row = result.mappings().first()
+                if row and row['original_date'] is None and row['transaction_date'] is not None:
+                    set_clauses.append("original_date = :original_date")
+                    params["original_date"] = row['transaction_date']
+
             for field, value in updates.items():
                 if field in [
                     'transaction_date', 'transaction_time', 'amount', 'split_share_amount',
                     'direction', 'transaction_type', 'is_shared', 'is_flagged', 'split_breakdown',
-                    'account', 'category_id', 'sub_category', 'tags', 'user_description', 'notes', 
+                    'account', 'category_id', 'sub_category', 'tags', 'user_description', 'notes',
                     'reference_number', 'related_mails', 'source_file', 'raw_data',
-                    'transaction_group_id', 'is_deleted', 'deleted_at'
+                    'transaction_group_id', 'is_deleted', 'deleted_at', 'original_date'
                 ]:
                     set_clauses.append(f"{field} = :{field}")
                     # Handle JSON fields that need to be encoded
