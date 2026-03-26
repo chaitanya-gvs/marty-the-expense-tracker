@@ -765,16 +765,29 @@ async def get_transactions(
             total_pages = (total_count + limit - 1) // limit if limit > 0 else 1
             paginated_transactions = filtered_transactions  # Already paginated from DB
         
+        # Compute aggregate totals over the FULL filtered set (not just the current page)
+        full_set = filtered_transactions if has_filters else all_transactions_for_count
+        total_debits = sum(
+            float(t.get('split_share_amount') or t.get('amount', 0))
+            for t in full_set if t.get('direction') == 'debit'
+        )
+        total_credits = sum(
+            float(t.get('split_share_amount') or t.get('amount', 0))
+            for t in full_set if t.get('direction') == 'credit'
+        )
+
         # Convert to response format
         response_transactions = [_convert_db_transaction_to_response(t) for t in paginated_transactions]
-        
+
         return ApiResponse(
             data=response_transactions,
             pagination={
                 "page": page,
                 "limit": limit,
                 "total": total_count,
-                "total_pages": total_pages
+                "total_pages": total_pages,
+                "total_debits": total_debits,
+                "total_credits": total_credits,
             }
         )
         
