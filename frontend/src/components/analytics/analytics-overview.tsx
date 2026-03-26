@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { useState, useMemo } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useExpenseAnalytics } from "@/hooks/use-analytics";
 import { ExpenseAnalytics, ExpenseAnalyticsFilters } from "@/lib/types";
@@ -9,6 +9,16 @@ import { AnalyticsCharts } from "./analytics-charts";
 import { AnalyticsFilters } from "./analytics-filters";
 import { formatCurrency } from "@/lib/format-utils";
 import { TrendingDown, Hash, BarChart3 } from "lucide-react";
+import {
+  ComposedChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ReferenceLine,
+  ResponsiveContainer,
+} from "recharts";
 
 // Get default date range (Last Month)
 function getDefaultDateRange() {
@@ -157,6 +167,93 @@ function SummaryCards({ analytics }: { analytics: ExpenseAnalytics }) {
   );
 }
 
+function MonthlyNetChart({ filters }: { filters: ExpenseAnalyticsFilters }) {
+  const debitFilters = useMemo(
+    () => ({ ...filters, group_by: "month" as const, direction: "debit" as const }),
+    [filters]
+  );
+  const creditFilters = useMemo(
+    () => ({ ...filters, group_by: "month" as const, direction: "credit" as const }),
+    [filters]
+  );
+
+  const { data: debitData } = useExpenseAnalytics(debitFilters);
+  const { data: creditData } = useExpenseAnalytics(creditFilters);
+
+  const chartData = useMemo(() => {
+    const debitMap = new Map<string, number>(
+      (debitData?.data.data ?? []).map((d) => [d.group_key, d.amount])
+    );
+    const creditMap = new Map<string, number>(
+      (creditData?.data.data ?? []).map((d) => [d.group_key, d.amount])
+    );
+    const months = [...new Set([...debitMap.keys(), ...creditMap.keys()])].sort();
+    return months.map((m) => ({
+      month: m,
+      label: new Date(m + "-15").toLocaleDateString("en-IN", { month: "short", year: "2-digit" }),
+      netSpend: debitMap.get(m) ?? 0,
+      credits: -(creditMap.get(m) ?? 0),
+    }));
+  }, [debitData, creditData]);
+
+  if (chartData.length < 2) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-semibold">Monthly Cash Flow</CardTitle>
+        <CardDescription className="text-xs">Net spend · Credits & refunds received</CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0 pr-2">
+        <ResponsiveContainer width="100%" height={220}>
+          <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis
+              tickFormatter={(v) => `₹${Math.abs(v) / 1000}k`}
+              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+              axisLine={false}
+              tickLine={false}
+              width={44}
+            />
+            <Tooltip
+              cursor={{ fill: "var(--muted)", opacity: 0.3 }}
+              content={({ active, payload, label }) => {
+                if (!active || !payload?.length) return null;
+                const netSpend = (payload.find((p) => p.dataKey === "netSpend")?.value as number) ?? 0;
+                const credits = Math.abs((payload.find((p) => p.dataKey === "credits")?.value as number) ?? 0);
+                return (
+                  <div className="rounded-lg border bg-card shadow-md px-3 py-2 text-xs space-y-1.5 min-w-[140px]">
+                    <p className="font-medium text-foreground">{label}</p>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground">Net Spend</span>
+                      <span className="font-mono tabular-nums text-[#D97706]">{formatCurrency(netSpend)}</span>
+                    </div>
+                    {credits > 0 && (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Credits</span>
+                        <span className="font-mono tabular-nums text-[#0D9488]">+{formatCurrency(credits)}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              }}
+            />
+            <ReferenceLine y={0} stroke="var(--border)" strokeWidth={1.5} />
+            <Bar dataKey="netSpend" fill="#D97706" radius={[3, 3, 0, 0]} maxBarSize={40} />
+            <Bar dataKey="credits" fill="#0D9488" radius={[0, 0, 3, 3]} maxBarSize={40} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function AnalyticsOverview() {
   const [filters, setFilters] = useState<ExpenseAnalyticsFilters>({
     date_range: getDefaultDateRange(),
@@ -197,6 +294,7 @@ export function AnalyticsOverview() {
       ) : analytics ? (
         <>
           <SummaryCards analytics={analytics} />
+          <MonthlyNetChart filters={filters} />
           <AnalyticsCharts analytics={analytics} analyticsFilters={filters} />
         </>
       ) : null}
