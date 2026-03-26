@@ -4,7 +4,7 @@ FastAPI routes for transaction management including categories, tags, and sugges
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date as DateType, datetime, timedelta
 from decimal import Decimal
 from typing import List, Optional, Dict, Any
 import json
@@ -60,7 +60,7 @@ async def handle_database_operation(operation_func, *args, **kwargs):
 
 class TransactionCreate(BaseModel):
     """Request model for creating a transaction."""
-    date: date
+    date: DateType
     account: str
     description: str
     category: str
@@ -86,7 +86,7 @@ class TransactionCreate(BaseModel):
 
 class TransactionUpdate(BaseModel):
     """Request model for updating a transaction."""
-    date: Optional[date] = None
+    date: Optional[DateType] = None
     account: Optional[str] = None
     description: Optional[str] = None
     category: Optional[str] = None
@@ -489,8 +489,8 @@ def _calculate_split_share_amount(split_breakdown: Dict[str, Any], total_amount:
 
 @router.get("/", response_model=ApiResponse)
 async def get_transactions(
-    date_range_start: Optional[date] = Query(None, description="Start date for filtering"),
-    date_range_end: Optional[date] = Query(None, description="End date for filtering"),
+    date_range_start: Optional[DateType] = Query(None, description="Start date for filtering"),
+    date_range_end: Optional[DateType] = Query(None, description="End date for filtering"),
     accounts: Optional[str] = Query(None, description="Comma-separated account names"),
     exclude_accounts: Optional[str] = Query(None, description="Comma-separated account names to exclude"),
     categories: Optional[str] = Query(None, description="Comma-separated category names"),
@@ -552,8 +552,8 @@ async def get_transactions(
             if date_range_start or date_range_end:
                 transactions = await handle_database_operation(
                     TransactionOperations.get_transactions_by_date_range,
-                    start_date=date_range_start or date.min,
-                    end_date=date_range_end or date.max,
+                    start_date=date_range_start or DateType.min,
+                    end_date=date_range_end or DateType.max,
                     limit=1000000,  # Very large limit to get all transactions in range
                     offset=0,
                     order_by="DESC" if sort_direction == "desc" else "ASC"
@@ -570,8 +570,8 @@ async def get_transactions(
             if date_range_start or date_range_end:
                 transactions = await handle_database_operation(
                     TransactionOperations.get_transactions_by_date_range,
-                    start_date=date_range_start or date.min,
-                    end_date=date_range_end or date.max,
+                    start_date=date_range_start or DateType.min,
+                    end_date=date_range_end or DateType.max,
                     limit=limit,
                     offset=(page - 1) * limit,
                     order_by="DESC" if sort_direction == "desc" else "ASC"
@@ -748,8 +748,8 @@ async def get_transactions(
             if date_range_start or date_range_end:
                 all_transactions_for_count = await handle_database_operation(
                     TransactionOperations.get_transactions_by_date_range,
-                    start_date=date_range_start or date.min,
-                    end_date=date_range_end or date.max,
+                    start_date=date_range_start or DateType.min,
+                    end_date=date_range_end or DateType.max,
                     limit=1000000,
                     offset=0,
                     order_by="DESC" if sort_direction == "desc" else "ASC"
@@ -1069,8 +1069,8 @@ async def predict_category(
 
 @router.get("/analytics", response_model=ApiResponse)
 async def get_expense_analytics(
-    date_range_start: Optional[date] = Query(None, description="Start date for filtering"),
-    date_range_end: Optional[date] = Query(None, description="End date for filtering"),
+    date_range_start: Optional[DateType] = Query(None, description="Start date for filtering"),
+    date_range_end: Optional[DateType] = Query(None, description="End date for filtering"),
     accounts: Optional[str] = Query(None, description="Comma-separated account names"),
     exclude_accounts: Optional[str] = Query(None, description="Comma-separated account names to exclude"),
     categories: Optional[str] = Query(None, description="Comma-separated category names"),
