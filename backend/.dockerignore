@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.git/
+*.md
+logs/
+data/statements/
+data/backups/
+data/extracted_data/
+.pytest_cache/
+tests/
+configs/secrets/
