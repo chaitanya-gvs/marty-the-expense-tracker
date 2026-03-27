@@ -1,22 +1,20 @@
 """
-Agentic-Doc Processor Service
+LandingAI ADE Processor Service
 
-This service integrates with LandingAI's agentic-doc library to extract structured data
+This service integrates with LandingAI's ADE library to extract structured data
 from PDF bank statements and save the results.
 """
 
-import asyncio
-import json
 import os
-import re
 import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any, Optional
 
 import pandas as pd
-from agentic_doc.parse import parse
+from landingai_ade import LandingAIADE
+from landingai_ade.lib import pydantic_to_json_schema
 from dotenv import load_dotenv
 
 # Add the backend directory to Python path
@@ -41,13 +39,13 @@ class DocumentExtractor:
         
         if not self.api_key:
             logger.warning("VISION_AGENT_API_KEY environment variable not set")
-            logger.warning("Agentic-doc functionality will not be available")
+            logger.warning("LandingAI ADE functionality will not be available")
             self.available = False
             return
-        
-        # Assign parse function
-        self.parse = parse
-        
+
+        # Initialize LandingAI ADE client
+        self.client = LandingAIADE(apikey=self.api_key)
+
         # Initialize GCS service for CSV uploads
         self.cloud_storage = GoogleCloudStorageService()
         
@@ -230,10 +228,10 @@ class DocumentExtractor:
             if not pdf_path.exists():
                 raise FileNotFoundError(f"PDF file not found: {pdf_path}")
             
-            logger.info(f"Processing PDF with agentic-doc: {pdf_path.name}")
-            
-            # Extract data using agentic-doc
-            logger.info("Starting extraction with agentic-doc...")
+            logger.info(f"Processing PDF with LandingAI ADE: {pdf_path.name}")
+
+            # Extract data using LandingAI ADE
+            logger.info("Starting extraction with LandingAI ADE...")
             extraction_result = self._extract_with_agentic_doc(pdf_path, account_nickname)
             
             if not extraction_result.get("success"):
@@ -247,7 +245,7 @@ class DocumentExtractor:
             # Add metadata
             extraction_result["metadata"] = {
                 "source_file": str(pdf_path),
-                "extraction_method": "agentic-doc",
+                "extraction_method": "landingai-ade",
                 "extracted_at": self._get_timestamp()
             }
             
@@ -262,16 +260,16 @@ class DocumentExtractor:
             }
     
     def _extract_with_agentic_doc(self, pdf_path: Path, account_nickname: str = None) -> Dict[str, Any]:
-        """Extract data using the agentic-doc library"""
+        """Extract data using the LandingAI ADE library"""
         filtered_path: Optional[Path] = None
         try:
-            logger.info("Calling agentic-doc parse function...")
-            
+            logger.info("Calling LandingAI ADE parse function...")
+
             # Automatically determine the extraction schema based on account nickname
             extraction_schema = self._get_schema_from_filename(pdf_path.name, account_nickname)
             if not extraction_schema:
                 raise Exception(f"No extraction schema found for account nickname: {account_nickname}")
-            
+
             logger.info(f"Using extraction schema: {extraction_schema.__name__}")
 
             # Pre-filter pages to skip non-transaction pages (covers, ads, T&Cs)
@@ -281,38 +279,49 @@ class DocumentExtractor:
             if parse_path != pdf_path:
                 filtered_path = parse_path  # track so we can clean up after parse
 
-            # Parse the document with the appropriate schema
-            file_paths = [str(parse_path)]
-            results = self.parse(file_paths, extraction_model=extraction_schema)
-            
-            if not results:
-                raise Exception("agentic-doc returned no results")
-            
-            # Process the first result (assuming single document)
-            doc_result = results[0]
-            
-            # Extract the table data
-            if hasattr(doc_result, 'extraction') and doc_result.extraction:
-                table_data = doc_result.extraction.table
-                logger.info(f"Successfully extracted transaction table with {len(table_data)} characters")
-                
-                return {
-                    "success": True,
-                    "table_data": table_data,
-                    "raw_result": doc_result,
-                    "extraction_schema": extraction_schema.__name__,
-                    "kept_pages": kept_pages,
-                    "page_filter_fallback": kept_pages == [],
-                }
-            else:
-                logger.warning("No extraction data found in agentic-doc result")
+            # Step 1: Parse PDF → markdown
+            parse_response = self.client.parse(document=parse_path, model="dpt-2-latest")
+
+            if not parse_response or not getattr(parse_response, 'markdown', None):
+                raise Exception("LandingAI ADE parse returned no markdown content")
+
+            # Step 2: Extract structured data from markdown using the schema
+            schema_json = pydantic_to_json_schema(extraction_schema)
+            extract_response = self.client.extract(
+                schema=schema_json,
+                markdown=parse_response.markdown,
+                model="extract-latest",
+            )
+
+            if not extract_response or not getattr(extract_response, 'extraction', None):
+                logger.warning("No extraction data found in LandingAI ADE result")
                 return {
                     "success": False,
-                    "error": "No extraction data found in agentic-doc result"
+                    "error": "No extraction data found in LandingAI ADE result"
                 }
-            
+
+            # .extraction is a dict in landingai-ade (not an attribute-access object)
+            table_data = extract_response.extraction.get('table')
+            if not table_data:
+                logger.warning("No table field in LandingAI ADE extraction result")
+                return {
+                    "success": False,
+                    "error": "No table field in LandingAI ADE extraction result"
+                }
+
+            logger.info(f"Successfully extracted transaction table with {len(table_data)} characters")
+
+            return {
+                "success": True,
+                "table_data": table_data,
+                "raw_result": extract_response,
+                "extraction_schema": extraction_schema.__name__,
+                "kept_pages": kept_pages,
+                "page_filter_fallback": kept_pages == [],
+            }
+
         except Exception as e:
-            logger.error("Error in agentic-doc extraction", exc_info=True)
+            logger.error("Error in LandingAI ADE extraction", exc_info=True)
             raise
         finally:
             if filtered_path is not None and filtered_path.exists():
@@ -366,62 +375,6 @@ class DocumentExtractor:
             
         except Exception as e:
             logger.error("Error saving extraction CSV", exc_info=True)
-            return None
-    
-    def _save_extraction_results(self, extraction_result: Dict[str, Any], pdf_path: Path) -> Optional[str]:
-        """Save extraction results to file"""
-        try:
-            # Create output directory
-            output_dir = Path("data/extracted_data")
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Generate output filename
-            timestamp = self._get_timestamp().replace(":", "-").replace(".", "-")
-            base_filename = f"{pdf_path.stem}_extracted_{timestamp}"
-            
-            # Save JSON results
-            json_filename = f"{base_filename}.json"
-            json_file = output_dir / json_filename
-            
-            # Prepare data for saving
-            save_data = {
-                "source_file": str(pdf_path),
-                "extraction_timestamp": self._get_timestamp(),
-                "extraction_schema": extraction_result.get("extraction_schema"),
-                "table_data": extraction_result.get("table_data"),
-                "success": extraction_result.get("success")
-            }
-            
-            # Save as JSON
-            with open(json_file, 'w', encoding='utf-8') as f:
-                json.dump(save_data, f, indent=2, ensure_ascii=False)
-            
-            logger.info(f"Saved extraction results to: {json_file}")
-            
-            # Parse HTML table and save as CSV/Excel
-            if extraction_result.get("table_data"):
-                df = self._parse_html_table_to_dataframe(extraction_result["table_data"])
-                if not df.empty:
-                    # Save as CSV
-                    csv_filename = f"{base_filename}.csv"
-                    csv_file = output_dir / csv_filename
-                    df.to_csv(csv_file, index=False, encoding='utf-8')
-                    logger.info(f"Saved CSV table to: {csv_file}")
-                    
-                    # Save as Excel
-                    excel_filename = f"{base_filename}.xlsx"
-                    excel_file = output_dir / excel_filename
-                    df.to_excel(excel_file, index=False, engine='openpyxl')
-                    logger.info(f"Saved Excel table to: {excel_file}")
-                    
-                    # Add file paths to result
-                    extraction_result["csv_file"] = str(csv_file)
-                    extraction_result["excel_file"] = str(excel_file)
-            
-            return str(json_file)
-            
-        except Exception as e:
-            logger.error("Error saving extraction results", exc_info=True)
             return None
     
     def _get_timestamp(self) -> str:

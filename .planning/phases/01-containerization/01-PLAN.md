@@ -16,6 +16,8 @@ files_modified:
   - caddy/Caddyfile
   - .env.example
   - backend/.env.example
+  - .gitignore
+  - backend/src/utils/settings.py
   - Makefile
   - scripts/migrate-data.sh
   - scripts/server-setup.sh
@@ -32,7 +34,7 @@ requirements:
 
 must_haves:
   truths:
-    - "docker compose -f docker-compose.prod.yml up -d starts all 5 services (postgres, backend, frontend, caddy, pgbackups) without errors"
+    - "docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d starts all 5 services (postgres, backend, frontend, caddy, pgbackups) without errors"
     - "curl http://<server-ip>/healthz returns {\"status\": \"ok\"} (routed through Caddy to backend)"
     - "curl http://<server-ip>/api/transactions returns a JSON array (Caddy proxies /api/* to backend:8000)"
     - "Browser loads http://<server-ip> and renders the transactions page (Caddy proxies / to frontend:3000)"
@@ -47,7 +49,7 @@ must_haves:
       provides: "Multi-stage Next.js standalone image"
       contains: "output: standalone"
     - path: "docker-compose.prod.yml"
-      provides: "Production service orchestration (postgres, backend, frontend, caddy, pgbackups)"
+      provides: "Production override (postgres, backend, frontend, caddy, pgbackups)"
     - path: "caddy/Caddyfile"
       provides: "IP-based HTTP reverse proxy routing"
     - path: "Makefile"
@@ -86,11 +88,13 @@ Output:
 - backend/Dockerfile (multi-stage, python:3.11-slim-bookworm, tesseract + poppler system deps)
 - frontend/Dockerfile (multi-stage, Next.js standalone mode)
 - frontend/next.config.ts (updated with output: 'standalone')
-- docker-compose.yml (dev base)
-- docker-compose.prod.yml (production overrides)
+- docker-compose.yml (dev base — complete service definitions)
+- docker-compose.prod.yml (production overrides — only what differs from dev)
 - caddy/Caddyfile (IP-based HTTP routing)
 - .env.example (root-level, all vars documented)
 - backend/.env.example (backend-specific vars)
+- .gitignore (ensure .env is listed)
+- backend/src/utils/settings.py (add VISION_AGENT_API_KEY field)
 - Makefile (up/down/deploy/logs/backup/migrate/shell targets)
 - scripts/migrate-data.sh (pg_dump → scp → pg_restore procedure)
 - scripts/server-setup.sh (Hetzner Ubuntu 22.04 bootstrap)
@@ -121,7 +125,7 @@ From backend/src/utils/settings.py:
 - DB defaults: DB_HOST=localhost, DB_PORT=5432, DB_NAME=expense_tracker, DB_USER=chaitanya
 - GOOGLE_CLIENT_SECRET_FILE defaults to None — set to /app/configs/secrets/client_secret.json in container
 - GOOGLE_APPLICATION_CREDENTIALS — set to /run/secrets/gcs_key in container
-- VISION_AGENT_API_KEY is NOT in settings.py yet — needs adding as str | None = None
+- VISION_AGENT_API_KEY is NOT in settings.py yet — needs adding as str | None = None (Task 5 handles this)
 - SPLITWISE_CONSUMER_KEY and SPLITWISE_CONSUMER_SECRET referenced in configs/.env comment — not in settings.py class, but pydantic extra="ignore" means they won't error, just unused via Settings
 
 From backend/src/utils/logger.py:
@@ -150,6 +154,13 @@ DB name discrepancy:
 From backend/main.py:
 - allow_origins=["*"] — note this in .env.example as CORS_ORIGINS var to add to settings for future hardening; do NOT change main.py in this plan (separate concern)
 - /healthz endpoint exists at root (not /api/healthz) — Caddy routes /healthz directly to backend:8000
+
+Compose file relationship (important):
+- docker-compose.yml is the COMPLETE base with all service definitions (used for dev with bind mounts)
+- docker-compose.prod.yml is a PARTIAL override — only fields that differ in production
+- Production is launched with BOTH files: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+- The Makefile COMPOSE variable must be: docker compose -f docker-compose.yml -f docker-compose.prod.yml
+- Running docker-compose.prod.yml alone is INVALID — it is not a standalone compose file
 </interfaces>
 
 <tasks>
@@ -252,13 +263,13 @@ configs/secrets/
 Note: `configs/secrets/` is excluded so secret files are never in the build context. They are bind-mounted at runtime in docker-compose.prod.yml.
   </action>
   <verify>
-    <automated>cd /Users/chaitanya/Documents/Dev/personal-projects/expense-tracker && docker build -t expense-backend-test ./backend && docker rmi expense-backend-test</automated>
+    <automated>cd /Users/chaitanya/Documents/Dev/personal-projects/expense-tracker && docker build -t expense-backend-test ./backend && docker run --rm --entrypoint="" expense-backend-test ls -la /app/entrypoint.sh && docker rmi expense-backend-test</automated>
   </verify>
   <done>
     - backend/Dockerfile builds successfully with `docker build ./backend`
     - Image contains tesseract-ocr: `docker run --rm expense-backend-test tesseract --version` shows version output
     - Image contains poppler: `docker run --rm expense-backend-test pdfinfo --version` shows version
-    - entrypoint.sh is executable in the image
+    - entrypoint.sh is executable in the image: `docker run --rm --entrypoint="" expense-backend-test ls -la /app/entrypoint.sh` shows `-rwxr-xr-x`
     - configs/secrets/ is not in the image (verified by checking .dockerignore)
   </done>
 </task>
@@ -362,20 +373,22 @@ node_modules/
 </task>
 
 <task type="auto">
-  <name>Task 3: Docker Compose files (base + prod)</name>
+  <name>Task 3: Docker Compose files (base + prod override)</name>
   <files>
     docker-compose.yml
     docker-compose.prod.yml
   </files>
   <action>
-Create two files at the repo root:
+Create two files at the repo root. IMPORTANT: These two files work together as base + override. Production is always launched with BOTH files: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`. Running docker-compose.prod.yml alone will fail — it is not a standalone file.
 
-**docker-compose.yml** — Dev/base configuration using bind mounts and hot reload. Defines the service topology that docker-compose.prod.yml overrides.
+**docker-compose.yml** — COMPLETE dev/base configuration. Defines the full service topology. In production, docker-compose.prod.yml overrides only what differs.
+
+The dev backend volume bind-mount must NOT mount `./backend:/app` wholesale — that would overwrite the container's .venv with the host directory. Instead, mount only source files and use a named volume for .venv:
 
 ```yaml
 # docker-compose.yml — Development / Base
-# Used locally with bind mounts and hot reload.
-# Production uses docker-compose.prod.yml which overrides this file.
+# Complete service definitions. Used as-is for local dev with bind mounts and hot reload.
+# Production uses BOTH files: docker compose -f docker-compose.yml -f docker-compose.prod.yml
 services:
   postgres:
     image: postgres:16-alpine
@@ -401,7 +414,13 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     volumes:
-      - ./backend:/app
+      # Mount only source files — avoids overwriting the container's .venv
+      - ./backend/src:/app/src
+      - ./backend/main.py:/app/main.py
+      - ./backend/alembic.ini:/app/alembic.ini
+      - ./backend/configs:/app/configs
+      # Named volume preserves the container's .venv across restarts
+      - venv_data:/app/.venv
       - backend_logs:/app/logs
     environment:
       - APP_ENV=dev
@@ -440,25 +459,34 @@ networks:
 volumes:
   postgres_data:
   backend_logs:
+  venv_data:
 ```
 
-**docker-compose.prod.yml** — Production overrides. Only Caddy has `ports:` entries — backend and frontend are internal-only (prevents Docker from exposing them around UFW).
+**docker-compose.prod.yml** — PARTIAL production override. Only contains fields that differ from docker-compose.yml. Must be used together with docker-compose.yml — never alone. The Makefile COMPOSE variable handles this automatically.
+
+In production: backend and frontend have no host ports (only Caddy is externally reachable). Backend uses image bind-mounts for secrets only (no source files — the image is used as built). Caddy and pgbackups services are added here since they don't exist in the dev base.
 
 ```yaml
 # docker-compose.prod.yml — Production overrides
-# Run with: docker compose -f docker-compose.prod.yml up -d
-# Or via: make up / make deploy
+# IMPORTANT: This is an OVERRIDE file, not a standalone compose file.
+# Always use with the base: docker compose -f docker-compose.yml -f docker-compose.prod.yml
+# The Makefile COMPOSE variable handles this automatically.
 services:
   postgres:
     restart: unless-stopped
-    # No ports: — postgres is internal-only in production
+    ports: []  # No host ports in production — postgres is internal-only
 
   backend:
     restart: unless-stopped
-    # No bind mount — use image as built
+    # In production: no source bind-mounts, use image as built.
+    # Only secrets and logs volumes are mounted.
     volumes:
       - ./backend/configs/secrets/gcs_service_account_key.json:/run/secrets/gcs_key:ro
       - ./backend/configs/secrets/client_secret.json:/app/configs/secrets/client_secret.json:ro
+      # Secondary Gmail account client secret. If secondary account is unused,
+      # create an empty file to avoid mount errors:
+      #   touch backend/configs/secrets/client_secret_2.json
+      - ./backend/configs/secrets/client_secret_2.json:/app/configs/secrets/client_secret_2.json:ro
       - backend_logs:/app/logs
     environment:
       - APP_ENV=production
@@ -481,7 +509,7 @@ services:
       - GOOGLE_CLIENT_ID_2=${GOOGLE_CLIENT_ID_2}
       - GOOGLE_CLIENT_SECRET_2=${GOOGLE_CLIENT_SECRET_2}
       - GOOGLE_REFRESH_TOKEN_2=${GOOGLE_REFRESH_TOKEN_2}
-      - GOOGLE_CLIENT_SECRET_FILE_2=${GOOGLE_CLIENT_SECRET_FILE_2}
+      - GOOGLE_CLIENT_SECRET_FILE_2=/app/configs/secrets/client_secret_2.json
       - SPLITWISE_CONSUMER_KEY=${SPLITWISE_CONSUMER_KEY}
       - SPLITWISE_CONSUMER_SECRET=${SPLITWISE_CONSUMER_SECRET}
       - CURRENT_USER_NAMES=${CURRENT_USER_NAMES:-me,chaitanya gvs,chaitanya}
@@ -548,14 +576,20 @@ volumes:
 Note on `ports: []` pattern: In docker-compose.prod.yml overrides, setting `ports: []` on backend and frontend removes the host port bindings from the base file. Only Caddy exposes 80/443 to the host. This means even if UFW is misconfigured, the backend and database are not reachable from outside.
   </action>
   <verify>
-    <automated>cd /Users/chaitanya/Documents/Dev/personal-projects/expense-tracker && docker compose -f docker-compose.prod.yml config --quiet && echo "Compose config valid"</automated>
+    <automated>cd /Users/chaitanya/Documents/Dev/personal-projects/expense-tracker && docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet && echo "Compose config valid"</automated>
   </verify>
   <done>
-    - docker-compose.yml and docker-compose.prod.yml both parse without errors (`docker compose config`)
+    - docker-compose.yml is a complete standalone file (parseable alone)
+    - docker-compose.prod.yml is a partial override (only overrides what differs from dev)
+    - Both files together parse without errors: `docker compose -f docker-compose.yml -f docker-compose.prod.yml config`
     - Production compose has exactly one service with `ports:` (caddy)
     - postgres, backend, frontend all have `networks: internal` or inherit it
     - pgbackups service is present with BACKUP_ON_START=TRUE and daily schedule
     - backend depends_on postgres with condition: service_healthy
+    - client_secret_2.json has a volume mount in the backend service in docker-compose.prod.yml
+    - GOOGLE_CLIENT_SECRET_FILE_2 is set to /app/configs/secrets/client_secret_2.json (not a raw env var passthrough)
+    - dev backend volumes mount src/, main.py, alembic.ini, configs/ separately (not ./backend:/app wholesale)
+    - venv_data named volume is declared to preserve .venv in dev
   </done>
 </task>
 
@@ -609,13 +643,24 @@ Note: When a domain is added, the TLS upgrade is a 1-line change: replace `:80 {
 </task>
 
 <task type="auto">
-  <name>Task 5: Environment configuration — .env.example files</name>
+  <name>Task 5: Environment configuration, .gitignore, and settings.py VISION_AGENT_API_KEY</name>
   <files>
     .env.example
     backend/.env.example
+    .gitignore
+    backend/src/utils/settings.py
   </files>
   <action>
-Create two .env.example files documenting all required environment variables. These are committed to git. The actual .env file lives only on the server.
+Create/update four files:
+
+**backend/src/utils/settings.py** — Add `VISION_AGENT_API_KEY` field to the Settings class. Read the existing file first, then add the field after `SENTRY_DSN`. This makes the field explicit in Settings rather than silently None via pydantic's extra="ignore":
+
+```python
+SENTRY_DSN: str | None = None
+VISION_AGENT_API_KEY: str | None = None
+```
+
+Add only this one line after the SENTRY_DSN field. Do not modify anything else in settings.py.
 
 **.env.example** — Root-level, covers all variables consumed by docker-compose.prod.yml. This is what you copy to `.env` on the server and fill in.
 
@@ -679,7 +724,9 @@ GOOGLE_REDIRECT_URI=http://localhost:8000/api/mail/oauth/callback
 GOOGLE_CLIENT_ID_2=
 GOOGLE_CLIENT_SECRET_2=
 GOOGLE_REFRESH_TOKEN_2=
-GOOGLE_CLIENT_SECRET_FILE_2=
+# GOOGLE_CLIENT_SECRET_FILE_2 is set to /app/configs/secrets/client_secret_2.json in compose
+# If secondary account is unused, create an empty placeholder:
+#   touch backend/configs/secrets/client_secret_2.json
 
 # ============================================================
 # Splitwise
@@ -750,19 +797,23 @@ CURRENT_USER_NAMES=me,chaitanya gvs,chaitanya
 SENTRY_DSN=
 ```
 
-Also add `.env` to the repo root `.gitignore` if not already present:
-```bash
-# Check and add to .gitignore at repo root
-echo ".env" >> .gitignore  # only if not already there
+**.gitignore** — Ensure `.env` is listed at the repo root. Read the existing .gitignore first. If `.env` is not already present as a standalone line (not `.env.example`, not `.env.local`), add it explicitly:
+
 ```
+# Secrets — never commit the server environment file
+.env
+```
+
+This is a REQUIRED security step. The actual server `.env` file (copied from `.env.example` and filled with real secrets) must never be committed. Verify the addition with: `grep -q '^\.env$' .gitignore && echo "OK" || echo "MISSING"`
   </action>
   <verify>
-    <automated>ls /Users/chaitanya/Documents/Dev/personal-projects/expense-tracker/.env.example && ls /Users/chaitanya/Documents/Dev/personal-projects/expense-tracker/backend/.env.example && echo "Both .env.example files exist"</automated>
+    <automated>ls /Users/chaitanya/Documents/Dev/personal-projects/expense-tracker/.env.example && ls /Users/chaitanya/Documents/Dev/personal-projects/expense-tracker/backend/.env.example && grep -q '^\.env$' /Users/chaitanya/Documents/Dev/personal-projects/expense-tracker/.gitignore && echo ".env is in .gitignore" && grep -q 'VISION_AGENT_API_KEY' /Users/chaitanya/Documents/Dev/personal-projects/expense-tracker/backend/src/utils/settings.py && echo "VISION_AGENT_API_KEY in settings.py"</automated>
   </verify>
   <done>
     - .env.example at repo root covers all vars consumed by docker-compose.prod.yml (SERVER_IP, POSTGRES_*, OPENAI_API_KEY, VISION_AGENT_API_KEY, all GOOGLE_* vars, SPLITWISE_*)
     - backend/.env.example documents local dev var layout across configs/.env and configs/secrets/.env
-    - .env is in .gitignore (so the actual server secrets file is never committed)
+    - .env is in .gitignore as a standalone line (grep -q '^\.env$' .gitignore returns 0)
+    - backend/src/utils/settings.py has VISION_AGENT_API_KEY: str | None = None field after SENTRY_DSN
   </done>
 </task>
 
@@ -772,18 +823,22 @@ echo ".env" >> .gitignore  # only if not already there
     Makefile
   </files>
   <action>
-Create Makefile at the repo root. All production targets use docker-compose.prod.yml. Tabs are required in Makefile rules (not spaces).
+Create Makefile at the repo root. All production targets use BOTH compose files (base + override). Tabs are required in Makefile rules (not spaces).
+
+CRITICAL: The `COMPOSE` variable MUST reference both compose files. Using only `-f docker-compose.prod.yml` would fail because docker-compose.prod.yml is a partial override file, not a standalone compose file. The complete base (docker-compose.yml) is always required.
 
 ```makefile
 # Makefile
 # Ops commands for the expense tracker Docker deployment.
-# All targets use docker-compose.prod.yml (production).
+# All targets use both compose files: docker-compose.yml (base) + docker-compose.prod.yml (overrides).
 # Run from the repo root on the server.
 
 .PHONY: up down deploy restart logs logs-backend logs-frontend \
         backup migrate shell-backend shell-db caddy-reload ps
 
-COMPOSE = docker compose -f docker-compose.prod.yml
+# IMPORTANT: Both files are required.
+# docker-compose.prod.yml is a partial override — it cannot be used alone.
+COMPOSE = docker compose -f docker-compose.yml -f docker-compose.prod.yml
 
 # Start all services in detached mode
 up:
@@ -848,7 +903,7 @@ ps:
   </verify>
   <done>
     - Makefile exists at repo root
-    - All targets use `docker compose -f docker-compose.prod.yml` (Compose V2, no hyphen)
+    - COMPOSE variable is `docker compose -f docker-compose.yml -f docker-compose.prod.yml` (both files, Compose V2)
     - `make deploy` runs: git pull, docker compose build --no-cache, docker compose up -d
     - `make migrate` runs alembic upgrade head in the running backend container
     - `make shell-db` opens psql with env vars from the running compose stack
@@ -917,16 +972,16 @@ echo ""
 echo "  ssh ${SERVER_USER}@${SERVER_IP}"
 echo ""
 echo "  # Create DB if it doesn't exist yet:"
-echo "  docker compose -f docker-compose.prod.yml exec postgres \\"
+echo "  docker compose -f docker-compose.yml -f docker-compose.prod.yml exec postgres \\"
 echo "    psql -U \${POSTGRES_USER} -c 'CREATE DATABASE \${POSTGRES_DB};'"
 echo ""
 echo "  # Restore:"
-echo "  docker compose -f docker-compose.prod.yml exec -T postgres \\"
+echo "  docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres \\"
 echo "    pg_restore --verbose --clean --no-owner --no-acl \\"
 echo "    -U \${POSTGRES_USER} -d \${POSTGRES_DB} < ${REMOTE_DEST}"
 echo ""
 echo "  # Verify tables exist:"
-echo "  docker compose -f docker-compose.prod.yml exec postgres \\"
+echo "  docker compose -f docker-compose.yml -f docker-compose.prod.yml exec postgres \\"
 echo "    psql -U \${POSTGRES_USER} -d \${POSTGRES_DB} -c '\dt'"
 echo ""
 echo "  # Clean up dump file:"
@@ -936,6 +991,8 @@ echo "=== Done: dump is at ${REMOTE_DEST} on the server ==="
 ```
 
 **scripts/server-setup.sh** — Run once on a fresh Hetzner Ubuntu 22.04 VPS to install Docker, configure UFW, and set up the deploy directory. Run as root or a user with sudo.
+
+The scp step in the "Next steps" output copies ALL `*.json` files from `backend/configs/secrets/` — this covers both `client_secret.json` and `client_secret_2.json` (and the GCS key). If `client_secret_2.json` doesn't exist yet, create an empty placeholder before running: `touch backend/configs/secrets/client_secret_2.json`.
 
 ```bash
 #!/bin/bash
@@ -1010,8 +1067,10 @@ echo "  1. git clone <repo-url> /opt/expense-tracker"
 echo "  2. cd /opt/expense-tracker"
 echo "  3. cp .env.example .env && nano .env  # fill in all values"
 echo "  4. mkdir -p backend/configs/secrets"
-echo "  5. # Copy gcs_service_account_key.json and client_secret.json to backend/configs/secrets/"
-echo "     # scp from Mac: scp backend/configs/secrets/*.json root@<server-ip>:/opt/expense-tracker/backend/configs/secrets/"
+echo "  5. # Copy ALL secret JSON files from Mac to server:"
+echo "     # scp backend/configs/secrets/*.json root@<server-ip>:/opt/expense-tracker/backend/configs/secrets/"
+echo "     # This copies: gcs_service_account_key.json, client_secret.json, client_secret_2.json"
+echo "     # If client_secret_2.json doesn't exist: touch backend/configs/secrets/client_secret_2.json"
 echo "  6. make deploy"
 ```
 
@@ -1025,6 +1084,8 @@ Make both scripts executable by including a note in the action — the chmod wil
     - scripts/server-setup.sh exists, has valid bash syntax, installs Docker via official repo method, configures UFW for ports 22/80/443 only
     - Both scripts have usage comments at the top explaining how to run them
     - migrate-data.sh includes the "verify local DB name with psql -l" step (addresses the DB name discrepancy between settings.py default and actual running DB)
+    - migrate-data.sh uses `docker compose -f docker-compose.yml -f docker-compose.prod.yml` (consistent with Makefile COMPOSE variable)
+    - server-setup.sh "Next steps" scp instruction uses `*.json` glob to copy all secret files including client_secret_2.json
   </done>
 </task>
 
@@ -1041,12 +1102,18 @@ After all tasks complete, verify the full deployment configuration:
    docker rmi test-backend test-frontend
    ```
 
-2. Compose config parses without errors:
+2. entrypoint.sh is executable in the backend image:
    ```bash
-   docker compose -f docker-compose.prod.yml config --quiet && echo "Valid"
+   docker run --rm --entrypoint="" test-backend ls -la /app/entrypoint.sh
+   # Should show: -rwxr-xr-x
    ```
 
-3. File inventory check — all required files exist:
+3. Compose config parses without errors (both files required):
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet && echo "Valid"
+   ```
+
+4. File inventory check — all required files exist:
    ```bash
    ls backend/Dockerfile backend/entrypoint.sh backend/.dockerignore \
       frontend/Dockerfile frontend/.dockerignore \
@@ -1058,7 +1125,7 @@ After all tasks complete, verify the full deployment configuration:
       scripts/migrate-data.sh scripts/server-setup.sh
    ```
 
-4. Key content assertions:
+5. Key content assertions:
    - `grep -q "python:3.11-slim-bookworm" backend/Dockerfile`
    - `grep -q "tesseract-ocr-eng" backend/Dockerfile`
    - `grep -q "libgl1" backend/Dockerfile` (PyMuPDF dependency)
@@ -1071,8 +1138,13 @@ After all tasks complete, verify the full deployment configuration:
    - `grep -q "BACKUP_ON_START=TRUE" docker-compose.prod.yml`
    - `grep -q "reverse_proxy backend:8000" caddy/Caddyfile`
    - `grep -q "git pull" Makefile`
+   - `grep -q "docker-compose.yml -f docker-compose.prod.yml" Makefile`
+   - `grep -q "client_secret_2.json" docker-compose.prod.yml`
+   - `grep -q '^\.env$' .gitignore`
+   - `grep -q "VISION_AGENT_API_KEY" backend/src/utils/settings.py`
+   - `grep -q "venv_data" docker-compose.yml`
 
-5. Makefile dry-run:
+6. Makefile dry-run:
    ```bash
    make -n deploy && make -n migrate && make -n backup
    ```
@@ -1081,16 +1153,24 @@ After all tasks complete, verify the full deployment configuration:
 <success_criteria>
 This plan is complete when:
 
-- All 8 files (Dockerfiles, compose files, Caddyfile, .env.examples, Makefile, scripts) exist at the correct paths
+- All files exist at the correct paths (Dockerfiles, compose files, Caddyfile, .env.examples, Makefile, scripts)
 - `docker build ./backend` succeeds (multi-stage, ~800MB image with tesseract + poppler)
 - `docker build --build-arg NEXT_PUBLIC_API_URL=http://localhost/api ./frontend` succeeds (multi-stage, ~200MB standalone image)
-- `docker compose -f docker-compose.prod.yml config` reports no errors
-- `make -n deploy` outputs the expected git pull + build + up sequence
+- entrypoint.sh shows `-rwxr-xr-x` inside the backend image
+- `docker compose -f docker-compose.yml -f docker-compose.prod.yml config` reports no errors
+- `make -n deploy` outputs the expected git pull + build + up sequence using both compose files
 - All critical env vars documented in .env.example (SERVER_IP, POSTGRES_*, all GOOGLE_* vars, OPENAI_API_KEY, VISION_AGENT_API_KEY, SPLITWISE_*)
 - next.config.ts contains `output: 'standalone'`
 - Only caddy has `ports:` in docker-compose.prod.yml
+- Makefile COMPOSE variable uses both `-f docker-compose.yml -f docker-compose.prod.yml`
+- docker-compose.prod.yml has volume mount for client_secret_2.json in backend service
+- GOOGLE_CLIENT_SECRET_FILE_2 is hardcoded to /app/configs/secrets/client_secret_2.json (not a passthrough)
+- .env is in root .gitignore as a standalone line
+- backend/src/utils/settings.py has VISION_AGENT_API_KEY: str | None = None
+- dev docker-compose.yml backend volumes mount src files individually (not ./backend:/app wholesale)
 - migrate-data.sh script includes the "check psql -l first" step for DB name verification
 - server-setup.sh installs Docker via official repo method and configures UFW for 22/80/443 only
+- server-setup.sh "Next steps" scp instruction uses `*.json` to copy all secret files
 </success_criteria>
 
 <output>
