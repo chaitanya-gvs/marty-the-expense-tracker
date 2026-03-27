@@ -57,8 +57,7 @@ export function useCreateCategory() {
       queryClient.invalidateQueries({ queryKey: CATEGORIES_QUERY_KEY });
       toast.success("Category created successfully");
     },
-    onError: (error: any) => {
-      console.error("Failed to create category:", error);
+    onError: () => {
       toast.error("Failed to create category");
     },
   });
@@ -86,8 +85,7 @@ export function useUpdateCategory() {
       queryClient.invalidateQueries({ queryKey: CATEGORIES_QUERY_KEY });
       toast.success("Category updated successfully");
     },
-    onError: (error: any) => {
-      console.error("Failed to update category:", error);
+    onError: () => {
       toast.error("Failed to update category");
     },
   });
@@ -103,8 +101,7 @@ export function useDeleteCategory() {
       queryClient.invalidateQueries({ queryKey: CATEGORIES_QUERY_KEY });
       toast.success("Category deleted successfully");
     },
-    onError: (error: any) => {
-      console.error("Failed to delete category:", error);
+    onError: () => {
       toast.error("Failed to delete category");
     },
   });
@@ -126,8 +123,7 @@ export function useUpsertCategory() {
       queryClient.invalidateQueries({ queryKey: CATEGORIES_QUERY_KEY });
       toast.success("Category saved successfully");
     },
-    onError: (error: any) => {
-      console.error("Failed to save category:", error);
+    onError: () => {
       toast.error("Failed to save category");
     },
   });

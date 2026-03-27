@@ -84,6 +84,7 @@ export function SplitEditor({ amount, splitBreakdown, onSave, onCancel }: SplitE
     const splitBreakdown: SplitBreakdown = {
       mode,
       participants,
+      entries: [],
       include_me: includeMe,
       ...(mode === "custom" && { custom_amounts: customAmounts })
     };

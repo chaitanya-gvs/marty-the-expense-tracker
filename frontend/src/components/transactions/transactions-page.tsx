@@ -83,8 +83,8 @@ export function TransactionsPage() {
   useEffect(() => {
     try {
       localStorage.setItem('transaction-filters', JSON.stringify(filters));
-    } catch (error) {
-      console.error('Error saving filters to localStorage:', error);
+    } catch {
+      // Swallow localStorage write errors silently
     }
   }, [filters]);
 
@@ -110,16 +110,12 @@ export function TransactionsPage() {
     [data]
   );
 
-  // Compute stats
-  const { totalDebits, totalCredits, net, count } = useMemo(() => {
-    const getEffectiveAmount = (t: typeof allTransactions[0]) => {
-      if (!t) return 0;
-      return t.is_shared && t.split_share_amount ? t.split_share_amount : (t.amount || 0);
-    };
-    const debits = allTransactions.filter(t => t?.direction === 'debit').reduce((s, t) => s + getEffectiveAmount(t), 0);
-    const credits = allTransactions.filter(t => t?.direction === 'credit').reduce((s, t) => s + getEffectiveAmount(t), 0);
-    return { totalDebits: debits, totalCredits: credits, net: credits - debits, count: allTransactions.length };
-  }, [allTransactions]);
+  // Stats come from the first page's pagination metadata (computed server-side over the full filtered set)
+  const firstPagePagination = data?.pages?.[0]?.pagination;
+  const totalDebits = firstPagePagination?.total_debits ?? 0;
+  const totalCredits = firstPagePagination?.total_credits ?? 0;
+  const net = totalCredits - totalDebits;
+  const count = firstPagePagination?.total ?? allTransactions.length;
 
   // Active filter chips
   const activeFilterKeys = useMemo(() => {

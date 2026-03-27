@@ -78,8 +78,7 @@ export function RelatedTransactionsDrawer({
       onUnlink();
       onClose();
       toast.success("Refund unlinked successfully");
-    } catch (error) {
-      console.error("Failed to unlink refund:", error);
+    } catch {
       toast.error("Failed to unlink refund");
     }
   };
@@ -100,8 +99,7 @@ export function RelatedTransactionsDrawer({
         onUngroup();
         onClose();
       }
-    } catch (error) {
-      console.error("Failed to ungroup:", error);
+    } catch {
       toast.error(mode === "split" ? "Failed to remove split" : mode === "groupedExpense" ? "Failed to ungroup expense" : "Failed to ungroup transfer");
     }
   };
@@ -110,8 +108,7 @@ export function RelatedTransactionsDrawer({
     try {
       onRemoveFromGroup(transactionId);
       toast.success("Transaction removed from transfer group");
-    } catch (error) {
-      console.error("Failed to remove from group:", error);
+    } catch {
       toast.error("Failed to remove from group");
     }
   };
@@ -122,8 +119,7 @@ export function RelatedTransactionsDrawer({
         await onUnlinkChild(childId);
         toast.success("Refund unlinked successfully");
       }
-    } catch (error) {
-      console.error("Failed to unlink refund:", error);
+    } catch {
       toast.error("Failed to unlink refund");
     }
   };

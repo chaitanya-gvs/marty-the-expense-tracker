@@ -51,8 +51,8 @@ export function TransactionInlineEdit({
         return;
       }
 
-      let updateValue: any = valueToSave;
-      const updates: Record<string, any> = { [field]: updateValue };
+      let updateValue: string | number | boolean = valueToSave;
+      const updates: Record<string, string | number | boolean> = { [field]: updateValue };
 
       // Convert value based on field type
       if (field === "amount" || field === "split_share_amount") {
@@ -80,8 +80,8 @@ export function TransactionInlineEdit({
             updates.category = prediction.data.name;
             toast.info(`Auto-categorized as ${prediction.data.name}`);
           }
-        } catch (err) {
-          console.error("Failed to predict category", err);
+        } catch {
+          // Category prediction failure is non-critical
         }
       }
 
@@ -92,9 +92,8 @@ export function TransactionInlineEdit({
 
       toast.success("Transaction updated successfully");
       onSuccess();
-    } catch (error) {
+    } catch {
       toast.error("Failed to update transaction");
-      console.error("Update error:", error);
     }
   };
 

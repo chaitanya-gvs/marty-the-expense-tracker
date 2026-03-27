@@ -50,10 +50,6 @@ export function InlineTagDropdown({
   const [searchQuery, setSearchQuery] = useState("");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
 
-  // Debug: Log when showCreateDialog changes
-  useEffect(() => {
-    console.log("showCreateDialog changed to:", showCreateDialog);
-  }, [showCreateDialog]);
   const [newTag, setNewTag] = useState({
     name: "",
     color: "#3B82F6",
@@ -126,7 +122,7 @@ export function InlineTagDropdown({
       });
 
       // The backend returns {id: tag_id}, so we need to fetch the full tag
-      const tagId = response.data?.id || (response.data as any)?.id;
+      const tagId = response.data?.id || (response.data as { id?: string })?.id;
 
       if (!tagId) {
         throw new Error("Tag ID not returned from server");
@@ -137,8 +133,7 @@ export function InlineTagDropdown({
       try {
         const tagResponse = await apiClient.getTag(tagId);
         createdTag = tagResponse.data;
-      } catch (fetchError) {
-        console.error("Failed to fetch created tag:", fetchError);
+      } catch {
         // Fallback: create a temporary tag object
         createdTag = {
           id: tagId,
@@ -161,10 +156,9 @@ export function InlineTagDropdown({
         name: "",
         color: "#3B82F6",
       });
-    } catch (error: any) {
-      const errorMessage = error?.response?.data?.detail || error?.message || "Failed to create tag";
+    } catch (error: unknown) {
+      const errorMessage = (error as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail || (error as { message?: string })?.message || "Failed to create tag";
       toast.error(errorMessage);
-      console.error("Create tag error:", error);
     }
   };
 
@@ -205,9 +199,8 @@ export function InlineTagDropdown({
       toast.success("Tag updated successfully");
       setEditingTag(null);
       setEditForm({ name: "", color: "#3B82F6" });
-    } catch (error) {
+    } catch {
       toast.error("Failed to update tag");
-      console.error("Update tag error:", error);
     }
   };
 
@@ -219,9 +212,8 @@ export function InlineTagDropdown({
       setSelectedTags(selectedTags.filter(tag => tag.id !== tagId));
 
       toast.success(`Tag "${tagName}" deleted successfully`);
-    } catch (error) {
+    } catch {
       toast.error(`Failed to delete tag "${tagName}"`);
-      console.error("Delete tag error:", error);
     }
   };
 
@@ -247,9 +239,8 @@ export function InlineTagDropdown({
       } else if (andNavigate === 'previous') {
         onTabPrevious?.();
       }
-    } catch (error) {
+    } catch {
       toast.error("Failed to update tags");
-      console.error("Update tags error:", error);
     }
   };
 
@@ -437,7 +428,7 @@ export function InlineTagDropdown({
                             <AlertDialogHeader>
                               <AlertDialogTitle>Delete Tag</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Are you sure you want to delete the tag "{tag.name}"?
+                                Are you sure you want to delete the tag &quot;{tag.name}&quot;?
                                 {tag.usage_count && tag.usage_count > 0 && (
                                   <span className="block mt-2 text-amber-600 dark:text-amber-400 font-medium">
                                     ⚠️ This tag is currently used in {tag.usage_count} transaction{tag.usage_count === 1 ? '' : 's'}.
@@ -468,11 +459,9 @@ export function InlineTagDropdown({
             <div
               className="pt-2 border-t border-gray-100 dark:border-gray-700"
               onClick={(e) => {
-                console.log("Create Tag button container clicked!", e);
                 e.stopPropagation();
               }}
               onMouseDown={(e) => {
-                console.log("Create Tag button container mouseDown!", e);
                 e.stopPropagation();
               }}
             >

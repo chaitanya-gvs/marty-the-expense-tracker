@@ -114,9 +114,8 @@ export function TransactionEditModal({
 
       toast.success("Transaction updated successfully");
       onClose();
-    } catch (error) {
+    } catch {
       toast.error("Failed to update transaction");
-      console.error("Update error:", error);
     }
   };
 
@@ -188,8 +187,8 @@ export function TransactionEditModal({
                             handleInputChange("category", prediction.data.name);
                             toast.info(`Auto-categorized as ${prediction.data.name}`);
                           }
-                        } catch (err) {
-                          console.error("Prediction failed", err);
+                        } catch {
+                          // Prediction failure is non-critical
                         }
                       }
                     }}
@@ -351,7 +350,7 @@ export function TransactionEditModal({
                   try {
                     await apiClient.groupTransfer(transactionIds);
                     toast.success(`Grouped ${transactionIds.length} transactions as a transfer`);
-                  } catch (error) {
+                  } catch {
                     toast.error("Failed to group transfer");
                   }
                 }}
@@ -362,7 +361,7 @@ export function TransactionEditModal({
                       updates: { transaction_group_id: undefined },
                     });
                     toast.success("Transfer ungrouped successfully");
-                  } catch (error) {
+                  } catch {
                     toast.error("Failed to ungroup transfer");
                   }
                 }}
@@ -377,7 +376,7 @@ export function TransactionEditModal({
                     );
                     await Promise.all(updatePromises);
                     toast.success(`Added ${transactionIds.length} transactions to transfer group`);
-                  } catch (error) {
+                  } catch {
                     toast.error("Failed to add to transfer group");
                   }
                 }}
@@ -388,7 +387,7 @@ export function TransactionEditModal({
                       updates: { transaction_group_id: undefined },
                     });
                     toast.success("Transaction removed from transfer group");
-                  } catch (error) {
+                  } catch {
                     toast.error("Failed to remove from transfer group");
                   }
                 }}

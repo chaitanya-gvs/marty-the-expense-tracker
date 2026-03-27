@@ -16,9 +16,10 @@ import { useAccounts } from "@/hooks/use-accounts";
 import { useParticipants } from "@/hooks/use-participants";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useLocalStorage } from "@/hooks/use-local-storage";
 
 // Helper to check if two arrays are equal
-function arraysEqual(a: any[] | undefined, b: any[] | undefined) {
+function arraysEqual(a: string[] | undefined, b: string[] | undefined) {
   if (a === b) return true;
   const arrA = a || [];
   const arrB = b || [];
@@ -26,34 +27,6 @@ function arraysEqual(a: any[] | undefined, b: any[] | undefined) {
   const sortedA = [...arrA].sort();
   const sortedB = [...arrB].sort();
   return sortedA.every((val, index) => val === sortedB[index]);
-}
-
-// Custom hook for localStorage persistence
-function useLocalStorage<T>(key: string, initialValue: T) {
-  const [storedValue, setStoredValue] = useState<T>(initialValue);
-
-  useEffect(() => {
-    try {
-      const item = window.localStorage.getItem(key);
-      if (item) {
-        setStoredValue(JSON.parse(item));
-      }
-    } catch (error) {
-      console.error(`Error loading ${key} from localStorage:`, error);
-    }
-  }, [key]);
-
-  const setValue = (value: T | ((val: T) => T)) => {
-    try {
-      const valueToStore = value instanceof Function ? value(storedValue) : value;
-      setStoredValue(valueToStore);
-      window.localStorage.setItem(key, JSON.stringify(valueToStore));
-    } catch (error) {
-      console.error(`Error saving ${key} to localStorage:`, error);
-    }
-  };
-
-  return [storedValue, setValue] as const;
 }
 
 interface TransactionFiltersProps {
@@ -117,31 +90,12 @@ export function TransactionFilters({
   const { data: accounts = [], isLoading: accountsLoading, error: accountsError } = useAccounts();
   const { participants = [], isLoading: participantsLoading } = useParticipants(participantSearchQuery);
 
-  // Log for debugging
-  useEffect(() => {
-    if (accountsError) {
-      console.error("Error fetching accounts:", accountsError);
-    }
-    if (accounts.length > 0) {
-      console.log("Accounts loaded:", accounts);
-    }
-  }, [accounts, accountsError]);
 
-  const updateFilter = (key: keyof TransactionFilters, value: any) => {
+  const updateFilter = (key: keyof TransactionFilters, value: TransactionFilters[keyof TransactionFilters]) => {
     onFiltersChange({ ...filters, [key]: value });
   };
 
   const applyAllFilters = () => {
-    console.log("🔄 Applying filters...", {
-      searchInput,
-      amountMinInput,
-      amountMaxInput,
-      dateRangeStartInput,
-      dateRangeEndInput,
-      selectedCategories,
-      selectedTags
-    });
-
     // Build the complete filter object
     const newFilters: TransactionFilters = { ...filters };
 
@@ -277,9 +231,6 @@ export function TransactionFilters({
 
     if (filtersChanged) {
       onFiltersChange(newFilters);
-      console.log("✅ Filters applied (Auto)!", newFilters);
-    } else {
-      console.log("⏭️ Filters unchanged, skipping update");
     }
   };
 

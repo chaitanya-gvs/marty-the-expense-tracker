@@ -110,7 +110,7 @@ export function BulkEditModal({
           setReplaceText("");
         }
         if (field === "category") setCategoryMode("set");
-        if (field === "tags") setTagsMode("set");
+        if (field === "tags") setTagsMode("replace");
       } else {
         newSet.add(field);
       }
@@ -144,16 +144,12 @@ export function BulkEditModal({
         } else if (field === "description" && isFindReplace) {
           // handled separately below
         } else if (formData[field as keyof Transaction] !== undefined) {
-          (updates as any)[field] = formData[field as keyof Transaction];
+          (updates as Record<string, unknown>)[field] = formData[field as keyof Transaction];
         }
       });
 
       const transactionIds = selectedTransactions.map(t => t.id);
-      
-      console.log("Bulk update - Transaction IDs:", transactionIds);
-      console.log("Bulk update - Updates:", updates);
-      console.log("Bulk update - Selected tags:", selectedTags);
-      
+
       try {
         // Run bulk update for category/tags (and description in "set" mode)
         if (Object.keys(updates).length > 0) {
@@ -175,7 +171,7 @@ export function BulkEditModal({
         if (updateFields.has("tags") && tagsMode === "add" && selectedTags.length > 0) {
           await Promise.all(
             selectedTransactions.map(tx => {
-              const existingTagNames: string[] = (tx.tags || []).map((t: any) =>
+              const existingTagNames: string[] = (tx.tags || []).map((t: string | { name: string }) =>
                 typeof t === "string" ? t : t.name
               );
               const newTagNames = selectedTags.map(tag => tag.name);
@@ -186,46 +182,18 @@ export function BulkEditModal({
             })
           );
         }
-
-        const response = { data: null };
-        
-        console.log("Bulk update response:", response);
-        console.log("Bulk update response.data:", response?.data);
-        console.log("Bulk update response.data type:", typeof response?.data);
-        console.log("Bulk update response.data is array:", Array.isArray(response?.data));
-        
-        if (response?.data && Array.isArray(response.data)) {
-          console.log("Number of updated transactions:", response.data.length);
-          response.data.forEach((tx, idx) => {
-            console.log(`Transaction ${idx + 1} (${tx.id}):`, {
-              tags: tx.tags,
-              description: tx.description
-            });
-          });
-        }
-      } catch (error) {
-        console.error("Bulk update mutation error:", error);
-        throw error;
+      } catch (err) {
+        throw err;
       }
 
-      // Show success toast with undo button
-      toast.success(`Updated ${selectedTransactions.length} transaction${selectedTransactions.length !== 1 ? 's' : ''}`, {
-        action: {
-          label: "Undo",
-          onClick: () => {
-            // TODO: Implement undo functionality
-            toast.info("Undo feature coming soon");
-          },
-        },
-      });
-      
+      toast.success(`Updated ${selectedTransactions.length} transaction${selectedTransactions.length !== 1 ? 's' : ''}`);
+
       // Small delay to ensure queries are refetched before closing
       await new Promise(resolve => setTimeout(resolve, 200));
-      
+
       onClose();
-    } catch (error) {
+    } catch {
       toast.error("Failed to update transactions");
-      console.error("Bulk update error:", error);
     }
   };
 

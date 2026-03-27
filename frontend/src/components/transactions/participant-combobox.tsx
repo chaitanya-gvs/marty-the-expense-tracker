@@ -83,7 +83,7 @@ export function ParticipantCombobox({
           }
         }}
       >
-        <Command shouldFilter={false} onPointerDownOutside={(e) => e.preventDefault()}>
+        <Command shouldFilter={false}>
           <CommandInput
             placeholder="Search participants..."
             value={searchQuery}
@@ -112,7 +112,7 @@ export function ParticipantCombobox({
                       }}
                     >
                       <UserPlus className="mr-2 h-4 w-4" />
-                      Add "{searchQuery}" as participant
+                      Add &quot;{searchQuery}&quot; as participant
                     </Button>
                   )}
                 </div>
@@ -156,7 +156,7 @@ export function ParticipantCombobox({
                       }}
                     >
                       <UserPlus className="mr-2 h-4 w-4" />
-                      Add "{searchQuery}" as participant
+                      Add &quot;{searchQuery}&quot; as participant
                     </div>
                   </>
                 )}

@@ -71,7 +71,7 @@ export function CompactTagSelector({
       });
 
       // The backend returns {id: tag_id}, so we need to fetch the full tag
-      const tagId = response.data?.id || (response.data as any)?.id;
+      const tagId = response.data?.id || (response.data as { id?: string })?.id;
       
       if (!tagId) {
         throw new Error("Tag ID not returned from server");
@@ -82,8 +82,7 @@ export function CompactTagSelector({
       try {
         const tagResponse = await apiClient.getTag(tagId);
         createdTag = tagResponse.data;
-      } catch (fetchError) {
-        console.error("Failed to fetch created tag:", fetchError);
+      } catch {
         // Fallback: create a temporary tag object
         createdTag = {
           id: tagId,
@@ -98,10 +97,9 @@ export function CompactTagSelector({
         toast.success(`Tag "${inputValue.trim()}" created successfully`);
       }
       setInputValue("");
-    } catch (error: any) {
-      const errorMessage = error?.response?.data?.detail || error?.message || "Failed to create tag";
+    } catch (error: unknown) {
+      const errorMessage = (error as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail || (error as { message?: string })?.message || "Failed to create tag";
       toast.error(errorMessage);
-      console.error("Failed to create tag:", error);
     } finally {
       setIsCreating(false);
     }

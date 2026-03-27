@@ -40,7 +40,6 @@ export function CategoryAutocomplete({
   transactionDirection,
   autoFocus = true,
 }: CategoryAutocompleteProps) {
-  // console.log("CategoryAutocomplete rendered with value:", value);
   const [inputValue, setInputValue] = useState(value);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [hoveredIndex, setHoveredIndex] = useState(-1);
@@ -50,11 +49,6 @@ export function CategoryAutocomplete({
   const [editForm, setEditForm] = useState({ name: "", color: "#3B82F6" });
   const [creatingCategory, setCreatingCategory] = useState(false);
   const [createForm, setCreateForm] = useState({ name: "", color: "#3B82F6" });
-  
-  // Debug: Log when creatingCategory state changes
-  useEffect(() => {
-    console.log("creatingCategory state changed to:", creatingCategory);
-  }, [creatingCategory]);
   
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
@@ -82,11 +76,6 @@ export function CategoryAutocomplete({
   // Check if we should show "create new" option
   const shouldShowCreate = inputValue.trim() && !exactMatch;
   
-  // Debug logging
-  // console.log("Debug - inputValue:", inputValue, "exactMatch:", exactMatch, "shouldShowCreate:", shouldShowCreate);
-  // console.log("Debug - filteredCategories:", filteredCategories.map(c => c.name));
-  // console.log("Debug - all categories:", categories.map(c => c.name));
-
   useEffect(() => {
     // If the value is "uncategorized" (case-insensitive), set to empty string
     if (value && value.toLowerCase() === "uncategorized") {
@@ -98,11 +87,6 @@ export function CategoryAutocomplete({
 
   // Only show suggestions on user interaction (focus/click/type), not when value is set from parent (e.g. modal open)
   // Removed: useEffect that set showSuggestions(true) on every inputValue change — it caused dropdown to open when modal opened
-
-  // Debug: Log when categories change
-  // useEffect(() => {
-  //   console.log("Categories loaded:", categories.length, categories.map(c => c.name));
-  // }, [categories]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
@@ -163,38 +147,22 @@ export function CategoryAutocomplete({
   };
 
   const selectCategory = (categoryName: string) => {
-    console.log("selectCategory called with:", categoryName);
-    console.log("onSave function:", onSave);
-    console.log("onValueChange function:", onValueChange);
-    
     // If "uncategorized" is selected, clear the input and set to empty
     if (categoryName.toLowerCase() === "uncategorized") {
       setInputValue("");
       onValueChange(""); // Send empty string to backend
-      console.log("Setting to uncategorized (empty)");
       setShowSuggestions(false);
-      // Call onSave with the correct value
-      console.log("Calling onSave with empty string");
       onSave?.("");
     } else {
       setInputValue(categoryName);
       onValueChange(categoryName);
-      console.log("Setting category to:", categoryName);
       setShowSuggestions(false);
-      // Call onSave with the correct value
-      console.log("Calling onSave with category name:", categoryName);
       onSave?.(categoryName);
     }
   };
 
   const handleCreateCategory = () => {
-    console.log("handleCreateCategory called with inputValue:", inputValue);
-    if (!inputValue.trim()) {
-      console.log("No input value, returning");
-      return;
-    }
-    
-    console.log("Setting creatingCategory to true and createForm");
+    if (!inputValue.trim()) return;
     // Show the create category dialog
     setCreatingCategory(true);
     setCreateForm({ name: inputValue.trim(), color: "#3B82F6" });
@@ -229,21 +197,19 @@ export function CategoryAutocomplete({
       setTimeout(() => {
         onSave?.();
       }, 100);
-    } catch (error) {
+    } catch {
       toast.error("Failed to create category");
-      console.error("Create category error:", error);
     } finally {
       setIsCreating(false);
     }
   };
 
   const handleCancelCreate = () => {
-    console.log("handleCancelCreate called");
     setCreatingCategory(false);
     setCreateForm({ name: "", color: "#3B82F6" });
   };
 
-  const handleEditCategory = (category: any) => {
+  const handleEditCategory = (category: { id: string; name: string; color?: string }) => {
     setEditingCategory(category.id);
     setEditForm({ name: category.name, color: category.color || "#3B82F6" });
   };
@@ -263,9 +229,8 @@ export function CategoryAutocomplete({
       toast.success(`Category "${editForm.name.trim()}" updated successfully`);
       setEditingCategory(null);
       setEditForm({ name: "", color: "#3B82F6" });
-    } catch (error) {
+    } catch {
       toast.error("Failed to update category");
-      console.error("Update category error:", error);
     }
   };
 
@@ -274,19 +239,18 @@ export function CategoryAutocomplete({
 
     try {
       await deleteCategoryMutation.mutateAsync(editingCategory);
-      
+
       toast.success("Category deleted successfully");
       setEditingCategory(null);
       setEditForm({ name: "", color: "#3B82F6" });
-      
+
       // Clear the input if the deleted category was selected
       if (inputValue === categories.find(c => c.id === editingCategory)?.name) {
         setInputValue("");
         onValueChange("");
       }
-    } catch (error) {
+    } catch {
       toast.error("Failed to delete category");
-      console.error("Delete category error:", error);
     }
   };
 
@@ -425,7 +389,6 @@ export function CategoryAutocomplete({
                     variant="ghost"
                     onClick={(e) => {
                       e.stopPropagation();
-                      console.log("Edit button clicked for:", category.name);
                       handleEditCategory(category);
                     }}
                     className={cn(
@@ -453,7 +416,6 @@ export function CategoryAutocomplete({
               <span 
                 className="text-sm flex-1"
                 onClick={() => {
-                  console.log("Uncategorized clicked");
                   selectCategory("uncategorized");
                 }}
               >
@@ -472,7 +434,6 @@ export function CategoryAutocomplete({
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                console.log("Create category clicked for:", inputValue.trim());
                 handleCreateCategory();
               }}
             >
@@ -480,11 +441,6 @@ export function CategoryAutocomplete({
               <span className="text-sm flex-1">
                 {isCreating ? "Creating..." : `Create "${inputValue.trim()}"`}
               </span>
-            </div>
-          )}
-          {!shouldShowCreate && inputValue.trim() && (
-            <div className="px-3 py-2 text-sm text-gray-500">
-              Debug: shouldShowCreate is false for "{inputValue.trim()}"
             </div>
           )}
         </div>

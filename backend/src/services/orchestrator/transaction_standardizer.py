@@ -8,7 +8,7 @@ It handles different bank statement formats and normalizes them into a consisten
 import re
 from datetime import date, datetime
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import pandas as pd
 
@@ -671,7 +671,7 @@ class TransactionStandardizer:
                 logger.warning(f"Unknown file type: {filename}")
                 return pd.DataFrame()
                 
-        except Exception as e:
+        except Exception:
             logger.error(f"Error processing {filename}", exc_info=True)
             return pd.DataFrame()
     

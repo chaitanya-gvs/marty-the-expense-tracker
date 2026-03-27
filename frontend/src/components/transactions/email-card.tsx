@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { EmailMetadata, EmailDetails, SwiggyOrderInfo, MerchantInfo } from "@/lib/types";
+import { EmailMetadata, EmailDetails, EmailPayload, SwiggyOrderInfo, MerchantInfo } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronUp, Link2, Unlink, Mail, Calendar, User, Loader2, Car, UtensilsCrossed, Package, ShoppingBag } from "lucide-react";
 import { format } from "date-fns";
@@ -62,8 +62,8 @@ export function EmailCard({
         .then((details) => {
           setEmailDetails(details);
         })
-        .catch((error) => {
-          console.error("Failed to fetch email details:", error);
+        .catch(() => {
+          // Silently ignore auto-fetch failures
         })
         .finally(() => {
           setIsLoadingDetails(false);
@@ -79,8 +79,8 @@ export function EmailCard({
       try {
         const details = await onFetchDetails(email.id);
         setEmailDetails(details);
-      } catch (error) {
-        console.error("Failed to fetch email details:", error);
+      } catch {
+        // Error expanding email details
       } finally {
         setIsLoadingDetails(false);
       }
@@ -96,8 +96,8 @@ export function EmailCard({
       } else {
         await onLink(email.id);
       }
-    } catch (error) {
-      console.error("Failed to link/unlink email:", error);
+    } catch {
+      // Error handled by parent's onLink/onUnlink
     } finally {
       setIsLinking(false);
     }
@@ -465,8 +465,7 @@ export function EmailCard({
                   <div className="bg-background rounded border border-border overflow-hidden">
                     <iframe
                       srcDoc={(() => {
-                        // Extract HTML content from email payload
-                        const extractHtml = (payload: any): string | null => {
+                        const extractHtml = (payload: EmailPayload): string | null => {
                           if (payload.mimeType === 'text/html' && payload.body?.data) {
                             try {
                               return atob(payload.body.data.replace(/-/g, '+').replace(/_/g, '/'));

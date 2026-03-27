@@ -4,12 +4,11 @@ FastAPI routes for participant management.
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select, or_, func
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.services.database_manager.models.participant import Participant
 from src.apis.schemas.participants import (
@@ -49,6 +48,7 @@ async def list_participants(
     - **search**: Filter participants by name (case-insensitive partial match)
     - **limit**: Maximum number of participants to return
     """
+    logger.info("Listing participants: search=%r", search)
     try:
         session_factory = get_session_factory()
         async with session_factory() as session:
@@ -86,14 +86,15 @@ async def list_participants(
             count_result = await session.execute(count_query)
             total = count_result.scalar() or 0
             
+            logger.info("Returned %d participants", total)
             return ParticipantListResponse(
                 participants=[ParticipantResponse.model_validate(p) for p in participants],
                 total=total
             )
-    
-    except Exception as e:
-        logger.error("Error listing participants", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to list participants: {str(e)}")
+
+    except Exception:
+        logger.error("Failed to list participants", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/{participant_id}", response_model=ParticipantResponse)
@@ -101,23 +102,25 @@ async def get_participant(participant_id: UUID):
     """
     Get a specific participant by ID.
     """
+    logger.info("Fetching participant id=%s", participant_id)
     try:
         session_factory = get_session_factory()
         async with session_factory() as session:
             query = select(Participant).where(Participant.id == participant_id)
             result = await session.execute(query)
             participant = result.scalar_one_or_none()
-            
+
             if not participant:
                 raise HTTPException(status_code=404, detail=f"Participant with ID {participant_id} not found")
-            
+
+            logger.info("Returned participant id=%s", participant_id)
             return ParticipantResponse.model_validate(participant)
-    
+
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error getting participant {participant_id}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get participant: {str(e)}")
+    except Exception:
+        logger.error("Failed to get participant id=%s", participant_id, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/", response_model=ParticipantResponse, status_code=201)
@@ -130,6 +133,7 @@ async def create_participant(participant: ParticipantCreate):
     - **splitwise_email**: Splitwise email for additional mapping (optional)
     - **notes**: Additional notes about the participant (optional)
     """
+    logger.info("Creating participant: name=%s", participant.name)
     try:
         session_factory = get_session_factory()
         async with session_factory() as session:
@@ -155,14 +159,14 @@ async def create_participant(participant: ParticipantCreate):
             await session.commit()
             await session.refresh(new_participant)
             
-            logger.info(f"Created participant: {new_participant.name} (ID: {new_participant.id})")
+            logger.info("Created participant id=%s", new_participant.id)
             return ParticipantResponse.model_validate(new_participant)
-    
+
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error("Error creating participant", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to create participant: {str(e)}")
+    except Exception:
+        logger.error("Failed to create participant", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put("/{participant_id}", response_model=ParticipantResponse)
@@ -172,6 +176,7 @@ async def update_participant(participant_id: UUID, participant_update: Participa
     
     All fields are optional - only provided fields will be updated.
     """
+    logger.info("Updating participant id=%s", participant_id)
     try:
         session_factory = get_session_factory()
         async with session_factory() as session:
@@ -179,10 +184,10 @@ async def update_participant(participant_id: UUID, participant_update: Participa
             query = select(Participant).where(Participant.id == participant_id)
             result = await session.execute(query)
             existing_participant = result.scalar_one_or_none()
-            
+
             if not existing_participant:
                 raise HTTPException(status_code=404, detail=f"Participant with ID {participant_id} not found")
-            
+
             # Check for name conflicts (if name is being updated)
             if participant_update.name and participant_update.name != existing_participant.name:
                 name_query = select(Participant).where(Participant.name == participant_update.name)
@@ -214,14 +219,14 @@ async def update_participant(participant_id: UUID, participant_update: Participa
             await session.commit()
             await session.refresh(existing_participant)
             
-            logger.info(f"Updated participant: {existing_participant.name} (ID: {participant_id})")
+            logger.info("Updated participant id=%s", participant_id)
             return ParticipantResponse.model_validate(existing_participant)
-    
+
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error updating participant {participant_id}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to update participant: {str(e)}")
+    except Exception:
+        logger.error("Failed to update participant id=%s", participant_id, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/{participant_id}", status_code=204)
@@ -232,6 +237,7 @@ async def delete_participant(participant_id: UUID):
     Note: This will only delete the participant record. Any existing transactions
     with this participant name will not be affected.
     """
+    logger.info("Deleting participant id=%s", participant_id)
     try:
         session_factory = get_session_factory()
         async with session_factory() as session:
@@ -239,20 +245,20 @@ async def delete_participant(participant_id: UUID):
             query = select(Participant).where(Participant.id == participant_id)
             result = await session.execute(query)
             participant = result.scalar_one_or_none()
-            
+
             if not participant:
                 raise HTTPException(status_code=404, detail=f"Participant with ID {participant_id} not found")
-            
+
             # Delete participant
             await session.delete(participant)
             await session.commit()
-            
-            logger.info(f"Deleted participant: {participant.name} (ID: {participant_id})")
+
+            logger.info("Deleted participant id=%s", participant_id)
             return None
-    
+
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error deleting participant {participant_id}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to delete participant: {str(e)}")
+    except Exception:
+        logger.error("Failed to delete participant id=%s", participant_id, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 

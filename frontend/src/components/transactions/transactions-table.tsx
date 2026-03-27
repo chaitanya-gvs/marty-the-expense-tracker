@@ -1,70 +1,42 @@
 "use client";
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useTransactionKeyboardNav } from "@/hooks/use-transaction-keyboard-nav";
+import { buildTransactionColumns } from "./transaction-columns";
 import {
   useReactTable,
   getCoreRowModel,
   getSortedRowModel,
   getFilteredRowModel,
   flexRender,
-  createColumnHelper,
   SortingState,
-  ColumnDef,
-  Row,
   ColumnSizingState,
+  Updater,
 } from "@tanstack/react-table";
 import { useQueryClient } from "@tanstack/react-query";
 // Using native HTML table elements for better sticky header support
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { useInfiniteTransactions, useUpdateTransactionSplit, useClearTransactionSplit, useUpdateTransaction, useBulkDeleteTransactions, useDeleteTransaction, useTransaction } from "@/hooks/use-transactions";
+import { useInfiniteTransactions, useUpdateTransactionSplit, useClearTransactionSplit, useUpdateTransaction, useBulkDeleteTransactions, useDeleteTransaction } from "@/hooks/use-transactions";
 import { useTags } from "@/hooks/use-tags";
 import { useCategories } from "@/hooks/use-categories";
-import { Transaction, TransactionFilters, TransactionSort, SplitBreakdown, Tag, Category } from "@/lib/types";
+import { Transaction, TransactionFilters, TransactionSort, SplitBreakdown } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
 import {
   ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  CalendarDays,
-  Tag as TagIcon,
-  Users,
-  Edit3,
-  CreditCard,
-  Wallet,
-  ShoppingCart,
-  Building2,
-  FolderOpen,
-  IndianRupee,
-  MoreVertical,
-  Link2,
   CheckSquare,
-  Square,
   Edit,
-  Split,
-  RefreshCcw,
-  AlertCircle,
-  Trash2,
-  FileText,
   Layers,
-  ChevronDown,
-  Keyboard
+  Keyboard,
+  Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { TransactionEditModal } from "./transaction-edit-modal";
-import { TransactionInlineEdit } from "./transaction-inline-edit";
 import { SplitEditor } from "./split-editor";
-import { TagPill } from "./tag-pill";
-import { InlineTagDropdown } from "./inline-tag-dropdown";
-import { InlineCategoryDropdown } from "./inline-category-dropdown";
 import { BulkEditModal } from "./bulk-edit-modal";
 import { RelatedTransactionsDrawer } from "./related-transactions-drawer";
-import { TransactionDetailsDrawer } from "./transaction-details-drawer";
 import { SplitTransactionModal } from "./split-transaction-modal";
 import { GroupTransferModal } from "./group-transfer-modal";
 import { GroupExpenseModal } from "./group-expense-modal";
@@ -72,39 +44,7 @@ import { GroupExpenseSearchModal } from "./group-expense-search-modal";
 import { EmailLinksDrawer } from "./email-links-drawer";
 import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
 import { PdfViewer } from "./pdf-viewer";
-import { formatCurrency, formatDate } from "@/lib/format-utils";
-
-const columnHelper = createColumnHelper<Transaction>();
-
-// Helper function to process account names and get icons
-const processAccountInfo = (accountName: string) => {
-  // Handle Splitwise accounts specially
-  if (accountName.toLowerCase().includes('splitwise')) {
-    return {
-      processedName: 'Splitwise',
-      icon: <Users className="h-3 w-3 mr-1" />,
-      isCreditCard: false,
-      isSplitwise: true
-    };
-  }
-
-  // Remove last 2 words (e.g., "Savings Account", "Credit Card")
-  const words = accountName.split(' ');
-  const processedName = words.slice(0, -2).join(' ');
-
-  // Determine if it's a credit card or savings account
-  const isCreditCard = accountName.toLowerCase().includes('credit');
-  const icon = isCreditCard ? <CreditCard className="h-3 w-3 mr-1" /> : <Wallet className="h-3 w-3 mr-1" />;
-
-  return { processedName, icon, isCreditCard, isSplitwise: false };
-};
-
-// Helper function to convert string tags to Tag objects
-const convertStringTagsToObjects = (tagNames: string[], allTags: Tag[]): Tag[] => {
-  return tagNames
-    .map(tagName => allTags.find(tag => tag.name === tagName))
-    .filter(Boolean) as Tag[];
-};
+import { formatCurrency } from "@/lib/format-utils";
 
 // Wrapper component to fetch missing related transactions
 function RelatedTransactionsDrawerWithFetch({
@@ -157,12 +97,12 @@ function RelatedTransactionsDrawerWithFetch({
             if (groupResponse.data && groupResponse.data.length > 0) {
               setFetchedGroup(groupResponse.data);
             }
-          } catch (groupError) {
-            console.error("Failed to fetch group transactions:", groupError);
+          } catch {
+            // Silently ignore group fetch failures
           }
         }
-      } catch (error) {
-        console.error("Failed to fetch related transactions:", error);
+      } catch {
+        // Silently ignore related transaction fetch failures
       } finally {
         setIsLoading(false);
       }
@@ -252,7 +192,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   });
 
   const handleColumnSizingChange = useCallback(
-    (updater: (old: ColumnSizingState) => ColumnSizingState) => {
+    (updater: Updater<ColumnSizingState>) => {
       setColumnSizing((prev) => {
         const next = typeof updater === "function" ? updater(prev) : updater;
         try {
@@ -265,12 +205,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     },
     []
   );
-
-  // Keyboard navigation state
-  const [focusedRowIndex, setFocusedRowIndex] = useState<number>(-1);
-  const [focusedColumnId, setFocusedColumnId] = useState<string | null>(null);
-  const [isKeyboardNavigationMode, setIsKeyboardNavigationMode] = useState(false);
-  const [focusedActionButton, setFocusedActionButton] = useState<number>(-1);
 
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
@@ -421,7 +355,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           const response = await apiClient.getGroupTransactions(transaction.id);
           const members = response.data || [];
           setGroupMembers(new Map(groupMembers).set(groupId, members));
-        } catch (error) {
+        } catch {
           toast.error("Failed to fetch group members");
           return;
         }
@@ -452,9 +386,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       // Clear infinite query cache so the deleted collapsed row cannot stay in a cached page
       queryClient.removeQueries({ queryKey: ["transactions-infinite"] });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
-    } catch (error) {
+    } catch {
       toast.error("Failed to ungroup expense");
-      console.error("Ungroup error:", error);
     }
   };
 
@@ -483,9 +416,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         },
       });
       setSelectedTransactionIds(new Set());
-    } catch (error) {
+    } catch {
       toast.error("Failed to swap directions");
-      console.error("Bulk swap direction error:", error);
     }
   };
 
@@ -571,8 +503,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           .then(() => {
             toast.success(`Marked as ${nextDirection === "credit" ? "credit (money in)" : "debit (money out)"}`);
           })
-          .catch((error) => {
-            console.error("Failed to toggle direction:", error);
+          .catch(() => {
             toast.error("Failed to toggle transaction direction");
           });
         break;
@@ -588,1198 +519,135 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     }
   }, [allTransactions, updateTransaction]);
 
-  // Keyboard navigation helpers
-  const editableColumns = useMemo(() => {
-    const columns = ['description', 'category', 'tags', 'actions'];
-    if (isMultiSelectMode) {
-      return ['select', ...columns];
-    }
-    return columns;
-  }, [isMultiSelectMode]);
-
-  const getNextEditableColumn = useCallback((currentColumnId: string | null, direction: 'left' | 'right' = 'right') => {
-    if (!currentColumnId) return editableColumns[0];
-
-    const currentIndex = editableColumns.indexOf(currentColumnId);
-    if (currentIndex === -1) return editableColumns[0];
-
-    if (direction === 'right') {
-      return editableColumns[currentIndex + 1] || editableColumns[0];
-    } else {
-      return editableColumns[currentIndex - 1] || editableColumns[editableColumns.length - 1];
-    }
-  }, [editableColumns]);
-
-  const handleKeyboardNavigation = useCallback((e: KeyboardEvent) => {
-    const { key } = e;
-    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-    const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
-
-    // Handle Cmd/Ctrl + Delete for bulk deletion
-    if ((key === 'Delete' || key === 'Backspace') && cmdOrCtrl && isMultiSelectMode && selectedTransactionIds.size > 0) {
-      e.preventDefault();
-      setIsDeleteConfirmationOpen(true);
-      setTransactionToDelete(null);
-      return;
-    }
-
-    // Handle Cmd/Ctrl + Arrow keys for multi-select navigation
-    if (cmdOrCtrl && isMultiSelectMode && (key === 'ArrowUp' || key === 'ArrowDown')) {
-      e.preventDefault();
-      // Initialize focusedRowIndex if it's not set
-      let currentIndex = focusedRowIndex;
-      if (currentIndex < 0 && allTransactions.length > 0) {
-        currentIndex = 0;
-        setFocusedRowIndex(0);
-      }
-
-      if (key === 'ArrowUp' && currentIndex > 0) {
-        const newIndex = currentIndex - 1;
-        setFocusedRowIndex(newIndex);
-        const transaction = allTransactions[newIndex];
-        if (transaction) {
-          handleSelectTransaction(transaction.id);
-        }
-      } else if (key === 'ArrowDown' && currentIndex < allTransactions.length - 1) {
-        const newIndex = currentIndex + 1;
-        setFocusedRowIndex(newIndex);
-        const transaction = allTransactions[newIndex];
-        if (transaction) {
-          handleSelectTransaction(transaction.id);
-        }
-      }
-      return;
-    }
-
-    // Handle Tab key - should work like Enter (save and move) when in edit mode
-    if (key === 'Tab' && (editingRow || editingField || editingTagsForTransaction || editingCategoryForTransaction)) {
-      // Let the edit components handle Tab navigation
-      return;
-    }
-
-    // Only handle other keys when not in edit mode
-    if (editingRow || editingField || editingTagsForTransaction || editingCategoryForTransaction) {
-      return;
-    }
-
-    switch (key) {
-      case 'Tab':
-        e.preventDefault();
-        isUserNavigating.current = false; // Reset navigation flag for Tab
-        if (focusedRowIndex >= 0 && focusedColumnId) {
-          const nextColumn = getNextEditableColumn(focusedColumnId, e.shiftKey ? 'left' : 'right');
-          setFocusedColumnId(nextColumn);
-
-          // If we wrapped around, move to next/previous row
-          if (nextColumn === editableColumns[0] && !e.shiftKey) {
-            const nextRowIndex = Math.min(focusedRowIndex + 1, allTransactions.length - 1);
-            setFocusedRowIndex(nextRowIndex);
-          } else if (nextColumn === editableColumns[editableColumns.length - 1] && e.shiftKey) {
-            const prevRowIndex = Math.max(focusedRowIndex - 1, 0);
-            setFocusedRowIndex(prevRowIndex);
-          }
-        } else {
-          // Start navigation from first row, first column
-          setFocusedRowIndex(0);
-          setFocusedColumnId(editableColumns[0]);
-          setIsKeyboardNavigationMode(true);
-        }
-        break;
-
-      case 'Enter':
-        e.preventDefault();
-        isUserNavigating.current = false; // Reset navigation flag
-        if (focusedRowIndex >= 0 && focusedColumnId && focusedColumnId !== 'select') {
-          const transaction = allTransactions[focusedRowIndex];
-          if (transaction) {
-            if (focusedColumnId === 'tags') {
-              setEditingTagsForTransaction(transaction.id);
-            } else if (focusedColumnId === 'category') {
-              setEditingCategoryForTransaction(transaction.id);
-            } else if (focusedColumnId === 'actions') {
-              if (focusedActionButton >= 0) {
-                // Trigger the focused action button
-                handleActionButtonClick(transaction, focusedActionButton);
-              } else {
-                // Focus first action button when entering actions column
-                setFocusedActionButton(0);
-              }
-            } else {
-              setEditingRow(transaction.id);
-              setEditingField(focusedColumnId as keyof Transaction);
-            }
-            setIsKeyboardNavigationMode(false);
-          }
-        }
-        break;
-
-      case 'ArrowUp':
-        e.preventDefault();
-        if (focusedRowIndex > 0) {
-          isUserNavigating.current = true;
-          setFocusedRowIndex(focusedRowIndex - 1);
-        }
-        break;
-
-      case 'ArrowDown':
-        e.preventDefault();
-        if (focusedRowIndex < allTransactions.length - 1) {
-          isUserNavigating.current = true;
-          setFocusedRowIndex(focusedRowIndex + 1);
-        }
-        break;
-
-      case 'ArrowLeft':
-        e.preventDefault();
-        if (focusedColumnId === 'actions' && focusedActionButton > 0) {
-          // Navigate between action buttons
-          setFocusedActionButton(focusedActionButton - 1);
-        } else if (focusedColumnId) {
-          setFocusedColumnId(getNextEditableColumn(focusedColumnId, 'left'));
-          setFocusedActionButton(-1);
-        }
-        break;
-
-      case 'ArrowRight':
-        e.preventDefault();
-        if (focusedColumnId === 'actions' && focusedActionButton < 7) { // 8 action buttons (0-7); PDF is conditional
-          // Navigate between action buttons
-          setFocusedActionButton(focusedActionButton + 1);
-        } else if (focusedColumnId) {
-          setFocusedColumnId(getNextEditableColumn(focusedColumnId, 'right'));
-          setFocusedActionButton(-1);
-        }
-        break;
-
-      case 'Escape':
-        e.preventDefault();
-        if (focusedActionButton >= 0) {
-          // Exit action button focus, stay in actions column
-          setFocusedActionButton(-1);
-        } else {
-          // Exit keyboard navigation completely
-          setIsKeyboardNavigationMode(false);
-          setFocusedRowIndex(-1);
-          setFocusedColumnId(null);
-        }
-        break;
-    }
-  }, [
+  // Keyboard navigation (extracted into hook; initialized after handleActionButtonClick)
+  const {
+    focusedRowIndex,
+    focusedColumnId,
+    isKeyboardNavigationMode,
+    focusedActionButton,
+    setFocusedRowIndex,
+    setFocusedColumnId,
+    setIsKeyboardNavigationMode,
+    editableColumns,
+    getNextEditableColumn,
+  } = useTransactionKeyboardNav(allTransactions, {
     editingRow,
     editingField,
     editingTagsForTransaction,
     editingCategoryForTransaction,
-    focusedRowIndex,
-    focusedColumnId,
-    focusedActionButton,
-    getNextEditableColumn,
-    editableColumns,
-    allTransactions,
-    handleActionButtonClick,
     isMultiSelectMode,
     selectedTransactionIds,
-    handleSelectTransaction
-  ]);
-
-  // Auto-scroll to keep focused cell in view
-  const scrollToFocusedCell = useCallback(() => {
-    if (focusedRowIndex >= 0 && bodyScrollRef.current) {
-      const tableBody = bodyScrollRef.current;
-      const table = tableBody.querySelector('table');
-      if (!table) return;
-
-      const rows = table.querySelectorAll('tbody tr');
-      const focusedRow = rows[focusedRowIndex] as HTMLElement;
-
-      if (!focusedRow) return;
-
-      // Use scrollIntoView for more reliable scrolling
-      focusedRow.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center', // Center the row in the viewport
-        inline: 'nearest'
-      });
-    }
-  }, [focusedRowIndex]);
-
-  // Track previous row index to only scroll when row actually changes
-  const prevFocusedRowIndex = useRef<number>(-1);
-  const isUserNavigating = useRef<boolean>(false);
-
-  // Auto-scroll when focused row changes (only for up/down navigation)
-  useEffect(() => {
-    if (isKeyboardNavigationMode && focusedRowIndex >= 0 && focusedRowIndex !== prevFocusedRowIndex.current && isUserNavigating.current) {
-      // Only scroll if the row index actually changed AND user is actively navigating
-      prevFocusedRowIndex.current = focusedRowIndex;
-      // Small delay to ensure DOM is updated
-      setTimeout(scrollToFocusedCell, 10);
-    } else if (!isKeyboardNavigationMode) {
-      // Reset when exiting keyboard navigation mode
-      prevFocusedRowIndex.current = -1;
-      isUserNavigating.current = false;
-    }
-  }, [focusedRowIndex, isKeyboardNavigationMode, scrollToFocusedCell]);
-
-  // Add keyboard event listener
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Only handle if we're not in an input field
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
-        return;
-      }
-      handleKeyboardNavigation(e);
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyboardNavigation]);
+    handleSelectTransaction,
+    handleActionButtonClick,
+    setEditingRow,
+    setEditingField,
+    setEditingTagsForTransaction,
+    setEditingCategoryForTransaction,
+    setIsDeleteConfirmationOpen,
+    setTransactionToDelete,
+    bodyScrollRef,
+  });
 
   const columns = useMemo(
-    () => {
-      const baseColumns = [];
-
-      // Only add selection column when in multi-select mode
-      if (isMultiSelectMode) {
-        baseColumns.push(
-          columnHelper.display({
-            id: "select",
-            header: ({ table }) => (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleSelectAll}
-                className="h-8 w-8 p-0"
-              >
-                {isAllSelected ? (
-                  <CheckSquare className="h-4 w-4 text-primary" />
-                ) : isIndeterminate ? (
-                  <div className="h-4 w-4 border-2 border-primary/50 rounded bg-primary/10" />
-                ) : (
-                  <Square className="h-4 w-4" />
-                )}
-              </Button>
-            ),
-            cell: ({ row }) => (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleSelectTransaction(row.original.id)}
-                className="h-8 w-8 p-0"
-              >
-                {selectedTransactionIds.has(row.original.id) ? (
-                  <CheckSquare className="h-4 w-4 text-primary" />
-                ) : (
-                  <Square className="h-4 w-4" />
-                )}
-              </Button>
-            ),
-            size: 40,
-          })
-        );
-      }
-
-      return [
-        ...baseColumns,
-
-        // Date column — empty for regular rows (separator handles date display); populated for grouped expense member rows
-        columnHelper.accessor("date", {
-          id: "date",
-          header: ({ column }) => (
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              className="h-8 px-2 gap-1 text-xs font-medium uppercase tracking-wide w-full justify-start"
-            >
-              <CalendarDays className="size-3" />
-              Date
-              {column.getIsSorted() === "asc" ? (
-                <ArrowUp className="ml-1 h-3 w-3 text-primary" />
-              ) : column.getIsSorted() === "desc" ? (
-                <ArrowDown className="ml-1 h-3 w-3 text-primary" />
-              ) : (
-                <ArrowUpDown className="ml-1 h-3 w-3" />
-              )}
-            </Button>
-          ),
-          size: 120,
-          enableResizing: false,
-          enableSorting: true,
-          sortingFn: (rowA, rowB) =>
-            rowA.original.date.localeCompare(rowB.original.date),
-          cell: () => null,
-        }),
-
-        // Description column (resizable)
-        columnHelper.accessor("description", {
-          header: () => (
-            <div className="flex items-center gap-1">
-              <FileText className="h-3 w-3" />
-              Description
-            </div>
-          ),
-          enableResizing: true,
-          minSize: 180,
-          maxSize: 900,
-          size: 420,
-          cell: ({ getValue, row }) => {
-            const isEditing = editingRow === row.original.id && editingField === "description";
-
-            if (isEditing) {
-              return (
-                <TransactionInlineEdit
-                  transaction={row.original}
-                  field="description"
-                  onCancel={() => {
-                    setEditingRow(null);
-                    setEditingField(null);
-                    // Maintain keyboard navigation state after canceling description edit
-                    const currentRowIndex = allTransactions.findIndex(t => t.id === row.original.id);
-                    setFocusedRowIndex(currentRowIndex);
-                    setFocusedColumnId("description");
-                    setIsKeyboardNavigationMode(true);
-                  }}
-                  onSuccess={() => {
-                    setEditingRow(null);
-                    setEditingField(null);
-                    // Maintain keyboard navigation state after description edit
-                    const currentRowIndex = allTransactions.findIndex(t => t.id === row.original.id);
-                    setFocusedRowIndex(currentRowIndex);
-                    setFocusedColumnId("description");
-                    setIsKeyboardNavigationMode(true);
-                  }}
-                  onTabNext={() => {
-                    // Close current edit
-                    setEditingRow(null);
-                    setEditingField(null);
-
-                    // Move to next editable cell
-                    const currentRowIndex = allTransactions.findIndex(t => t.id === row.original.id);
-                    const nextColumn = getNextEditableColumn("description", "right");
-
-                    if (nextColumn === editableColumns[0]) {
-                      // Wrapped to next row
-                      const nextRowIndex = Math.min(currentRowIndex + 1, allTransactions.length - 1);
-                      const nextTransaction = allTransactions[nextRowIndex];
-                      if (nextTransaction) {
-                        setFocusedRowIndex(nextRowIndex);
-                        setFocusedColumnId(nextColumn);
-                        // Open edit for next cell
-                        if (nextColumn === 'description') {
-                          setEditingRow(nextTransaction.id);
-                          setEditingField('description');
-                        } else if (nextColumn === 'category') {
-                          setEditingCategoryForTransaction(nextTransaction.id);
-                        } else if (nextColumn === 'tags') {
-                          setEditingTagsForTransaction(nextTransaction.id);
-                        }
-                      }
-                    } else {
-                      setFocusedRowIndex(currentRowIndex);
-                      setFocusedColumnId(nextColumn);
-                      // Open edit for next cell in same row
-                      if (nextColumn === 'description') {
-                        setEditingRow(row.original.id);
-                        setEditingField('description');
-                      } else if (nextColumn === 'category') {
-                        setEditingCategoryForTransaction(row.original.id);
-                      } else if (nextColumn === 'tags') {
-                        setEditingTagsForTransaction(row.original.id);
-                      }
-                    }
-                    setIsKeyboardNavigationMode(true);
-                  }}
-                  onTabPrevious={() => {
-                    // Close current edit
-                    setEditingRow(null);
-                    setEditingField(null);
-
-                    // Move to previous editable cell
-                    const currentRowIndex = allTransactions.findIndex(t => t.id === row.original.id);
-                    const prevColumn = getNextEditableColumn("description", "left");
-
-                    if (prevColumn === editableColumns[editableColumns.length - 1]) {
-                      // Wrapped to previous row
-                      const prevRowIndex = Math.max(currentRowIndex - 1, 0);
-                      const prevTransaction = allTransactions[prevRowIndex];
-                      if (prevTransaction) {
-                        setFocusedRowIndex(prevRowIndex);
-                        setFocusedColumnId(prevColumn);
-                        // Open edit for previous cell
-                        if (prevColumn === 'description') {
-                          setEditingRow(prevTransaction.id);
-                          setEditingField('description');
-                        } else if (prevColumn === 'category') {
-                          setEditingCategoryForTransaction(prevTransaction.id);
-                        } else if (prevColumn === 'tags') {
-                          setEditingTagsForTransaction(prevTransaction.id);
-                        }
-                      }
-                    } else {
-                      setFocusedRowIndex(currentRowIndex);
-                      setFocusedColumnId(prevColumn);
-                      // Open edit for previous cell in same row
-                      if (prevColumn === 'description') {
-                        setEditingRow(row.original.id);
-                        setEditingField('description');
-                      } else if (prevColumn === 'category') {
-                        setEditingCategoryForTransaction(row.original.id);
-                      } else if (prevColumn === 'tags') {
-                        setEditingTagsForTransaction(row.original.id);
-                      }
-                    }
-                    setIsKeyboardNavigationMode(true);
-                  }}
-                />
-              );
-            }
-
-            const description = getValue();
-            const fullText = row.original.notes ? `${description} - ${row.original.notes}` : description;
-            const isGroupedExpense = row.original.is_grouped_expense;
-            const isExpanded = row.original.transaction_group_id 
-              ? expandedGroupedExpenses.has(row.original.transaction_group_id)
-              : false;
-
-            return (
-              <div
-                className="cursor-pointer hover:bg-muted/50 p-2 rounded"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEditingRow(row.original.id);
-                  setEditingField("description");
-                }}
-              >
-                <div className="flex items-center gap-2">
-                  {isGroupedExpense && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleGroupExpense(row.original);
-                      }}
-                      className="p-1 hover:bg-accent rounded flex-shrink-0"
-                    >
-                      <ChevronDown
-                        className={cn(
-                          "h-4 w-4 transition-transform",
-                          isExpanded && "rotate-180"
-                        )}
-                      />
-                    </button>
-                  )}
-                  <div className="flex-1 min-w-0 overflow-hidden">
-                    <div className="flex items-center gap-1">
-                      <div className="font-medium text-sm truncate" title={fullText}>
-                        {description}
-                      </div>
-                      {isGroupedExpense && (
-                        <Layers className="h-3 w-3 text-violet-300 flex-shrink-0" />
-                      )}
-                    </div>
-                    {row.original.notes && (
-                      <div className="text-xs text-muted-foreground truncate" title={row.original.notes}>
-                        {row.original.notes}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          },
-        }),
-
-        // Amount column with color coding
-        columnHelper.accessor("amount", {
-          header: ({ column }) => (
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              className="h-8 px-2 gap-1 text-xs font-medium uppercase tracking-wide justify-end w-full"
-            >
-              <IndianRupee className="size-3" />
-              Amount
-              {column.getIsSorted() === "asc" ? (
-                <ArrowUp className="ml-1 h-3 w-3 text-primary" />
-              ) : column.getIsSorted() === "desc" ? (
-                <ArrowDown className="ml-1 h-3 w-3 text-primary" />
-              ) : (
-                <ArrowUpDown className="ml-1 h-3 w-3" />
-              )}
-            </Button>
-          ),
-          sortingFn: (rowA, rowB) => {
-            // Use effective amount (my share) for sorting shared transactions
-            const getEffectiveAmount = (row: Row<Transaction>) => {
-              const isShared = row.original.is_shared;
-              const splitAmount = row.original.split_share_amount;
-              return isShared && splitAmount ? splitAmount : row.original.amount;
-            };
-
-            const amountA = getEffectiveAmount(rowA);
-            const amountB = getEffectiveAmount(rowB);
-            return amountA - amountB;
-          },
-          cell: ({ getValue, row }) => {
-            const totalAmount = getValue(); // Original amount
-            const splitAmount = row.original.split_share_amount; // User's share (based on net)
-            const netAmount = row.original.net_amount; // Net after refunds
-            const direction = row.original.direction;
-            const isShared = row.original.is_shared;
-
-            // Check if refunds exist (net < total)
-            // netAmount will only be defined if refunds exist (backend only sends it when net < original)
-            const hasRefunds = netAmount !== undefined && netAmount < totalAmount;
-
-            // Determine primary display amount
-            let displayAmount: number;
-            if (isShared && splitAmount !== undefined && splitAmount !== null) {
-              // For shared transactions, show split_share_amount (even if 0)
-              displayAmount = splitAmount;
-            } else if (hasRefunds && netAmount !== undefined && netAmount > 0) {
-              // For non-shared transactions with partial refunds, show net amount as primary
-              displayAmount = netAmount;
-            } else {
-              // For non-shared transactions (no refunds or full refund where net=0), show original amount
-              displayAmount = totalAmount;
-            }
-
-            // Show Total if it differs from what we're displaying
-            const showTotal = displayAmount !== totalAmount;
-
-            // Show Net ONLY for shared transactions with refunds (between split and total)
-            // Conditions: shared, has refunds, splitAmount exists, netAmount exists and > 0, 
-            // net differs from both split and total
-            const showNet = isShared
-              && hasRefunds
-              && splitAmount !== undefined
-              && splitAmount !== null
-              && netAmount !== undefined
-              && netAmount > 0
-              && netAmount !== splitAmount
-              && netAmount !== totalAmount;
-
-            return (
-              <div className="flex flex-col items-end whitespace-nowrap">
-                <div className={cn(
-                  "font-mono font-semibold text-sm inline-flex items-center px-2.5 py-0.5 rounded-md tabular-nums",
-                  direction === "debit"
-                    ? "bg-[#F44D4D]/15 text-[#F44D4D]"
-                    : "bg-emerald-400/15 text-emerald-300"
-                )}>
-                  {direction === "debit" ? "↓" : "↑"} {formatCurrency(displayAmount)}
-                </div>
-                {showTotal && (
-                  <div className="text-xs text-muted-foreground mt-1 text-right font-mono">
-                    Total: {formatCurrency(totalAmount)}
-                  </div>
-                )}
-                {showNet && (
-                  <div className="text-xs text-muted-foreground mt-0.5 text-right font-mono">
-                    Net: {formatCurrency(netAmount)}
-                  </div>
-                )}
-              </div>
-            );
-          },
-          size: 120,
-        }),
-
-        // Account column (moved after amount)
-        columnHelper.accessor("account", {
-          header: () => (
-            <div className="flex items-center gap-1">
-              <Building2 className="h-3 w-3" />
-              Account
-            </div>
-          ),
-          cell: ({ getValue }) => {
-            const { processedName, icon, isCreditCard, isSplitwise } = processAccountInfo(getValue());
-            return (
-              <div className="whitespace-nowrap" title={getValue()}>
-                <div className={cn(
-                  "font-semibold text-sm inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md max-w-[120px] overflow-hidden",
-                  isSplitwise
-                    ? "text-violet-300 bg-violet-400/15"
-                    : isCreditCard
-                      ? "text-amber-300 bg-amber-400/15"
-                      : "text-teal-300 bg-teal-400/15"
-                )}>
-                  {icon}
-                  <span className="truncate">{processedName}</span>
-                </div>
-              </div>
-            );
-          },
-          size: 110,
-        }),
-
-        // Category column (moved after amount)
-        columnHelper.accessor("category", {
-          header: () => (
-            <div className="flex items-center gap-1">
-              <FolderOpen className="h-3 w-3" />
-              Category
-            </div>
-          ),
-          cell: ({ getValue, row }) => {
-            const transaction = row.original;
-            const categoryName = getValue();
-            const category = allCategories.find(cat => cat.name === categoryName);
-            const isEditingCategory = editingCategoryForTransaction === transaction.id;
-
-            if (isEditingCategory) {
-              return (
-                <InlineCategoryDropdown
-                  transactionId={transaction.id}
-                  currentCategory={categoryName || ""}
-                  transactionDirection={transaction.direction}
-                  onCancel={() => {
-                    setEditingCategoryForTransaction(null);
-                    // Maintain keyboard navigation state after canceling category edit
-                    const currentRowIndex = allTransactions.findIndex(t => t.id === transaction.id);
-                    setFocusedRowIndex(currentRowIndex);
-                    setFocusedColumnId("category");
-                    setIsKeyboardNavigationMode(true);
-                  }}
-                  onSuccess={() => {
-                    setEditingCategoryForTransaction(null);
-                    // Maintain keyboard navigation state after category selection
-                    const currentRowIndex = allTransactions.findIndex(t => t.id === transaction.id);
-                    setFocusedRowIndex(currentRowIndex);
-                    setFocusedColumnId("category");
-                    setIsKeyboardNavigationMode(true);
-                  }}
-                  onTabNext={() => {
-                    // Close current edit
-                    setEditingCategoryForTransaction(null);
-
-                    // Move to next editable cell
-                    const currentRowIndex = allTransactions.findIndex(t => t.id === transaction.id);
-                    const nextColumn = getNextEditableColumn("category", "right");
-
-                    if (nextColumn === editableColumns[0]) {
-                      // Wrapped to next row
-                      const nextRowIndex = Math.min(currentRowIndex + 1, allTransactions.length - 1);
-                      const nextTransaction = allTransactions[nextRowIndex];
-                      if (nextTransaction) {
-                        setFocusedRowIndex(nextRowIndex);
-                        setFocusedColumnId(nextColumn);
-                        // Open edit for next cell
-                        if (nextColumn === 'description') {
-                          setEditingRow(nextTransaction.id);
-                          setEditingField('description');
-                        } else if (nextColumn === 'category') {
-                          setEditingCategoryForTransaction(nextTransaction.id);
-                        } else if (nextColumn === 'tags') {
-                          setEditingTagsForTransaction(nextTransaction.id);
-                        }
-                      }
-                    } else {
-                      setFocusedRowIndex(currentRowIndex);
-                      setFocusedColumnId(nextColumn);
-                      // Open edit for next cell in same row
-                      if (nextColumn === 'description') {
-                        setEditingRow(transaction.id);
-                        setEditingField('description');
-                      } else if (nextColumn === 'category') {
-                        setEditingCategoryForTransaction(transaction.id);
-                      } else if (nextColumn === 'tags') {
-                        setEditingTagsForTransaction(transaction.id);
-                      }
-                    }
-                    setIsKeyboardNavigationMode(true);
-                  }}
-                  onTabPrevious={() => {
-                    // Close current edit
-                    setEditingCategoryForTransaction(null);
-
-                    // Move to previous editable cell
-                    const currentRowIndex = allTransactions.findIndex(t => t.id === transaction.id);
-                    const prevColumn = getNextEditableColumn("category", "left");
-
-                    if (prevColumn === editableColumns[editableColumns.length - 1]) {
-                      // Wrapped to previous row
-                      const prevRowIndex = Math.max(currentRowIndex - 1, 0);
-                      const prevTransaction = allTransactions[prevRowIndex];
-                      if (prevTransaction) {
-                        setFocusedRowIndex(prevRowIndex);
-                        setFocusedColumnId(prevColumn);
-                        // Open edit for previous cell
-                        if (prevColumn === 'description') {
-                          setEditingRow(prevTransaction.id);
-                          setEditingField('description');
-                        } else if (prevColumn === 'category') {
-                          setEditingCategoryForTransaction(prevTransaction.id);
-                        } else if (prevColumn === 'tags') {
-                          setEditingTagsForTransaction(prevTransaction.id);
-                        }
-                      }
-                    } else {
-                      setFocusedRowIndex(currentRowIndex);
-                      setFocusedColumnId(prevColumn);
-                      // Open edit for previous cell in same row
-                      if (prevColumn === 'description') {
-                        setEditingRow(transaction.id);
-                        setEditingField('description');
-                      } else if (prevColumn === 'category') {
-                        setEditingCategoryForTransaction(transaction.id);
-                      } else if (prevColumn === 'tags') {
-                        setEditingTagsForTransaction(transaction.id);
-                      }
-                    }
-                    setIsKeyboardNavigationMode(true);
-                  }}
-                />
-              );
-            }
-
-            return (
-              <div
-                className="cursor-pointer hover:bg-muted/50 p-2 rounded whitespace-nowrap"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEditingCategoryForTransaction(transaction.id);
-                }}
-                title="Click to edit category"
-              >
-                {category ? (
-                  <div
-                    className="font-semibold text-sm inline-flex items-center px-2.5 py-0.5 rounded-md max-w-[120px] overflow-hidden"
-                    style={{
-                      backgroundColor: category.color ? `${category.color}20` : undefined,
-                      color: category.color || undefined,
-                    }}
-                  >
-                    <span className="truncate">{category.name}</span>
-                  </div>
-                ) : categoryName ? (
-                  <span
-                    className="text-xs text-muted-foreground italic"
-                    title={`${categoryName} (deleted)`}
-                  >
-                    {categoryName} (deleted)
-                  </span>
-                ) : (
-                  <span className="text-xs text-muted-foreground hover:text-foreground">
-                    Click to add category
-                  </span>
-                )}
-                {row.original.subcategory && (
-                  <div className="text-xs text-muted-foreground mt-1 truncate max-w-[120px]">
-                    {row.original.subcategory}
-                  </div>
-                )}
-              </div>
-            );
-          },
-          size: 110,
-        }),
-
-        // Tags column
-        columnHelper.accessor("tags", {
-          header: () => (
-            <div className="flex items-center gap-1">
-              <TagIcon className="h-3 w-3" />
-              Tags
-            </div>
-          ),
-          cell: ({ getValue, row }) => {
-            const tagNames = getValue();
-            const transaction = row.original;
-            const tagObjects = convertStringTagsToObjects(tagNames || [], allTags);
-            const isEditingTags = editingTagsForTransaction === transaction.id;
-
-
-
-            if (isEditingTags) {
-              return (
-                <InlineTagDropdown
-                  transactionId={transaction.id}
-                  currentTags={tagNames || []}
-                  onCancel={() => {
-                    setEditingTagsForTransaction(null);
-                    // Maintain keyboard navigation state after canceling tags edit
-                    const currentRowIndex = allTransactions.findIndex(t => t.id === transaction.id);
-                    setFocusedRowIndex(currentRowIndex);
-                    setFocusedColumnId("tags");
-                    setIsKeyboardNavigationMode(true);
-                  }}
-                  onSuccess={() => {
-                    setEditingTagsForTransaction(null);
-                    // Maintain keyboard navigation state after tags selection
-                    const currentRowIndex = allTransactions.findIndex(t => t.id === transaction.id);
-                    setFocusedRowIndex(currentRowIndex);
-                    setFocusedColumnId("tags");
-                    setIsKeyboardNavigationMode(true);
-                  }}
-                  onTabNext={() => {
-                    // Close current edit
-                    setEditingTagsForTransaction(null);
-
-                    // Move to next editable cell
-                    const currentRowIndex = allTransactions.findIndex(t => t.id === transaction.id);
-                    const nextColumn = getNextEditableColumn("tags", "right");
-
-                    if (nextColumn === editableColumns[0]) {
-                      // Wrapped to next row
-                      const nextRowIndex = Math.min(currentRowIndex + 1, allTransactions.length - 1);
-                      const nextTransaction = allTransactions[nextRowIndex];
-                      if (nextTransaction) {
-                        setFocusedRowIndex(nextRowIndex);
-                        setFocusedColumnId(nextColumn);
-                        // Open edit for next cell
-                        if (nextColumn === 'description') {
-                          setEditingRow(nextTransaction.id);
-                          setEditingField('description');
-                        } else if (nextColumn === 'category') {
-                          setEditingCategoryForTransaction(nextTransaction.id);
-                        } else if (nextColumn === 'tags') {
-                          setEditingTagsForTransaction(nextTransaction.id);
-                        }
-                      }
-                    } else {
-                      setFocusedRowIndex(currentRowIndex);
-                      setFocusedColumnId(nextColumn);
-                      // Open edit for next cell in same row
-                      if (nextColumn === 'description') {
-                        setEditingRow(transaction.id);
-                        setEditingField('description');
-                      } else if (nextColumn === 'category') {
-                        setEditingCategoryForTransaction(transaction.id);
-                      } else if (nextColumn === 'tags') {
-                        setEditingTagsForTransaction(transaction.id);
-                      }
-                    }
-                    setIsKeyboardNavigationMode(true);
-                  }}
-                  onTabPrevious={() => {
-                    // Close current edit
-                    setEditingTagsForTransaction(null);
-
-                    // Move to previous editable cell
-                    const currentRowIndex = allTransactions.findIndex(t => t.id === transaction.id);
-                    const prevColumn = getNextEditableColumn("tags", "left");
-
-                    if (prevColumn === editableColumns[editableColumns.length - 1]) {
-                      // Wrapped to previous row
-                      const prevRowIndex = Math.max(currentRowIndex - 1, 0);
-                      const prevTransaction = allTransactions[prevRowIndex];
-                      if (prevTransaction) {
-                        setFocusedRowIndex(prevRowIndex);
-                        setFocusedColumnId(prevColumn);
-                        // Open edit for previous cell
-                        if (prevColumn === 'description') {
-                          setEditingRow(prevTransaction.id);
-                          setEditingField('description');
-                        } else if (prevColumn === 'category') {
-                          setEditingCategoryForTransaction(prevTransaction.id);
-                        } else if (prevColumn === 'tags') {
-                          setEditingTagsForTransaction(prevTransaction.id);
-                        }
-                      }
-                    } else {
-                      setFocusedRowIndex(currentRowIndex);
-                      setFocusedColumnId(prevColumn);
-                      // Open edit for previous cell in same row
-                      if (prevColumn === 'description') {
-                        setEditingRow(transaction.id);
-                        setEditingField('description');
-                      } else if (prevColumn === 'category') {
-                        setEditingCategoryForTransaction(transaction.id);
-                      } else if (prevColumn === 'tags') {
-                        setEditingTagsForTransaction(transaction.id);
-                      }
-                    }
-                    setIsKeyboardNavigationMode(true);
-                  }}
-                />
-              );
-            }
-
-            return (
-              <div
-                className="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30 cursor-pointer hover:bg-muted/50 p-1 rounded max-w-[140px]"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEditingTagsForTransaction(transaction.id);
-                }}
-                title="Click to edit tags"
-              >
-                {tagObjects && tagObjects.length > 0 ? (
-                  <div className="flex gap-1 whitespace-nowrap">
-                    {tagObjects.map((tag) => (
-                      <TagPill
-                        key={tag.id}
-                        tag={tag}
-                        variant="compact"
-                        className="text-xs flex-shrink-0"
-                        onRemove={async (tagId) => {
-                          try {
-                            const remainingTags = tagObjects.filter(t => t.id !== tagId);
-                            await updateTransaction.mutateAsync({
-                              id: transaction.id,
-                              updates: {
-                                tags: remainingTags.map(t => t.name),
-                              },
-                            });
-                            toast.success("Tag removed successfully");
-                          } catch (error) {
-                            toast.error("Failed to remove tag");
-                            console.error("Remove tag error:", error);
-                          }
-                        }}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <span className="text-xs text-muted-foreground hover:text-foreground whitespace-nowrap">Click to add tags</span>
-                )}
-              </div>
-            );
-          },
-          size: 120,
-        }),
-
-        // Actions column - 6 buttons: Shared, Transfer, Parent, Split, Links, Flag
-        columnHelper.display({
-          id: "actions",
-          header: () => null,
-          cell: ({ row }) => {
-            const transaction = row.original;
-
-            // Find transaction group for transfers, splits, or grouped expenses
-            const transactionGroup = transaction.transaction_group_id
-              ? allTransactionsUnfiltered.filter(t => t.transaction_group_id === transaction.transaction_group_id)
-              : [];
-
-            const isSplitGroup = !!transaction.transaction_group_id &&
-              (transaction.is_split === true || transactionGroup.some(t => t.is_split === true));
-
-            const handleSplitClick = (e: React.MouseEvent) => {
-              e.stopPropagation();
-              e.preventDefault();
-
-              if (isSplitGroup) {
-                setDrawerVariant(null);
-                setDrawerTransaction(transaction);
-                setIsDrawerOpen(true);
-              }
-            };
-
-            const handleSplitGroupHover = () => {
-              if (isSplitGroup) {
-                handleHighlightTransactions(transactionGroup.map(t => t.id));
-              }
-            };
-
-            const isFocusedRow = isKeyboardNavigationMode && focusedRowIndex === allTransactions.findIndex(t => t.id === transaction.id);
-            const isFocusedActionsColumn = isFocusedRow && focusedColumnId === 'actions';
-
-            return (
-              <div className="flex justify-center items-center gap-1">
-                {/* 1. Shared button */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    "h-7 w-7 p-0 rounded-full transition-all duration-200",
-                    transaction.is_shared
-                      ? "bg-violet-400/15 text-violet-300 hover:bg-violet-400/20 shadow-[0_0_12px_rgba(196,181,253,0.2)]"
-                      : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                    isFocusedActionsColumn && focusedActionButton === 0 && "ring-2 ring-blue-500 ring-inset"
-                  )}
-                  onClick={() => {
-                    setSelectedTransactionForSplit(transaction);
-                    setIsSplitEditorOpen(true);
-                  }}
-                  title={transaction.is_shared ? "Shared expense (mark as personal)" : "Share expenses"}
-                >
-                  <Users className="h-3.5 w-3.5" />
-                </Button>
-
-                {/* 2. Group expense - before Split; glows when in a group; always opens modal (no ungroup) */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    "h-7 w-7 p-0 rounded-full transition-all duration-200",
-                    transaction.transaction_group_id && !transaction.is_split
-                      ? "bg-teal-400/15 text-teal-300 hover:bg-teal-400/20 shadow-[0_0_12px_rgba(45,212,191,0.2)]"
-                      : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                    isFocusedActionsColumn && focusedActionButton === 1 && "ring-2 ring-blue-500 ring-inset"
-                  )}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (transaction.transaction_group_id && !transaction.is_split) {
-                      setDrawerTransaction(transaction);
-                      setDrawerVariant("groupedExpense");
-                      setIsDrawerOpen(true);
-                    } else {
-                      setGroupExpenseFromTransaction(transaction);
-                      setIsGroupExpenseSearchModalOpen(true);
-                    }
-                  }}
-                  title={transaction.transaction_group_id ? "View group in sidebar" : "Group this transaction with others (search to add more)"}
-                >
-                  <Layers className="h-3.5 w-3.5" />
-                </Button>
-
-                {/* 3. Split button */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    "h-7 w-7 p-0 rounded-full transition-all duration-200",
-                    isSplitGroup
-                      ? "bg-sky-400/15 text-sky-300 hover:bg-sky-400/20 shadow-[0_0_12px_rgba(125,211,252,0.2)]"
-                      : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                    isFocusedActionsColumn && focusedActionButton === 2 && "ring-2 ring-blue-500 ring-inset"
-                  )}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (isSplitGroup) {
-                      handleSplitClick(e);
-                    } else {
-                      setSelectedTransactionForSplitting(transaction);
-                      setIsSplitTransactionModalOpen(true);
-                    }
-                  }}
-                  onMouseEnter={handleSplitGroupHover}
-                  onMouseLeave={handleClearHighlight}
-                  title={isSplitGroup ? "View split transaction group" : "Split transaction"}
-                >
-                  <Split className="h-3.5 w-3.5" />
-                </Button>
-
-                {/* 4. Links button */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    "h-7 w-7 p-0 rounded-full transition-all duration-200",
-                    transaction.related_mails && transaction.related_mails.length > 0
-                      ? "bg-amber-400/15 text-amber-300 hover:bg-amber-400/20 shadow-[0_0_12px_rgba(251,191,36,0.2)]"
-                      : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                    isFocusedActionsColumn && focusedActionButton === 3 && "ring-2 ring-blue-500 ring-inset"
-                  )}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setEmailLinksTransaction(transaction);
-                    setIsEmailLinksDrawerOpen(true);
-                  }}
-                  title={
-                    transaction.related_mails && transaction.related_mails.length > 0
-                      ? `${transaction.related_mails.length} email(s) linked`
-                      : "Link emails"
-                  }
-                >
-                  <Link2 className="h-3.5 w-3.5" />
-                </Button>
-
-                {/* 5. Warning/Flag button */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    "h-7 w-7 p-0 rounded-full transition-all duration-200",
-                    transaction.is_flagged === true
-                      ? "bg-[#F44D4D]/15 text-[#F44D4D] hover:bg-[#F44D4D]/20 shadow-[0_0_12px_rgba(244,77,77,0.2)]"
-                      : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                    isFocusedActionsColumn && focusedActionButton === 4 && "ring-2 ring-blue-500 ring-inset"
-                  )}
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    try {
-                      await updateTransaction.mutateAsync({
-                        id: transaction.id,
-                        updates: {
-                          is_flagged: !(transaction.is_flagged === true),
-                        },
-                      });
-                      toast.success(transaction.is_flagged === true ? "Warning removed" : "Transaction marked for review");
-                    } catch (error) {
-                      console.error("Failed to update flag status:", error);
-                      toast.error("Failed to update warning status");
-                    }
-                  }}
-                  title={transaction.is_flagged === true ? "Remove warning" : "Mark for review"}
-                >
-                  <AlertCircle className="h-3.5 w-3.5" />
-                </Button>
-
-                {/* 6. Toggle direction button */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    "h-7 w-7 p-0 rounded-full transition-all duration-200 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                    isFocusedActionsColumn && focusedActionButton === 5 && "ring-2 ring-blue-500 ring-inset"
-                  )}
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    const nextDirection = transaction.direction === "debit" ? "credit" : "debit";
-                    try {
-                      await updateTransaction.mutateAsync({
-                        id: transaction.id,
-                        updates: {
-                          direction: nextDirection,
-                        },
-                      });
-                      toast.success(`Marked as ${nextDirection === "credit" ? "credit (money in)" : "debit (money out)"}`);
-                    } catch (error) {
-                      console.error("Failed to toggle direction:", error);
-                      toast.error("Failed to toggle transaction direction");
-                    }
-                  }}
-                  title={`Mark as ${transaction.direction === "debit" ? "credit" : "debit"}`}
-                >
-                  <RefreshCcw className="h-3.5 w-3.5" />
-                </Button>
-
-                {/* 7. Delete button */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    "h-7 w-7 p-0 rounded-full transition-all duration-200 bg-muted/40 text-muted-foreground hover:bg-[#F44D4D]/15 hover:text-[#F44D4D]",
-                    isFocusedActionsColumn && focusedActionButton === 6 && "ring-2 ring-blue-500 ring-inset"
-                  )}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setTransactionToDelete(transaction);
-                    setIsDeleteConfirmationOpen(true);
-                  }}
-                  title="Delete transaction"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-
-                {/* 8. PDF viewer button - only show if transaction has source_file */}
-                {transaction.source_file && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className={cn(
-                      "h-7 w-7 p-0 rounded-full transition-all duration-200 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                      isFocusedActionsColumn && focusedActionButton === 7 && "ring-2 ring-blue-500 ring-inset"
-                    )}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPdfViewerTransactionId(transaction.id);
-                      setIsPdfViewerOpen(true);
-                    }}
-                    title="View source PDF"
-                  >
-                    <FileText className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-              </div>
-            );
-          },
-          size: 250,
-        }),
-      ];
-    },
-    [editingRow, editingField, allTags, allCategories, editingTagsForTransaction, editingCategoryForTransaction, isMultiSelectMode, selectedTransactionIds, isAllSelected, isIndeterminate, allTransactions, updateTransaction]
+    () =>
+      buildTransactionColumns({
+        editingRow,
+        editingField,
+        editingTagsForTransaction,
+        editingCategoryForTransaction,
+        isMultiSelectMode,
+        selectedTransactionIds,
+        isAllSelected,
+        isIndeterminate,
+        isKeyboardNavigationMode,
+        focusedRowIndex,
+        focusedColumnId,
+        focusedActionButton,
+        allTags,
+        allCategories,
+        allTransactions,
+        allTransactionsUnfiltered,
+        expandedGroupedExpenses,
+        editableColumns,
+        getNextEditableColumn,
+        handleSelectAll,
+        handleSelectTransaction,
+        handleHighlightTransactions,
+        handleClearHighlight,
+        toggleGroupExpense,
+        onUpdateTransaction: (params) => updateTransaction.mutateAsync(params),
+        setEditingRow,
+        setEditingField,
+        setEditingTagsForTransaction,
+        setEditingCategoryForTransaction,
+        setFocusedRowIndex,
+        setFocusedColumnId,
+        setIsKeyboardNavigationMode,
+        setSelectedTransactionForSplit,
+        setIsSplitEditorOpen,
+        setDrawerTransaction,
+        setDrawerVariant,
+        setIsDrawerOpen,
+        setGroupExpenseFromTransaction,
+        setIsGroupExpenseSearchModalOpen,
+        setSelectedTransactionForSplitting,
+        setIsSplitTransactionModalOpen,
+        setEmailLinksTransaction,
+        setIsEmailLinksDrawerOpen,
+        setTransactionToDelete,
+        setIsDeleteConfirmationOpen,
+        setPdfViewerTransactionId,
+        setIsPdfViewerOpen,
+      }),
+    [
+      editingRow,
+      editingField,
+      allTags,
+      allCategories,
+      editingTagsForTransaction,
+      editingCategoryForTransaction,
+      isMultiSelectMode,
+      selectedTransactionIds,
+      isAllSelected,
+      isIndeterminate,
+      isKeyboardNavigationMode,
+      focusedRowIndex,
+      focusedColumnId,
+      focusedActionButton,
+      allTransactions,
+      allTransactionsUnfiltered,
+      expandedGroupedExpenses,
+      editableColumns,
+      getNextEditableColumn,
+      handleSelectAll,
+      handleSelectTransaction,
+      handleHighlightTransactions,
+      handleClearHighlight,
+      toggleGroupExpense,
+      updateTransaction,
+      setEditingRow,
+      setEditingField,
+      setEditingTagsForTransaction,
+      setEditingCategoryForTransaction,
+      setFocusedRowIndex,
+      setFocusedColumnId,
+      setIsKeyboardNavigationMode,
+      setSelectedTransactionForSplit,
+      setIsSplitEditorOpen,
+      setDrawerTransaction,
+      setDrawerVariant,
+      setIsDrawerOpen,
+      setGroupExpenseFromTransaction,
+      setIsGroupExpenseSearchModalOpen,
+      setSelectedTransactionForSplitting,
+      setIsSplitTransactionModalOpen,
+      setEmailLinksTransaction,
+      setIsEmailLinksDrawerOpen,
+      setTransactionToDelete,
+      setIsDeleteConfirmationOpen,
+      setPdfViewerTransactionId,
+      setIsPdfViewerOpen,
+    ]
   );
 
   const table = useReactTable({
@@ -2177,9 +1045,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               });
               setIsSplitEditorOpen(false);
               setSelectedTransactionForSplit(null);
-            } catch (error) {
-              console.error("Failed to save split breakdown:", error);
-              // TODO: Show error message to user
+            } catch {
+              toast.error("Failed to save split breakdown");
             }
           }}
           onClearSplit={async () => {
@@ -2187,9 +1054,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               await clearTransactionSplit.mutateAsync(selectedTransactionForSplit.id);
               setIsSplitEditorOpen(false);
               setSelectedTransactionForSplit(null);
-            } catch (error) {
-              console.error("Failed to clear split:", error);
-              // TODO: Show error message to user
+            } catch {
+              toast.error("Failed to clear split");
             }
           }}
         />
@@ -2239,9 +1105,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               await apiClient.groupTransfer(transactionIds);
               toast.success(`Grouped ${transactionIds.length} transactions as a transfer`);
               setGroupTransferModalTransaction(null);
-            } catch (error) {
+            } catch {
               toast.error("Failed to group transfer");
-              console.error("Group transfer error:", error);
             }
           }}
           onUngroup={async () => {
@@ -2252,9 +1117,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               });
               toast.success("Transfer ungrouped successfully");
               setGroupTransferModalTransaction(null);
-            } catch (error) {
+            } catch {
               toast.error("Failed to ungroup transfer");
-              console.error("Ungroup transfer error:", error);
             }
           }}
           onAddToGroup={async (transactionIds) => {
@@ -2269,9 +1133,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               await Promise.all(updatePromises);
               toast.success(`Added ${transactionIds.length} transactions to transfer group`);
               setGroupTransferModalTransaction(null);
-            } catch (error) {
+            } catch {
               toast.error("Failed to add to transfer group");
-              console.error("Add to transfer group error:", error);
             }
           }}
           onRemoveFromGroup={async (transactionId) => {
@@ -2281,9 +1144,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 updates: { transaction_group_id: undefined },
               });
               toast.success("Transaction removed from transfer group");
-            } catch (error) {
+            } catch {
               toast.error("Failed to remove from transfer group");
-              console.error("Remove from transfer group error:", error);
             }
           }}
         />
@@ -2370,8 +1232,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
               setIsDrawerOpen(false);
               setDrawerTransaction(null);
               setDrawerVariant(null);
-            } catch (error) {
-              console.error("Failed to ungroup:", error);
+            } catch {
               toast.error(drawerVariant === "groupedExpense" ? "Failed to ungroup expense" : "Failed to ungroup transfer");
             }
           }}
@@ -2382,8 +1243,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 updates: { transaction_group_id: null },
               });
               toast.success("Transaction removed from group");
-            } catch (error) {
-              console.error("Failed to remove from group:", error);
+            } catch {
               toast.error("Failed to remove transaction from group");
             }
           }}
@@ -2453,8 +1313,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             }
             setIsDeleteConfirmationOpen(false);
             setTransactionToDelete(null);
-          } catch (error) {
-            console.error("Failed to delete transaction(s):", error);
+          } catch {
             toast.error("Failed to delete transaction(s)");
           }
         }}

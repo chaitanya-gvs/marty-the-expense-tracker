@@ -52,9 +52,8 @@ export function InlineTagEditor({
       
       toast.success("Tags updated successfully");
       onSuccess();
-    } catch (error) {
+    } catch {
       toast.error("Failed to update tags");
-      console.error("Update error:", error);
     }
   };
 

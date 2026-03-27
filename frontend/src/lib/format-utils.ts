@@ -1,6 +1,7 @@
 /**
  * Utility functions for formatting that are safe for SSR/hydration
  */
+import { format } from "date-fns";
 
 /**
  * Safely format a number with locale-specific formatting
@@ -38,9 +39,8 @@ export function formatDate(dateString: string): string {
     }
     
     // On client side, use date-fns for better formatting
-    const { format } = require('date-fns');
     return format(date, "MMM dd, yyyy");
-  } catch (error) {
+  } catch {
     return dateString; // Return original string if parsing fails
   }
 }

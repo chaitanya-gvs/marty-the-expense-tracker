@@ -4,7 +4,7 @@ from datetime import date
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apis.schemas.common import ApiResponse
@@ -374,6 +374,7 @@ async def get_settlement_summary(
     db_session: AsyncSession = Depends(get_db_session)
 ):
     """Get summary of all settlements."""
+    logger.info("Fetching settlement summary")
     try:
         filters = SettlementFilters(
             date_range_start=date_range_start,
@@ -419,14 +420,15 @@ async def get_settlement_summary(
         # Replace settlements list with enriched version
         settlement_summary = settlement_summary.model_copy(update={"settlements": enriched_settlements})
 
+        logger.info("Returned settlement summary with %d participants", settlement_summary.participant_count)
         return ApiResponse(
             data=settlement_summary.model_dump(),
             message="Settlement summary retrieved successfully"
         )
-        
-    except Exception as e:
-        logger.error("Error getting settlement summary", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+
+    except Exception:
+        logger.error("Failed to get settlement summary", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/participant/{participant}", response_model=ApiResponse)
@@ -438,6 +440,7 @@ async def get_participant_settlement(
     db_session: AsyncSession = Depends(get_db_session)
 ):
     """Get detailed settlement information for a specific participant."""
+    logger.info("Fetching settlement detail for participant=%s", participant)
     try:
         filters = SettlementFilters(
             date_range_start=date_range_start,
@@ -559,14 +562,15 @@ async def get_participant_settlement(
             has_discrepancy=has_discrepancy,
         )
         
+        logger.info("Returned settlement detail for participant=%s, net_balance=%.2f", participant, net_balance)
         return ApiResponse(
             data=settlement_detail.model_dump(),
             message=f"Settlement details for {participant} retrieved successfully"
         )
-        
-    except Exception as e:
-        logger.error(f"Error getting participant settlement for {participant}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+
+    except Exception:
+        logger.error("Failed to get settlement detail for participant=%s", participant, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/participants", response_model=ApiResponse)
@@ -576,6 +580,7 @@ async def get_all_participants(
     db_session: AsyncSession = Depends(get_db_session)
 ):
     """Get list of all participants with shared transactions."""
+    logger.info("Fetching settlement participants list")
     try:
         filters = SettlementFilters(
             date_range_start=date_range_start,
@@ -598,11 +603,12 @@ async def get_all_participants(
         
         participants_list = sorted(list(all_participants))
         
+        logger.info("Returned %d settlement participants", len(participants_list))
         return ApiResponse(
             data={"participants": participants_list},
             message="Participants list retrieved successfully"
         )
-        
-    except Exception as e:
-        logger.error("Error getting participants list", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+
+    except Exception:
+        logger.error("Failed to get settlement participants list", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")

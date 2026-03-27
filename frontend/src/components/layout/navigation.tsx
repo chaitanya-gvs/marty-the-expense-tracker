@@ -12,11 +12,8 @@ import {
   HandCoins,
   ScanSearch,
   SlidersHorizontal,
-  ChevronLeft,
-  Menu,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
@@ -33,65 +30,34 @@ const navigation = [
   { name: "Settings", href: "/settings", icon: SlidersHorizontal },
 ];
 
-interface NavigationProps {
-  isCollapsed: boolean;
-  onToggle: () => void;
-}
-
-export function Navigation({ isCollapsed, onToggle }: NavigationProps) {
+export function Navigation() {
   const pathname = usePathname();
-  const [isHeaderHovered, setIsHeaderHovered] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   return (
     <TooltipProvider>
       <nav
         className={cn(
-          "flex flex-col bg-sidebar border-r border-sidebar-border h-full transition-all duration-200 z-10 relative",
-          isCollapsed ? "w-14" : "w-56"
+          "absolute left-0 top-0 bottom-0 flex flex-col bg-sidebar border-r border-sidebar-border transition-all duration-200 z-50 overflow-hidden",
+          isHovered ? "w-56" : "w-14"
         )}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       >
         <div className={cn(
           "flex items-center border-b border-sidebar-border transition-all duration-200",
-          isCollapsed ? "justify-center p-3" : "justify-between px-4 py-3"
+          isHovered ? "justify-between px-4 py-3" : "justify-center p-3"
         )}>
-          {isCollapsed ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div
-                  className="flex items-center justify-center cursor-pointer p-2 rounded-md hover:bg-sidebar-accent transition-colors"
-                  onClick={onToggle}
-                  onMouseEnter={() => setIsHeaderHovered(true)}
-                  onMouseLeave={() => setIsHeaderHovered(false)}
-                >
-                  {isHeaderHovered ? (
-                    <Menu className="h-5 w-5 text-primary" />
-                  ) : (
-                    <Wallet className="h-5 w-5 text-primary" />
-                  )}
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="ml-2">
-                <p>Open sidebar</p>
-              </TooltipContent>
-            </Tooltip>
-          ) : (
+          {isHovered ? (
             <>
               <div className="flex items-center gap-2">
                 <Wallet className="h-5 w-5 text-primary" />
                 <h1 className="text-sm font-semibold text-sidebar-foreground tracking-tight">Expense Tracker</h1>
               </div>
-              <div className="flex items-center gap-1">
-                <ThemeToggle />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onToggle}
-                  className="h-7 w-7 p-0 text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-              </div>
+              <ThemeToggle />
             </>
+          ) : (
+            <Wallet className="h-5 w-5 text-primary" />
           )}
         </div>
 
@@ -101,7 +67,7 @@ export function Navigation({ isCollapsed, onToggle }: NavigationProps) {
               const isActive = pathname === item.href;
               return (
                 <li key={item.name}>
-                  {isCollapsed ? (
+                  {!isHovered ? (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Link
@@ -142,7 +108,7 @@ export function Navigation({ isCollapsed, onToggle }: NavigationProps) {
             {(() => {
               const settingsItem = navigation.find(item => item.href === "/settings")!;
               const isActive = pathname === settingsItem.href;
-              return isCollapsed ? (
+              return !isHovered ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Link

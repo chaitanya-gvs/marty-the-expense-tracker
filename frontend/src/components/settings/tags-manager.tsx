@@ -17,7 +17,7 @@ export function TagsManager() {
   const createTag = useCreateTag();
   const deleteTag = useDeleteTag();
   
-  const tags = tagsData?.data || [];
+  const tags = tagsData || [];
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newTag, setNewTag] = useState({
     name: "",
@@ -34,9 +34,8 @@ export function TagsManager() {
     try {
       await deleteTag.mutateAsync(tagId);
       toast.success(`Tag "${tagName}" deleted successfully`);
-    } catch (error) {
+    } catch {
       toast.error(`Failed to delete tag "${tagName}"`);
-      console.error("Delete tag error:", error);
     }
   };
 
@@ -148,7 +147,7 @@ export function TagsManager() {
                         <AlertDialogHeader>
                           <AlertDialogTitle>Delete Tag</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Are you sure you want to delete the tag "{tag.name}"? 
+                            Are you sure you want to delete the tag &quot;{tag.name}&quot;?
                             {tag.usage_count > 0 && (
                               <span className="block mt-2 text-amber-600 dark:text-amber-400 font-medium">
                                 ⚠️ This tag is currently used in {tag.usage_count} transaction{tag.usage_count === 1 ? '' : 's'}. 

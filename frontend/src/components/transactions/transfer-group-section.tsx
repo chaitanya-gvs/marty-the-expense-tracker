@@ -80,8 +80,7 @@ export function TransferGroupSection({
         .slice(0, 5);
 
       setSuggestions(formattedSuggestions);
-    } catch (error) {
-      console.error("Failed to load transfer suggestions:", error);
+    } catch {
       toast.error("Failed to load suggestions");
     } finally {
       setIsLoading(false);
@@ -99,8 +98,7 @@ export function TransferGroupSection({
           onClick: () => handleUngroup(),
         },
       });
-    } catch (error) {
-      console.error("Failed to create transfer group:", error);
+    } catch {
       toast.error("Failed to create transfer group");
     }
   };
@@ -108,7 +106,7 @@ export function TransferGroupSection({
   const handleUngroup = async () => {
     try {
       // Update all transactions in the group to remove transaction_group_id
-      const updatePromises = transferGroup.map(t => 
+      const updatePromises = transferGroup.map(t =>
         apiClient.updateTransaction(t.id, { transaction_group_id: undefined })
       );
       await Promise.all(updatePromises);
@@ -119,8 +117,7 @@ export function TransferGroupSection({
           onClick: () => handleCreateGroup(transferGroup.filter(t => t.id !== transaction.id).map(t => t.id)),
         },
       });
-    } catch (error) {
-      console.error("Failed to ungroup transfer:", error);
+    } catch {
       toast.error("Failed to ungroup transfer");
     }
   };
@@ -135,8 +132,7 @@ export function TransferGroupSection({
           onClick: () => handleAddToGroup([transactionId]),
         },
       });
-    } catch (error) {
-      console.error("Failed to remove from group:", error);
+    } catch {
       toast.error("Failed to remove from group");
     }
   };
@@ -144,7 +140,7 @@ export function TransferGroupSection({
   const handleAddToGroup = async (transactionIds: string[]) => {
     try {
       // Add to existing group by setting the same transaction_group_id
-      const updatePromises = transactionIds.map(id => 
+      const updatePromises = transactionIds.map(id =>
         apiClient.updateTransaction(id, { transaction_group_id: transaction.transaction_group_id })
       );
       await Promise.all(updatePromises);
@@ -155,8 +151,7 @@ export function TransferGroupSection({
           onClick: () => handleRemoveFromGroup(transactionIds[0]),
         },
       });
-    } catch (error) {
-      console.error("Failed to add to group:", error);
+    } catch {
       toast.error("Failed to add to group");
     }
   };
@@ -300,7 +295,7 @@ export function TransferGroupSection({
             </div>
           ) : (
             <div className="text-center py-4 text-slate-500 text-sm">
-              No transfer suggestions available. Click "Load suggestions" to find potential transfer pairs.
+              No transfer suggestions available. Click &quot;Load suggestions&quot; to find potential transfer pairs.
             </div>
           )}
           

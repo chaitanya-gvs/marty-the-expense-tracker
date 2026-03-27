@@ -11,19 +11,18 @@ This orchestrator coordinates the complete statement processing workflow:
 """
 
 import calendar
-import json
 import os
 import re
 import shutil
 import tempfile
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Any
 
 import pandas as pd
 from googleapiclient.discovery import build
 
-from src.services.database_manager.operations import AccountOperations, ParticipantOperations, StatementLogOperations, TransactionOperations
+from src.services.database_manager.operations import AccountOperations, StatementLogOperations, TransactionOperations
 from src.services.email_ingestion.client import EmailClient
 from src.services.email_ingestion.token_manager import TokenManager
 from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
@@ -34,6 +33,9 @@ from src.services.statement_processor.pdf_unlocker import PDFUnlocker
 from src.services.splitwise_processor.service import SplitwiseService
 from src.utils.logger import get_logger
 from src.utils.password_manager import BankPasswordManager
+from .statement_extractor_helper import StatementExtractorHelper
+from .splitwise_processor_helper import SplitwiseProcessorHelper
+from .data_standardizer_helper import DataStandardizerHelper
 
 logger = get_logger(__name__)
 
@@ -126,6 +128,36 @@ class StatementWorkflow:
         logger.info(f"Created temp directory: {self.temp_dir}", extra=self._log_extra())
         logger.info(f"Initialized email clients for accounts: {self.account_ids}", extra=self._log_extra())
         logger.info(f"Secondary account enabled: {self.enable_secondary_account}", extra=self._log_extra())
+
+        # Initialize extraction/processing helper objects
+        self._extractor_helper = StatementExtractorHelper(
+            document_extractor=self.document_extractor,
+            cloud_storage=self.cloud_storage,
+            unlock_pdf_async=self._unlock_pdf_async,
+            check_unlocked_pdf_in_gcs=self._check_unlocked_pdf_in_gcs,
+            check_statement_already_extracted=self.check_statement_already_extracted,
+            temp_dir=self.temp_dir,
+            emit=self._emit,
+            log_extra=self._log_extra,
+        )
+        self._splitwise_helper = SplitwiseProcessorHelper(
+            splitwise_service=self.splitwise_service,
+            cloud_storage=self.cloud_storage,
+            temp_dir=self.temp_dir,
+            calculate_splitwise_date_range=self._calculate_splitwise_date_range,
+            emit=self._emit,
+            log_extra=self._log_extra,
+        )
+        self._data_standardizer_helper = DataStandardizerHelper(
+            transaction_standardizer=self.transaction_standardizer,
+            cloud_storage=self.cloud_storage,
+            temp_dir=self.temp_dir,
+            calculate_splitwise_date_range=self._calculate_splitwise_date_range,
+            remove_duplicate_transactions=self._remove_duplicate_transactions,
+            sort_transactions_by_date=self._sort_transactions_by_date,
+            emit=self._emit,
+            log_extra=self._log_extra,
+        )
     
     def _emit(
         self,
@@ -627,212 +659,10 @@ class StatementWorkflow:
             return None
 
     async def _process_statement_extraction(self, statement_data: Dict[str, Any], override: bool = False) -> Optional[Dict[str, Any]]:
-        """
-        Process statement for data extraction and unlock PDF.
-
-        3-tier skip logic (applied when override=False):
-          Tier 1 — CSV already in GCS?       → skip everything
-          Tier 2 — Unlocked PDF already in GCS? → download it, skip local unlock, run extraction
-          Tier 3 — Neither                    → full path: unlock locally, extract, upload both
-        When override=True all tiers are bypassed and the full path is always taken.
-        """
-        try:
-            temp_file_path = statement_data["temp_file_path"]
-            normalized_filename = statement_data["normalized_filename"]
-            sender_email = statement_data["sender_email"]
-            log_key = statement_data.get("log_key") or normalized_filename.replace("_locked.pdf", "")
-
-            # Get account nickname from database
-            account_nickname = await AccountOperations.get_account_nickname_by_sender(sender_email)
-            if not account_nickname:
-                logger.error(f"No account nickname found for sender: {sender_email}", exc_info=True, extra=self._log_extra())
-                self._emit(
-                    "extraction_failed", "extraction",
-                    f"No account nickname found for sender {sender_email}",
-                    level="error",
-                    data={"filename": normalized_filename, "sender": sender_email},
-                )
-                return None
-
-            unlocked_path = None
-
-            if not override:
-                # Tier 1: CSV already extracted? Check DB first, fall back to GCS scan.
-                already_extracted = await StatementLogOperations.check_already_extracted(log_key)
-                if not already_extracted:
-                    already_extracted = await self.check_statement_already_extracted(statement_data)
-                if already_extracted:
-                    logger.info(f"Skipping extraction for {normalized_filename} - data already exists", extra=self._log_extra())
-                    self._emit(
-                        "extraction_skipped", "extraction",
-                        f"Skipping {normalized_filename} — already extracted",
-                        level="info",
-                        data={"filename": normalized_filename, "account": account_nickname},
-                    )
-                    return {
-                        "success": True,
-                        "skipped": True,
-                        "reason": "Data already extracted",
-                        "extraction_schema": "skipped",
-                        "csv_cloud_path": "already_exists",
-                    }
-
-                # Tier 2: Unlocked PDF already in GCS?
-                unlocked_gcs_path = await self._check_unlocked_pdf_in_gcs(statement_data)
-                if unlocked_gcs_path:
-                    unlocked_filename = normalized_filename.replace("_locked.pdf", ".pdf")
-                    temp_unlocked = self.temp_dir / unlocked_filename
-                    download_result = self.cloud_storage.download_file(unlocked_gcs_path, str(temp_unlocked))
-                    if download_result.get("success"):
-                        unlocked_path = str(temp_unlocked)
-                        logger.info(f"Resuming extraction from existing GCS unlocked PDF: {unlocked_gcs_path}", extra=self._log_extra())
-                        self._emit(
-                            "pdf_resume_from_gcs", "pdf_unlock",
-                            f"Using existing unlocked PDF from GCS for {normalized_filename}",
-                            level="info",
-                            data={"filename": normalized_filename, "account": account_nickname, "gcs_path": unlocked_gcs_path},
-                        )
-                    else:
-                        logger.warning(f"Failed to download unlocked PDF from GCS ({unlocked_gcs_path}), falling back to local unlock", extra=self._log_extra())
-
-            # Tier 3 (or override, or Tier 2 download failed): unlock locally
-            if unlocked_path is None:
-                self._emit(
-                    "pdf_unlock_started", "pdf_unlock",
-                    f"Unlocking {normalized_filename}",
-                    data={"filename": normalized_filename, "account": account_nickname},
-                )
-                unlock_result = await self._unlock_pdf_async(temp_file_path, sender_email, account_nickname=account_nickname)
-                if not unlock_result.get("success"):
-                    logger.warning(f"Could not unlock PDF: {normalized_filename}", extra=self._log_extra())
-                    self._emit(
-                        "pdf_unlock_failed", "pdf_unlock",
-                        f"Could not unlock {normalized_filename}: {unlock_result.get('error', 'unknown error')}",
-                        level="warning",
-                        data={"filename": normalized_filename, "error": unlock_result.get("error")},
-                    )
-                    unlocked_path = temp_file_path
-                else:
-                    unlocked_path = unlock_result.get("unlocked_path")
-                    logger.info(f"Successfully unlocked PDF: {normalized_filename}", extra=self._log_extra())
-                    self._emit(
-                        "pdf_unlocked", "pdf_unlock",
-                        f"Unlocked {normalized_filename}",
-                        level="success",
-                        data={"filename": normalized_filename, "account": account_nickname},
-                    )
-                    try:
-                        await StatementLogOperations.update_status(
-                            log_key, "pdf_unlocked", job_id=self.job_id
-                        )
-                    except Exception:
-                        logger.warning(f"Failed to update log status to pdf_unlocked for {log_key}", exc_info=True, extra=self._log_extra())
-
-            # Extract data from unlocked PDF
-            self._emit(
-                "extraction_started", "extraction",
-                f"Extracting transactions from {normalized_filename} ({account_nickname})",
-                data={"filename": normalized_filename, "account": account_nickname},
-            )
-            extraction_result = self.document_extractor.extract_from_pdf(
-                pdf_path=unlocked_path,
-                account_nickname=account_nickname,
-                save_results=True,
-                email_date=statement_data.get("email_date")
-            )
-
-            # Emit page-filter diagnostics so the UI can show which pages were sent for extraction
-            kept_pages = extraction_result.get("kept_pages")
-            if kept_pages is not None:
-                fallback = extraction_result.get("page_filter_fallback", False)
-                self._emit(
-                    "pdf_pages_filtered", "pdf_page_filter",
-                    f"Page filter: kept {len(kept_pages)} page(s) from {normalized_filename}"
-                    + (" (fallback: all pages)" if fallback else f" — pages {[p + 1 for p in kept_pages]}"),
-                    data={
-                        "filename": normalized_filename,
-                        "kept_pages": [p + 1 for p in kept_pages],
-                        "kept_count": len(kept_pages),
-                        "fallback": fallback,
-                    },
-                )
-
-            # Clean up local CSV file after successful cloud upload
-            if extraction_result.get("success") and extraction_result.get("csv_file"):
-                try:
-                    csv_file_path = Path(extraction_result["csv_file"])
-                    if csv_file_path.exists():
-                        csv_file_path.unlink()
-                        logger.info(f"Cleaned up local CSV file: {csv_file_path.name}", extra=self._log_extra())
-                except Exception as e:
-                    logger.warning(f"Failed to clean up local CSV file: {e}", extra=self._log_extra())
-
-            if extraction_result.get("success"):
-                logger.info(f"Extracted data from: {normalized_filename}", extra=self._log_extra())
-                self._emit(
-                    "extraction_complete", "extraction",
-                    f"Extracted data from {normalized_filename}",
-                    level="success",
-                    data={
-                        "filename": normalized_filename,
-                        "account": account_nickname,
-                        "csv_cloud_path": extraction_result.get("csv_cloud_path"),
-                        "row_count": extraction_result.get("row_count"),
-                    },
-                )
-                # Only advance the log status when an actual CSV was produced.
-                # If no CSV was saved (e.g. parse failure), leave the status at
-                # pdf_unlocked so the next run knows to retry extraction.
-                csv_cloud_path = extraction_result.get("csv_cloud_path")
-                saved_path = extraction_result.get("saved_path")
-                if csv_cloud_path or saved_path:
-                    try:
-                        csv_status = "csv_stored" if csv_cloud_path else "csv_extracted"
-                        await StatementLogOperations.update_status(
-                            log_key,
-                            csv_status,
-                            csv_cloud_path=csv_cloud_path,
-                            job_id=self.job_id,
-                        )
-                    except Exception:
-                        logger.warning(f"Failed to update log status to {csv_status} for {log_key}", exc_info=True, extra=self._log_extra())
-                else:
-                    logger.warning(
-                        f"Extraction succeeded but no CSV was produced for {normalized_filename} — log status NOT advanced",
-                        extra=self._log_extra(),
-                    )
-                return extraction_result
-            else:
-                logger.error(f"Failed to extract data from: {normalized_filename}", exc_info=True, extra=self._log_extra())
-                self._emit(
-                    "extraction_failed", "extraction",
-                    f"Failed to extract data from {normalized_filename}",
-                    level="error",
-                    data={"filename": normalized_filename, "account": account_nickname},
-                )
-                try:
-                    await StatementLogOperations.set_error(
-                        log_key, f"Extraction failed: {extraction_result.get('error', 'unknown error')}"
-                    )
-                except Exception:
-                    logger.warning(f"Failed to set error in log for {log_key}", exc_info=True, extra=self._log_extra())
-                return None
-
-        except Exception as e:
-            logger.error("Error processing statement extraction", exc_info=True, extra=self._log_extra())
-            self._emit(
-                "extraction_failed", "extraction",
-                f"Unexpected error extracting {statement_data.get('normalized_filename', 'unknown')}: {e}",
-                level="error",
-                data={"filename": statement_data.get("normalized_filename"), "error": str(e)},
-            )
-            _log_key = statement_data.get("log_key") or statement_data.get("normalized_filename", "").replace("_locked.pdf", "")
-            if _log_key:
-                try:
-                    await StatementLogOperations.set_error(_log_key, str(e))
-                except Exception:
-                    logger.warning(f"Failed to set error in log for {_log_key}", exc_info=True, extra=self._log_extra())
-            return None
+        """Delegate to StatementExtractorHelper."""
+        return await self._extractor_helper.process(
+            statement_data, job_id=self.job_id, override=override
+        )
     
     async def _upload_unlocked_statement_to_cloud(self, statement_data: Dict[str, Any], extraction_result: Dict[str, Any]) -> Optional[str]:
         """Upload only the unlocked statement to cloud storage"""
@@ -932,251 +762,13 @@ class StatementWorkflow:
         custom_start_date: Optional[datetime] = None,
         custom_end_date: Optional[datetime] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Process Splitwise data and upload to cloud storage. Uses incremental sync when cursor exists."""
-        try:
-            logger.info("Processing Splitwise data", extra=self._log_extra())
-
-            # Transaction date range: use custom or default
-            if custom_start_date and custom_end_date:
-                start_date = custom_start_date
-                end_date = custom_end_date
-            else:
-                start_date, end_date = self._calculate_splitwise_date_range()
-
-            # GCS folder: always previous month (align with standardization)
-            cloud_month = self._calculate_splitwise_date_range()[0].strftime("%Y-%m")
-
-            override = getattr(self, "override", False)
-            cursor = await TransactionOperations.get_splitwise_cursor()
-
-            # Full sync: override, no cursor, or explicit custom dates
-            use_full_sync = override or cursor is None or (custom_start_date is not None and custom_end_date is not None)
-
-            if use_full_sync:
-                self._emit(
-                    "splitwise_sync_started", "splitwise",
-                    f"Fetching Splitwise transactions ({start_date.strftime('%Y-%m-%d')} → {end_date.strftime('%Y-%m-%d')})",
-                    data={"start_date": start_date.isoformat(), "end_date": end_date.isoformat(), "mode": "full"},
-                )
-                splitwise_transactions, deleted_expense_ids = self.splitwise_service.get_transactions_for_past_month(
-                    exclude_created_by_me=True,
-                    include_only_my_transactions=True,
-                    start_date=start_date,
-                    end_date=end_date,
-                )
-            else:
-                self._emit(
-                    "splitwise_sync_started", "splitwise",
-                    f"Incremental sync: fetching transactions updated after {cursor.isoformat()}",
-                    data={"cursor": cursor.isoformat(), "mode": "incremental"},
-                )
-                splitwise_transactions, deleted_expense_ids, _ = self.splitwise_service.get_transactions_updated_since(
-                    updated_after=cursor,
-                    updated_before=datetime.now(),
-                    exclude_created_by_me=True,
-                    include_only_my_transactions=True,
-                )
-
-            if deleted_expense_ids:
-                soft_deleted = await TransactionOperations.soft_delete_splitwise_by_expense_ids(deleted_expense_ids)
-                logger.info(
-                    f"Splitwise API reported {len(deleted_expense_ids)} deleted expense(s); "
-                    f"soft-deleted {soft_deleted} local row(s)",
-                    extra=self._log_extra(),
-                )
-
-            # When 0 transactions to put in CSV: upload empty CSV to overwrite stale file, return success
-            if not splitwise_transactions:
-                if deleted_expense_ids:
-                    logger.info(
-                        "No active Splitwise transactions to sync (soft-delete(s) applied)",
-                        extra=self._log_extra(),
-                    )
-                else:
-                    logger.info("No Splitwise transactions to sync", extra=self._log_extra())
-                csv_filename = "splitwise.csv"
-                cloud_path = f"{cloud_month}/extracted_data/{csv_filename}"
-                empty_df = pd.DataFrame(columns=[
-                    "date", "description", "amount", "my_share", "category", "group_name",
-                    "source", "created_by", "total_participants", "participants",
-                    "paid_by", "split_breakdown", "is_payment", "external_id", "raw_data",
-                ])
-                temp_csv_path = self.temp_dir / csv_filename
-                empty_df.to_csv(temp_csv_path, index=False)
-                empty_mode = (
-                    "full_empty" if use_full_sync else (
-                        "incremental_deletes_only" if deleted_expense_ids else "incremental_empty"
-                    )
-                )
-                upload_result = self.cloud_storage.upload_file(
-                    local_file_path=str(temp_csv_path),
-                    cloud_path=cloud_path,
-                    content_type="text/csv",
-                    metadata={
-                        "source": "splitwise",
-                        "transaction_count": 0,
-                        "upload_timestamp": datetime.now().isoformat(),
-                        "mode": empty_mode,
-                        "deleted_expense_ids_count": str(len(deleted_expense_ids)),
-                    },
-                )
-                if upload_result.get("success"):
-                    self._emit(
-                        "splitwise_sync_complete", "splitwise",
-                        "No new Splitwise transactions (empty file uploaded)",
-                        level="info",
-                        data={
-                            "transaction_count": 0,
-                            "cloud_path": cloud_path,
-                            "deleted_expense_ids_count": len(deleted_expense_ids),
-                        },
-                    )
-                    return {
-                        "success": True,
-                        "cloud_path": cloud_path,
-                        "transaction_count": 0,
-                        "deleted_expense_ids_count": len(deleted_expense_ids),
-                    }
-                return None
-
-            logger.info(f"Found {len(splitwise_transactions)} Splitwise transactions", extra=self._log_extra())
-            
-            # Convert to DataFrame
-            splitwise_data = []
-            for transaction in splitwise_transactions:
-                # Extract split_breakdown from raw_data if it exists
-                split_breakdown = None
-                if transaction.raw_data and isinstance(transaction.raw_data, dict):
-                    split_breakdown = transaction.raw_data.get('split_breakdown')
-                
-                # Serialize complex objects to JSON to avoid datetime serialization issues
-                def serialize_for_csv(obj):
-                    """Serialize object for CSV storage, handling datetime objects"""
-                    if obj is None:
-                        return None
-                    if isinstance(obj, dict):
-                        cleaned = {}
-                        for k, v in obj.items():
-                            if isinstance(v, datetime):
-                                cleaned[k] = v.isoformat()
-                            elif isinstance(v, dict):
-                                cleaned[k] = serialize_for_csv(v)
-                            elif isinstance(v, list):
-                                cleaned[k] = [serialize_for_csv(item) for item in v]
-                            else:
-                                cleaned[k] = v
-                        return cleaned
-                    elif isinstance(obj, list):
-                        return [serialize_for_csv(item) for item in obj]
-                    elif isinstance(obj, datetime):
-                        return obj.isoformat()
-                    return obj
-                
-                # Serialize raw_data and split_breakdown to JSON strings
-                raw_data_json = json.dumps(serialize_for_csv(transaction.raw_data)) if transaction.raw_data else None
-                split_breakdown_json = json.dumps(serialize_for_csv(split_breakdown)) if split_breakdown else None
-                
-                splitwise_data.append({
-                    'date': transaction.date.strftime('%Y-%m-%d'),
-                    'description': transaction.description,
-                    'amount': transaction.amount,  # Total amount, not my_share
-                    'my_share': transaction.my_share,  # User's share
-                    'category': transaction.category,
-                    'group_name': transaction.group_name,
-                    'source': transaction.source,
-                    'created_by': transaction.created_by,
-                    'total_participants': transaction.total_participants,
-                    'participants': ', '.join(transaction.participants),
-                    'paid_by': transaction.paid_by,  # Who paid for the transaction
-                    'split_breakdown': split_breakdown_json,  # JSON-serialized split breakdown
-                    'is_payment': transaction.is_payment,
-                    'external_id': transaction.splitwise_id,
-                    'raw_data': raw_data_json  # JSON-serialized raw data
-                })
-            
-            # Create DataFrame
-            df = pd.DataFrame(splitwise_data)
-
-            # Stable path: single file per month, overwritten each run
-            csv_filename = "splitwise.csv"
-            temp_csv_path = self.temp_dir / csv_filename
-            df.to_csv(temp_csv_path, index=False)
-            cloud_path = f"{cloud_month}/extracted_data/{csv_filename}"
-            
-            # Upload to cloud storage
-            metadata = {
-                "source": "splitwise",
-                "transaction_count": len(splitwise_transactions),
-                "upload_timestamp": datetime.now().isoformat(),
-                "mode": "full" if use_full_sync else "incremental",
-            }
-            if use_full_sync:
-                metadata["date_range_start"] = start_date.isoformat()
-                metadata["date_range_end"] = end_date.isoformat()
-            upload_result = self.cloud_storage.upload_file(
-                local_file_path=str(temp_csv_path),
-                cloud_path=cloud_path,
-                content_type="text/csv",
-                metadata=metadata,
-            )
-            
-            if upload_result.get("success"):
-                logger.info(f"☁Uploaded Splitwise data to cloud: {cloud_path}", extra=self._log_extra())
-                self._emit(
-                    "splitwise_sync_complete", "splitwise",
-                    f"Fetched {len(splitwise_transactions)} Splitwise transactions and uploaded CSV to GCS",
-                    level="success",
-                    data={
-                        "transaction_count": len(splitwise_transactions),
-                        "cloud_path": cloud_path,
-                    },
-                )
-
-                # Sync Splitwise friend balances into participants table
-                try:
-                    logger.info("Syncing Splitwise friend balances...", extra=self._log_extra())
-                    friends_with_balances = self.splitwise_service.get_friends_with_balances()
-                    synced_at = datetime.now(timezone.utc)
-                    for friend in friends_with_balances:
-                        if friend["id"] is not None:
-                            await ParticipantOperations.update_splitwise_balance(
-                                friend["id"], friend["net_balance"], synced_at
-                            )
-                    logger.info(f"Synced balances for {len(friends_with_balances)} Splitwise friends", extra=self._log_extra())
-                except Exception:
-                    logger.error("Failed to sync Splitwise friend balances", exc_info=True, extra=self._log_extra())
-
-                return {
-                    "success": True,
-                    "cloud_path": cloud_path,
-                    "transaction_count": len(splitwise_transactions),
-                    "csv_filename": csv_filename,
-                    "temp_csv_path": str(temp_csv_path)
-                }
-            else:
-                logger.error(f"Failed to upload Splitwise data to cloud: {upload_result.get('error')}", exc_info=True, extra=self._log_extra())
-                self._emit(
-                    "splitwise_sync_failed", "splitwise",
-                    f"Failed to upload Splitwise CSV to GCS: {upload_result.get('error')}",
-                    level="error",
-                    data={"error": upload_result.get("error")},
-                )
-                return None
-                
-        except Exception as e:
-            error_msg = f"Error processing Splitwise data: {e}"
-            logger.error(error_msg, exc_info=True, extra=self._log_extra())
-            self._emit(
-                "splitwise_sync_failed", "splitwise",
-                f"Splitwise processing error: {e}",
-                level="error",
-                data={"error": str(e)},
-            )
-            if continue_on_error:
-                logger.warning("Continuing workflow despite Splitwise error", extra=self._log_extra())
-                return None
-            else:
-                raise Exception(error_msg)
+        """Delegate to SplitwiseProcessorHelper."""
+        return await self._splitwise_helper.process(
+            override=getattr(self, "override", False),
+            continue_on_error=continue_on_error,
+            custom_start_date=custom_start_date,
+            custom_end_date=custom_end_date,
+        )
     
     
     async def _standardize_and_store_data(self, extraction_result: Dict[str, Any], statement_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1594,186 +1186,10 @@ class StatementWorkflow:
                 logger.warning(f"Failed to cleanup temp directory: {e}", extra=self._log_extra())
     
     async def _standardize_and_combine_all_data(self) -> List[Dict[str, Any]]:
-        """Standardize and combine all transaction data from cloud storage"""
-        try:
-            logger.info("Standardizing and combining all transaction data", extra=self._log_extra())
-            
-            # Get all CSV files from cloud storage for the previous month
-            start_date, end_date = self._calculate_splitwise_date_range()
-            previous_month = start_date.strftime("%Y-%m")
-            
-            # List all CSV files in the extracted_data directory for the month
-            cloud_csv_files = self.cloud_storage.list_files(f"{previous_month}/extracted_data/")
-            
-            if not cloud_csv_files:
-                logger.warning(f"No CSV files found in cloud storage for {previous_month}", extra=self._log_extra())
-                self._emit(
-                    "standardization_started", "standardization",
-                    f"No CSV files found in GCS for {previous_month}",
-                    level="warning",
-                )
-                return []
-            
-            csv_files_only = [f for f in cloud_csv_files if f.get("name", "").endswith(".csv")]
-            logger.info(f"Found {len(csv_files_only)} CSV files in cloud storage", extra=self._log_extra())
-            self._emit(
-                "standardization_started", "standardization",
-                f"Standardizing {len(csv_files_only)} CSV file(s) from GCS ({previous_month})",
-                data={"csv_count": len(csv_files_only), "month": previous_month},
-            )
-
-            # Fetch already-inserted normalized filenames to skip on reruns (unless override)
-            override = getattr(self, "override", False)
-            db_inserted_keys: set = set()
-            if not override:
-                db_inserted_keys = await StatementLogOperations.get_db_inserted_filenames(previous_month)
-                if db_inserted_keys:
-                    logger.info(
-                        f"Will skip {len(db_inserted_keys)} already db_inserted CSV(s) for {previous_month}",
-                        extra=self._log_extra(),
-                    )
-
-            all_standardized_data = []
-
-            # Process each CSV file
-            for cloud_file_info in cloud_csv_files:
-                try:
-                    # Extract filename from file info dictionary
-                    cloud_file = cloud_file_info.get("name", "")
-                    if not cloud_file.endswith('.csv'):
-                        continue
-
-                    # Skip CSVs whose statements are already fully inserted (rerun guard)
-                    csv_stem = Path(cloud_file).stem  # e.g. "swiggy_hdfc_20260306"
-                    csv_key = csv_stem
-                    if db_inserted_keys and csv_key in db_inserted_keys:
-                        logger.info(
-                            f"Skipping {csv_key} — already db_inserted",
-                            extra=self._log_extra(),
-                        )
-                        self._emit(
-                            "standardization_file_skipped", "standardization",
-                            f"Skipping {Path(cloud_file).name} — already inserted",
-                            data={"cloud_file": cloud_file, "reason": "already_db_inserted"},
-                        )
-                        continue
-
-                    # Only process canonical splitwise.csv; skip legacy splitwise_* files
-                    if "splitwise" in cloud_file.lower():
-                        if Path(cloud_file).name != "splitwise.csv":
-                            logger.info(
-                                f"Skipping legacy Splitwise file {Path(cloud_file).name}",
-                                extra=self._log_extra(),
-                            )
-                            self._emit(
-                                "standardization_file_skipped", "standardization",
-                                f"Skipping {Path(cloud_file).name} — legacy Splitwise file (only splitwise.csv)",
-                                data={"cloud_file": cloud_file, "reason": "legacy_splitwise"},
-                            )
-                            continue
-
-                    logger.info(f"Processing cloud CSV: {cloud_file}", extra=self._log_extra())
-                    self._emit(
-                        "standardization_file_started", "standardization",
-                        f"Standardizing {Path(cloud_file).name}",
-                        data={"cloud_file": cloud_file},
-                    )
-                    
-                    # Download CSV from cloud storage to temp directory
-                    temp_csv_path = self.temp_dir / Path(cloud_file).name
-                    download_result = self.cloud_storage.download_file(cloud_file, str(temp_csv_path))
-                    
-                    if not download_result.get("success"):
-                        logger.error(f"Failed to download {cloud_file}: {download_result.get('error')}", exc_info=True, extra=self._log_extra())
-                        self._emit(
-                            "standardization_file_failed", "standardization",
-                            f"Failed to download {Path(cloud_file).name} from GCS",
-                            level="error",
-                            data={"cloud_file": cloud_file, "error": download_result.get("error")},
-                        )
-                        continue
-                    
-                    # Read CSV file
-                    df = pd.read_csv(temp_csv_path)
-                    
-                    # Determine if this is Splitwise or bank data
-                    if "splitwise" in cloud_file.lower():
-                        # Process Splitwise data
-                        standardized_df = self.transaction_standardizer.standardize_splitwise_data(df)
-                    else:
-                        # Process bank data - extract search pattern from filename
-                        search_pattern = extract_search_pattern_from_csv_filename(Path(cloud_file).name)
-                        standardized_df = await self.transaction_standardizer.process_with_dynamic_method(
-                            df, search_pattern, Path(cloud_file).name
-                        )
-                    
-                    if not standardized_df.empty:
-                        standardized_data = standardized_df.to_dict('records')
-                        all_standardized_data.extend(standardized_data)
-                        logger.info(f"Standardized {len(standardized_data)} transactions from {cloud_file}", extra=self._log_extra())
-                        self._emit(
-                            "standardization_file_complete", "standardization",
-                            f"Standardized {len(standardized_data)} transaction(s) from {Path(cloud_file).name}",
-                            level="success",
-                            data={"cloud_file": cloud_file, "row_count": len(standardized_data)},
-                        )
-                    else:
-                        self._emit(
-                            "standardization_file_complete", "standardization",
-                            f"No transactions extracted from {Path(cloud_file).name}",
-                            level="warning",
-                            data={"cloud_file": cloud_file, "row_count": 0},
-                        )
-                    
-                except Exception as e:
-                    logger.error(f"Error processing cloud CSV {cloud_file}", exc_info=True, extra=self._log_extra())
-                    self._emit(
-                        "standardization_file_failed", "standardization",
-                        f"Error standardizing {Path(cloud_file).name}: {e}",
-                        level="error",
-                        data={"cloud_file": cloud_file, "error": str(e)},
-                    )
-                    continue
-            
-            if all_standardized_data:
-                # Remove duplicates using composite key
-                deduplicated_data = await self._remove_duplicate_transactions(all_standardized_data)
-                logger.info(f"Removed {len(all_standardized_data) - len(deduplicated_data)} duplicate transactions", extra=self._log_extra())
-                
-                # Sort by transaction date (chronological order - oldest first)
-                sorted_data = await self._sort_transactions_by_date(deduplicated_data)
-                logger.info(f"Sorted {len(sorted_data)} transactions by date (chronological order)", extra=self._log_extra())
-                
-                self._emit(
-                    "standardization_complete", "standardization",
-                    f"Standardization complete: {len(sorted_data)} unique transaction(s) across all sources",
-                    level="success",
-                    data={
-                        "total_before_dedup": len(all_standardized_data),
-                        "total_after_dedup": len(sorted_data),
-                        "duplicates_removed": len(all_standardized_data) - len(deduplicated_data),
-                    },
-                )
-                return sorted_data
-            else:
-                logger.warning("No standardized transaction data generated", extra=self._log_extra())
-                self._emit(
-                    "standardization_complete", "standardization",
-                    "No transaction data generated from any CSV source",
-                    level="warning",
-                    data={"total_after_dedup": 0},
-                )
-                return []
-                
-        except Exception as e:
-            logger.error("Error standardizing and combining all data", exc_info=True, extra=self._log_extra())
-            self._emit(
-                "standardization_complete", "standardization",
-                f"Standardization failed: {e}",
-                level="error",
-                data={"error": str(e)},
-            )
-            return []
+        """Delegate to DataStandardizerHelper."""
+        return await self._data_standardizer_helper.process(
+            override=getattr(self, "override", False)
+        )
     
     async def _remove_duplicate_transactions(self, transactions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Remove duplicate transactions using composite key"""

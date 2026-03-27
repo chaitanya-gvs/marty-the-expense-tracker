@@ -10,16 +10,8 @@ const ACCOUNTS_QUERY_KEY = ["accounts"];
 export function useAccounts() {
   return useQuery({
     queryKey: ACCOUNTS_QUERY_KEY,
-    queryFn: async () => {
-      const response = await apiClient.getFieldValues("account", undefined, 100);
-      console.log("Accounts API response:", response);
-      return response;
-    },
-    select: (response) => {
-      const accounts = response.data || [];
-      console.log("Extracted accounts:", accounts);
-      return accounts;
-    },
+    queryFn: () => apiClient.getFieldValues("account", undefined, 100),
+    select: (response) => response.data || [],
   });
 }
 

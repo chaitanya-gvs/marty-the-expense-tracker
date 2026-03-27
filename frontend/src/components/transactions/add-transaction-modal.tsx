@@ -8,6 +8,7 @@ import { FieldAutocomplete } from "./field-autocomplete";
 import { CategorySelector } from "./category-selector";
 import { MultiTagSelector } from "./multi-tag-selector";
 import { useCreateTransaction } from "@/hooks/use-transactions";
+import { Tag } from "@/lib/types";
 import { toast } from "sonner";
 import { Plus, ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { format } from "date-fns";
@@ -34,7 +35,7 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
   const [category, setCategory] = useState<string>("");
   const [direction, setDirection] = useState<"debit" | "credit">("debit");
   const [amount, setAmount] = useState<string>("");
-  const [tags, setTags] = useState<string[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
 
   const createTransaction = useCreateTransaction();
 
@@ -46,9 +47,9 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
       setCategory("");
       setDirection("debit");
       setAmount("");
-      setTags([]);
+      setTags([] as Tag[]);
     }
-  }, [isOpen]);
+}, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,20 +62,19 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
         date,
         account: account.trim(),
         description: description.trim(),
-        category: category || undefined,
+        category: category || "",
         direction,
         amount: parseFloat(amount),
-        tags,
+        tags: tags.map((t) => t.name),
         notes: undefined,
         is_shared: false,
         is_refund: false,
         is_split: false,
         is_transfer: false,
         is_flagged: false,
-        split_share_amount: undefined,
+        split_share_amount: 0,
         split_breakdown: undefined,
         paid_by: undefined,
-        link_parent_id: undefined,
         transaction_group_id: undefined,
         related_mails: [],
         source_file: undefined,
@@ -82,8 +82,8 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
       });
       toast.success("Transaction created");
       onClose();
-    } catch (error: any) {
-      toast.error(error?.message || "Failed to create transaction");
+    } catch (error: unknown) {
+      toast.error((error as { message?: string })?.message || "Failed to create transaction");
     }
   };
 
