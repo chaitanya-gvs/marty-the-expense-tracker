@@ -49,7 +49,7 @@ def setup_logging(
     os.makedirs(log_dir, exist_ok=True)
 
     log_format = SafeFormatter(
-        "%(asctime)s - %(levelname)s - %(name)s [%(job_id)s] - %(message)s"
+        "%(asctime)s - %(levelname)s - %(name)s - %(job_id)s - %(message)s"
     )
 
     file_handler = RotatingFileHandler(

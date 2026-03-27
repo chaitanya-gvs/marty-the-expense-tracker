@@ -1,4 +1,5 @@
 import uvicorn
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -9,11 +10,21 @@ from src.apis.routes.settlement_routes import router as settlement_router
 from src.apis.routes.participant_routes import router as participant_router
 from src.apis.routes.workflow_routes import router as workflow_router
 from src.apis.routes.splitwise_routes import router as splitwise_router
+from src.utils.logger import setup_logging
 from src.utils.settings import get_settings
 
 settings = get_settings()
 
-app = FastAPI(title="Expense Tracker Backend")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Re-run after all imports complete so agentic_doc's basicConfig(force=True)
+    # does not wipe our RotatingFileHandler.
+    setup_logging()
+    yield
+
+
+app = FastAPI(title="Expense Tracker Backend", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
