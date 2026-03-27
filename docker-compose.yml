@@ -1,0 +1,74 @@
+# docker-compose.yml — Development / Base
+# Complete service definitions. Used as-is for local dev with bind mounts and hot reload.
+# Production uses BOTH files: docker compose -f docker-compose.yml -f docker-compose.prod.yml
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-expense_db}
+      POSTGRES_USER: ${POSTGRES_USER:-chaitanya}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chaitanya} -d ${POSTGRES_DB:-expense_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      # Mount only source files — avoids overwriting the container's .venv
+      - ./backend/src:/app/src
+      - ./backend/main.py:/app/main.py
+      - ./backend/alembic.ini:/app/alembic.ini
+      - ./backend/configs:/app/configs
+      # Named volume preserves the container's .venv across restarts
+      - venv_data:/app/.venv
+      - backend_logs:/app/logs
+    environment:
+      - APP_ENV=dev
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${POSTGRES_DB:-expense_db}
+      - DB_USER=${POSTGRES_USER:-chaitanya}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    networks:
+      - internal
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000/api
+    environment:
+      - NEXT_PUBLIC_APP_ENV=development
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  backend_logs:
+  venv_data:

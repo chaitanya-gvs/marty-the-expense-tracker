@@ -1,0 +1,104 @@
+# docker-compose.prod.yml — Production overrides
+# IMPORTANT: This is an OVERRIDE file, not a standalone compose file.
+# Always use with the base: docker compose -f docker-compose.yml -f docker-compose.prod.yml
+# The Makefile COMPOSE variable handles this automatically.
+services:
+  postgres:
+    restart: unless-stopped
+    ports: []  # No host ports in production — postgres is internal-only
+
+  backend:
+    restart: unless-stopped
+    # In production: no source bind-mounts, use image as built.
+    # Only secrets and logs volumes are mounted.
+    volumes:
+      - ./backend/configs/secrets/gcs_service_account_key.json:/run/secrets/gcs_key:ro
+      - ./backend/configs/secrets/client_secret.json:/app/configs/secrets/client_secret.json:ro
+      # Secondary Gmail account client secret. If secondary account is unused,
+      # create an empty file to avoid mount errors:
+      #   touch backend/configs/secrets/client_secret_2.json
+      - ./backend/configs/secrets/client_secret_2.json:/app/configs/secrets/client_secret_2.json:ro
+      - backend_logs:/app/logs
+    environment:
+      - APP_ENV=production
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${POSTGRES_DB}
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - VISION_AGENT_API_KEY=${VISION_AGENT_API_KEY}
+      - GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/gcs_key
+      - GOOGLE_CLOUD_PROJECT_ID=${GOOGLE_CLOUD_PROJECT_ID}
+      - GOOGLE_CLOUD_BUCKET_NAME=${GOOGLE_CLOUD_BUCKET_NAME}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REFRESH_TOKEN=${GOOGLE_REFRESH_TOKEN}
+      - GOOGLE_PROJECT_ID=${GOOGLE_PROJECT_ID}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
+      - GOOGLE_CLIENT_SECRET_FILE=/app/configs/secrets/client_secret.json
+      - GOOGLE_CLIENT_ID_2=${GOOGLE_CLIENT_ID_2}
+      - GOOGLE_CLIENT_SECRET_2=${GOOGLE_CLIENT_SECRET_2}
+      - GOOGLE_REFRESH_TOKEN_2=${GOOGLE_REFRESH_TOKEN_2}
+      - GOOGLE_CLIENT_SECRET_FILE_2=/app/configs/secrets/client_secret_2.json
+      - SPLITWISE_CONSUMER_KEY=${SPLITWISE_CONSUMER_KEY}
+      - SPLITWISE_CONSUMER_SECRET=${SPLITWISE_CONSUMER_SECRET}
+      - CURRENT_USER_NAMES=${CURRENT_USER_NAMES:-me,chaitanya gvs,chaitanya}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - ENABLE_SECONDARY_ACCOUNT=${ENABLE_SECONDARY_ACCOUNT:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    ports: []  # No host ports — only Caddy is externally reachable
+
+  frontend:
+    restart: unless-stopped
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://${SERVER_IP}/api
+        NEXT_PUBLIC_APP_ENV: production
+    ports: []  # No host ports — only Caddy is externally reachable
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - internal
+    depends_on:
+      - backend
+      - frontend
+
+  pgbackups:
+    image: prodrigestivill/postgres-backup-local
+    restart: unless-stopped
+    user: postgres:postgres
+    volumes:
+      - pgbackups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_EXTRA_OPTS=-Z1 --schema=public --blobs
+      - SCHEDULE=@daily
+      - BACKUP_ON_START=TRUE
+      - BACKUP_KEEP_DAYS=7
+      - BACKUP_KEEP_WEEKS=4
+      - BACKUP_KEEP_MONTHS=6
+    networks:
+      - internal
+
+volumes:
+  caddy_data:
+  caddy_config:
+  pgbackups:
