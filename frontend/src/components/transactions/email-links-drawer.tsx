@@ -137,8 +137,7 @@ export function EmailLinksDrawer({
       setSearchResults(response.data);
       
       // Don't show toast for auto-search to avoid noise
-    } catch (error) {
-      console.error("Failed to auto-search emails:", error);
+    } catch {
       setSearchResults([]);
     } finally {
       setIsSearching(false);
@@ -161,16 +160,14 @@ export function EmailLinksDrawer({
           // Return just the metadata part for the list
           const { id, subject, sender, date, snippet } = response.data;
           return { id, subject, sender, date, snippet };
-        } catch (error) {
-          console.error(`Failed to fetch email ${messageId}:`, error);
+        } catch {
           return null;
         }
       });
 
       const emails = await Promise.all(emailPromises);
       setLinkedEmails(emails.filter((e): e is EmailMetadata => e !== null));
-    } catch (error) {
-      console.error("Failed to fetch linked emails:", error);
+    } catch {
       toast.error("Failed to load linked emails");
     } finally {
       setIsLoadingLinkedEmails(false);
@@ -240,8 +237,7 @@ export function EmailLinksDrawer({
       } else {
         toast.success(`Found ${response.data.length} emails`);
       }
-    } catch (error) {
-      console.error("Failed to search emails:", error);
+    } catch {
       toast.error("Failed to search emails");
       setSearchResults([]);
     } finally {
@@ -262,10 +258,9 @@ export function EmailLinksDrawer({
       
       // Refresh linked emails
       await fetchLinkedEmails();
-    } catch (error) {
-      console.error("Failed to link email:", error);
+    } catch (err) {
       toast.error("Failed to link email");
-      throw error;
+      throw err;
     }
   };
 
@@ -293,10 +288,9 @@ export function EmailLinksDrawer({
         const response = await apiClient.searchTransactionEmails(transaction.id, filters);
         setSearchResults(response.data);
       }
-    } catch (error) {
-      console.error("Failed to unlink email:", error);
+    } catch (err) {
       toast.error("Failed to unlink email");
-      throw error;
+      throw err;
     }
   };
 

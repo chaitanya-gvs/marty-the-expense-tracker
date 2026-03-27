@@ -179,19 +179,10 @@ export function SplitTransactionModal({
         deleteOriginal: !keepOriginal,
       });
 
-      toast.success(`Transaction split into ${parts.length} parts`, {
-        action: {
-          label: "Undo",
-          onClick: () => {
-            // TODO: Implement undo functionality
-            toast.info("Undo not yet implemented");
-          },
-        },
-      });
+      toast.success(`Transaction split into ${parts.length} parts`);
       onClose();
-    } catch (error) {
+    } catch {
       toast.error("Failed to split transaction");
-      console.error(error);
     }
   };
 

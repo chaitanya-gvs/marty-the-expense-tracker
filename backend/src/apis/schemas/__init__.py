@@ -1,9 +1,65 @@
 """
 API Schemas Package
 
-HTTP API schemas - External client-facing contracts (camelCase).
+HTTP API schemas - External client-facing contracts.
 """
 
 from src.apis.schemas.common import ApiResponse
+from src.apis.schemas.transactions import (
+    BulkTransactionUpdate,
+    CategoryCreate,
+    CategoryResponse,
+    CategoryUpdate,
+    EmailLinkRequest,
+    EmailSearchFilters,
+    GroupExpenseRequest,
+    GroupTransferRequest,
+    PaginationParams,
+    RefundSuggestion,
+    SplitTransactionPart,
+    SplitTransactionRequest,
+    SubcategoryCreate,
+    SubcategoryResponse,
+    SubcategoryUpdate,
+    TagCreate,
+    TagResponse,
+    TagUpdate,
+    TransactionCreate,
+    TransactionFilters,
+    TransactionResponse,
+    TransactionSort,
+    TransactionUpdate,
+    TransferSuggestion,
+    UngroupExpenseRequest,
+    UngroupSplitRequest,
+)
 
-__all__ = ["ApiResponse"]
+__all__ = [
+    "ApiResponse",
+    "BulkTransactionUpdate",
+    "CategoryCreate",
+    "CategoryResponse",
+    "CategoryUpdate",
+    "EmailLinkRequest",
+    "EmailSearchFilters",
+    "GroupExpenseRequest",
+    "GroupTransferRequest",
+    "PaginationParams",
+    "RefundSuggestion",
+    "SplitTransactionPart",
+    "SplitTransactionRequest",
+    "SubcategoryCreate",
+    "SubcategoryResponse",
+    "SubcategoryUpdate",
+    "TagCreate",
+    "TagResponse",
+    "TagUpdate",
+    "TransactionCreate",
+    "TransactionFilters",
+    "TransactionResponse",
+    "TransactionSort",
+    "TransactionUpdate",
+    "TransferSuggestion",
+    "UngroupExpenseRequest",
+    "UngroupSplitRequest",
+]

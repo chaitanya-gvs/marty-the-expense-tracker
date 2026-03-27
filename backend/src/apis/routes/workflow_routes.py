@@ -16,9 +16,8 @@ Endpoints:
 import asyncio
 import json
 import uuid
-from calendar import monthrange
 from datetime import datetime, date
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, Optional
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException
@@ -88,25 +87,22 @@ def _get_active_job() -> Optional[_JobState]:
 
 async def _get_last_splitwise_date() -> Optional[date]:
     """Query DB for the most recent Splitwise transaction date."""
-    session_factory = get_session_factory()
-    session = session_factory()
     try:
-        result = await session.execute(
-            text("""
-                SELECT MAX(transaction_date) AS last_date
-                FROM transactions
-                WHERE is_deleted = false
-                  AND LOWER(account) = 'splitwise'
-            """)
-        )
-        row = result.fetchone()
-        if row and row.last_date:
-            return row.last_date
-        return None
+        async with get_session_factory()() as session:
+            result = await session.execute(
+                text("""
+                    SELECT MAX(transaction_date) AS last_date
+                    FROM transactions
+                    WHERE is_deleted = false
+                      AND LOWER(account) = 'splitwise'
+                """)
+            )
+            row = result.fetchone()
+            if row and row.last_date:
+                return row.last_date
+            return None
     except Exception:
         return None
-    finally:
-        await session.close()
 
 
 def _build_splitwise_date_range(
@@ -146,7 +142,9 @@ async def _resolve_splitwise_dates(
         now_ist = datetime.now(_IST)
         end = now_ist.replace(hour=23, minute=59, second=59, microsecond=0)
         logger.info(
-            f"Auto-detected Splitwise range: {start.date()} → {end.date()} (end = end of today IST)",
+            "Auto-detected Splitwise range: %s → %s (end = end of today IST)",
+            start.date(),
+            end.date(),
             extra={"job_id": job_id} if job_id else {},
         )
         return start, end
@@ -210,7 +208,7 @@ async def _run_workflow_task(job_id: str, req: WorkflowRunRequest) -> None:
         job.status = WorkflowJobStatus.completed
 
     except asyncio.CancelledError:
-        logger.info(f"Workflow job {job_id} was cancelled", extra={"job_id": job_id})
+        logger.info("Workflow job %s was cancelled", job_id, extra={"job_id": job_id})
         job.status = WorkflowJobStatus.cancelled
         cancelled_event = {
             "event": "workflow_cancelled",
@@ -225,7 +223,7 @@ async def _run_workflow_task(job_id: str, req: WorkflowRunRequest) -> None:
         job.queue.put_nowait(cancelled_event)
         raise
     except Exception as exc:
-        logger.error(f"Workflow job {job_id} failed", exc_info=True, extra={"job_id": job_id})
+        logger.error("Workflow job %s failed", job_id, exc_info=True, extra={"job_id": job_id})
         job.error = str(exc)
         job.status = WorkflowJobStatus.failed
         error_event = {
@@ -312,7 +310,7 @@ async def start_workflow(req: WorkflowRunRequest):
     # Launch workflow as a background asyncio task; store handle for cancellation
     job.task = asyncio.create_task(_run_workflow_task(job_id, req))
 
-    logger.info(f"Started workflow job {job_id} (mode={req.mode})", extra={"job_id": job_id})
+    logger.info("Started workflow job %s (mode=%s)", job_id, req.mode, extra={"job_id": job_id})
     return WorkflowRunResponse(
         job_id=job_id,
         mode=req.mode,
@@ -337,7 +335,7 @@ async def cancel_workflow(job_id: str):
         )
     if job.task and not job.task.done():
         job.task.cancel()
-    logger.info(f"Cancel requested for workflow job {job_id}", extra={"job_id": job_id})
+    logger.info("Cancel requested for workflow job %s", job_id, extra={"job_id": job_id})
     return {"job_id": job_id, "status": "cancelling"}
 
 
@@ -359,9 +357,9 @@ async def get_period_check(month: Optional[str] = None):
 
     try:
         rows = await StatementLogOperations.get_by_month(month)
-    except Exception as exc:
-        logger.error(f"Error fetching period check for {month}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to query statement log: {exc}")
+    except Exception:
+        logger.error("Failed to fetch period check for month=%s", month, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
     complete = [r for r in rows if r.get("status") == "db_inserted"]
     incomplete = [

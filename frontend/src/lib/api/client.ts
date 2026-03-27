@@ -1,4 +1,4 @@
-import { ApiResponse, Transaction, Budget, Category, Tag, TransactionFilters, TransactionSort, PaginationParams, TransferSuggestion, RefundSuggestion, SplitBreakdown, EmailMetadata, EmailDetails, EmailSearchFilters, ExpenseAnalytics, ExpenseAnalyticsFilters, SplitwiseFriend, SplitwiseFriendExpense } from "@/lib/types";
+import { ApiResponse, Transaction, Budget, Category, Tag, TransactionFilters, TransactionSort, PaginationParams, TransferSuggestion, RefundSuggestion, SplitBreakdown, EmailMetadata, EmailDetails, EmailSearchFilters, ExpenseAnalytics, ExpenseAnalyticsFilters, SplitwiseFriend, SplitwiseFriendExpense, SettlementSummary, SettlementDetail } from "@/lib/types";
 import type {
   WorkflowRunRequest,
   WorkflowRunResponse,
@@ -457,8 +457,8 @@ class ApiClient {
       sort_order?: number;
       transaction_type?: "debit" | "credit" | null;
     }
-  ): Promise<ApiResponse<any>> {
-    return this.request<any>(`/transactions/categories/${categoryId}`, {
+  ): Promise<ApiResponse<Category>> {
+    return this.request<Category>(`/transactions/categories/${categoryId}`, {
       method: "PUT",
       body: JSON.stringify(categoryData),
     });
@@ -497,8 +497,8 @@ class ApiClient {
     return this.request<RefundSuggestion[]>("/transactions/suggestions/refunds");
   }
 
-  async getSuggestionsSummary(): Promise<ApiResponse<any>> {
-    return this.request<any>("/transactions/suggestions/summary");
+  async getSuggestionsSummary(): Promise<ApiResponse<Record<string, unknown>>> {
+    return this.request<Record<string, unknown>>("/transactions/suggestions/summary");
   }
 
   // File upload
@@ -527,13 +527,13 @@ class ApiClient {
     date_range_start?: string;
     date_range_end?: string;
     min_amount?: number;
-  }): Promise<ApiResponse<any>> {
+  }): Promise<ApiResponse<SettlementSummary>> {
     const params = new URLSearchParams();
     if (filters?.date_range_start) params.append('date_range_start', filters.date_range_start);
     if (filters?.date_range_end) params.append('date_range_end', filters.date_range_end);
     if (filters?.min_amount !== undefined) params.append('min_amount', filters.min_amount.toString());
 
-    return this.request<any>(`/settlements/summary?${params.toString()}`);
+    return this.request<SettlementSummary>(`/settlements/summary?${params.toString()}`);
   }
 
   async getSettlementDetail(
@@ -543,13 +543,13 @@ class ApiClient {
       date_range_end?: string;
       min_amount?: number;
     }
-  ): Promise<ApiResponse<any>> {
+  ): Promise<ApiResponse<SettlementDetail>> {
     const params = new URLSearchParams();
     if (filters?.date_range_start) params.append('date_range_start', filters.date_range_start);
     if (filters?.date_range_end) params.append('date_range_end', filters.date_range_end);
     if (filters?.min_amount !== undefined) params.append('min_amount', filters.min_amount.toString());
 
-    return this.request<any>(`/settlements/participant/${encodeURIComponent(participant)}?${params.toString()}`);
+    return this.request<SettlementDetail>(`/settlements/participant/${encodeURIComponent(participant)}?${params.toString()}`);
   }
 
   async getSettlementParticipants(): Promise<ApiResponse<{ participants: string[] }>> {
@@ -691,22 +691,23 @@ class ApiClient {
 
   // Workflow
   async startWorkflow(req: WorkflowRunRequest): Promise<WorkflowRunResponse> {
-    return this.request<WorkflowRunResponse>("/workflow/run", {
+    const res = await this.request<unknown>("/workflow/run", {
       method: "POST",
       body: JSON.stringify(req),
-    }) as Promise<WorkflowRunResponse>;
+    });
+    return res as unknown as WorkflowRunResponse;
   }
 
   async cancelWorkflow(jobId: string): Promise<WorkflowCancelResponse> {
-    return this.request<WorkflowCancelResponse>(`/workflow/${jobId}/cancel`, {
+    const res = await this.request<unknown>(`/workflow/${jobId}/cancel`, {
       method: "POST",
-    }) as Promise<WorkflowCancelResponse>;
+    });
+    return res as unknown as WorkflowCancelResponse;
   }
 
   async getWorkflowStatus(jobId: string): Promise<WorkflowJobStatusResponse> {
-    return this.request<WorkflowJobStatusResponse>(
-      `/workflow/${jobId}/status`
-    ) as Promise<WorkflowJobStatusResponse>;
+    const res = await this.request<unknown>(`/workflow/${jobId}/status`);
+    return res as unknown as WorkflowJobStatusResponse;
   }
 
   streamWorkflowEvents(jobId: string): EventSource {
@@ -717,9 +718,8 @@ class ApiClient {
 
   async getWorkflowPeriodCheck(month?: string): Promise<WorkflowPeriodCheck> {
     const params = month ? `?month=${month}` : "";
-    return this.request<WorkflowPeriodCheck>(
-      `/workflow/period-check${params}`
-    ) as Promise<WorkflowPeriodCheck>;
+    const res = await this.request<unknown>(`/workflow/period-check${params}`);
+    return res as unknown as WorkflowPeriodCheck;
   }
 }
 

@@ -2,7 +2,9 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.apis.routes.transaction_routes import router as transaction_router
+from src.apis.routes.transaction_read_routes import router as transaction_read_router
+from src.apis.routes.transaction_write_routes import router as transaction_write_router
+from src.apis.routes.transaction_split_routes import router as transaction_split_router
 from src.apis.routes.settlement_routes import router as settlement_router
 from src.apis.routes.participant_routes import router as participant_router
 from src.apis.routes.workflow_routes import router as workflow_router
@@ -27,7 +29,9 @@ async def healthz():
     return {"status": "ok"}
 
 
-app.include_router(transaction_router, prefix="/api")
+app.include_router(transaction_read_router, prefix="/api")
+app.include_router(transaction_write_router, prefix="/api")
+app.include_router(transaction_split_router, prefix="/api")
 app.include_router(settlement_router, prefix="/api")
 app.include_router(participant_router, prefix="/api")
 app.include_router(workflow_router, prefix="/api")

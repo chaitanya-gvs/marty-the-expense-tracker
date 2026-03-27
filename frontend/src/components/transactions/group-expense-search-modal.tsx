@@ -173,7 +173,7 @@ export function GroupExpenseSearchModal({
               : "Search and select 1 or more transactions to group into a single expense"
         }
         onClose={onClose}
-        variant="category"
+        variant="share"
       />
 
       <Modal.Body className="space-y-4">

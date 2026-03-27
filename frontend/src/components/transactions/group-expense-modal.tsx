@@ -85,8 +85,7 @@ export function GroupExpenseModal({
       toast.success(`Successfully grouped ${selectedTransactions.length} transactions`);
       onGroupSuccess();
       onClose();
-    } catch (error) {
-      console.error("Failed to group expense:", error);
+    } catch {
       toast.error("Failed to group transactions. Please try again.");
     } finally {
       setIsLoading(false);
@@ -102,7 +101,7 @@ export function GroupExpenseModal({
         title="Group Expense"
         subtitle="Combine multiple transactions into a single expense"
         onClose={onClose}
-        variant="category"
+        variant="share"
       />
 
       <Modal.Body className="space-y-6">
@@ -162,7 +161,7 @@ export function GroupExpenseModal({
             value={description}
             onValueChange={setDescription}
             placeholder="Enter a description for the grouped expense"
-            onSave={async (val) => setDescription(val)}
+            onSave={async (val) => setDescription(val ?? "")}
           />
         </div>
 
@@ -174,7 +173,7 @@ export function GroupExpenseModal({
             onValueChange={setCategory}
             placeholder="Leave empty to use first transaction's category"
             transactionDirection={netAmount >= 0 ? "credit" : "debit"}
-            onSave={async (val) => setCategory(val)}
+            onSave={async (val) => setCategory(val ?? "")}
             onCancel={() => {}}
             autoFocus={false}
           />

@@ -7,6 +7,7 @@ export interface Transaction {
   subcategory?: string;
   direction: "debit" | "credit";
   amount: number;
+  net_amount?: number;
   split_share_amount: number;
   tags: string[];
   notes?: string;
@@ -21,7 +22,7 @@ export interface Transaction {
   transaction_group_id?: string | null;
   related_mails?: string[]; // Array of Gmail message IDs
   source_file?: string;
-  raw_data?: any;
+  raw_data?: unknown;
   created_at: string;
   updated_at: string;
   status: "reviewed" | "needs_review" | "uncertain";
@@ -43,6 +44,8 @@ export interface SplitBreakdown {
   entries: SplitEntry[];
   paid_by?: string; // Who actually paid for this transaction
   total_participants?: number; // Total number of participants
+  participants?: string[]; // Legacy flat participant list
+  custom_amounts?: Record<string, number>; // Legacy custom amounts map
 }
 
 export interface RelatedMail {
@@ -136,8 +139,8 @@ export interface SettlementDetail {
 
 export interface TransactionFilters {
   date_range?: {
-    start: string;
-    end: string;
+    start?: string;
+    end?: string;
   };
   accounts?: string[];
   /**
@@ -163,7 +166,7 @@ export interface TransactionFilters {
     max: number;
   };
   direction?: "debit" | "credit";
-  transaction_type?: "all" | "shared" | "refunds" | "transfers";
+  transaction_type?: "all" | "shared" | "refunds" | "transfers" | "needs_review";
   search?: string;
   include_uncategorized?: boolean;
   /**
@@ -206,6 +209,8 @@ export interface ApiResponse<T> {
     limit: number;
     total: number;
     total_pages: number;
+    total_debits?: number;
+    total_credits?: number;
   };
   message?: string;
 }
@@ -274,10 +279,20 @@ export interface MerchantInfo {
   order_id?: string;
 }
 
+export interface EmailPayload {
+  mimeType?: string;
+  body?: { data?: string };
+  parts?: EmailPayload[];
+}
+
+export interface RawEmailMessage {
+  payload?: EmailPayload;
+}
+
 export interface EmailDetails extends EmailMetadata {
   body: string;
   attachments?: EmailAttachment[];
-  raw_message?: any;
+  raw_message?: RawEmailMessage;
   uber_trip_info?: UberTripInfo;
   swiggy_order_info?: SwiggyOrderInfo;
   merchant_info?: MerchantInfo;
@@ -315,8 +330,8 @@ export interface ExpenseAnalytics {
 
 export interface ExpenseAnalyticsFilters {
   date_range?: {
-    start: string;
-    end: string;
+    start?: string;
+    end?: string;
   };
   accounts?: string[];
   exclude_accounts?: string[];

@@ -83,7 +83,7 @@ export function CategorySelector({
         name: "",
         color: "#3B82F6",
       });
-    } catch (error) {
+    } catch {
       // Error handling is done in the mutation
     }
   };

@@ -185,19 +185,6 @@ export function useUpdateTransaction() {
   });
 }
 
-export function useLinkRefund() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ childId, parentId }: { childId: string; parentId: string }) =>
-      apiClient.linkRefund(childId, parentId),
-    onSuccess: async () => {
-      // Use refetchQueries to wait for the refetch to complete
-      await queryClient.refetchQueries({ queryKey: ["transactions-infinite"] });
-      await queryClient.refetchQueries({ queryKey: ["transactions"] });
-    },
-  });
-}
 
 export function useGroupTransfer() {
   const queryClient = useQueryClient();
@@ -284,69 +271,36 @@ export function useBulkUpdateTransactions() {
     mutationFn: ({ transactionIds, updates }: { transactionIds: string[]; updates: Partial<Transaction> }) =>
       apiClient.bulkUpdateTransactions(transactionIds, updates),
     onSuccess: async (response) => {
-      console.log("=== BULK UPDATE SUCCESS CALLBACK ===");
-      console.log("Full response:", response);
-      console.log("Response.data:", response?.data);
-      console.log("Response.data type:", typeof response?.data);
-      console.log("Is array?", Array.isArray(response?.data));
-      
       // Invalidate tags query in case new tags were created
       queryClient.invalidateQueries({ queryKey: ["tags"] });
-      
+
       // Get updated transactions from response
       // Handle both direct array and wrapped response
       let updatedTransactions: Transaction[] = [];
-      
+
       if (Array.isArray(response?.data)) {
         updatedTransactions = response.data;
-      } else if (response?.data?.updated_transactions && Array.isArray(response.data.updated_transactions)) {
-        // Handle case where response is wrapped in an object
-        updatedTransactions = response.data.updated_transactions;
-      } else if (response?.data?.data && Array.isArray(response.data.data)) {
-        // Handle nested data structure
-        updatedTransactions = response.data.data;
       }
-      
-      console.log("Extracted updatedTransactions:", updatedTransactions);
-      console.log("Number of transactions:", updatedTransactions.length);
-      
+
       if (updatedTransactions.length > 0) {
-        updatedTransactions.forEach((tx, idx) => {
-          console.log(`Transaction ${idx + 1}:`, {
-            id: tx.id,
-            tags: tx.tags,
-            tagsLength: tx.tags?.length || 0
-          });
-        });
-        
         // Update infinite query cache with the returned data
-        queryClient.setQueriesData<{ pages: Array<{ data: Transaction[]; pagination?: any }> }>(
+        queryClient.setQueriesData<{ pages: Array<{ data: Transaction[]; pagination?: { page: number; total_pages: number } }> }>(
           { queryKey: ["transactions-infinite"] },
           (old) => {
-            if (!old) {
-              console.log("No old infinite query data to update");
-              return old;
-            }
-            console.log("Updating infinite query cache with", updatedTransactions.length, "transactions");
-            const updated = {
+            if (!old) return old;
+            return {
               ...old,
               pages: old.pages.map((page) => ({
                 ...page,
                 data: page.data.map((transaction) => {
                   const updatedTx = updatedTransactions.find(t => t.id === transaction.id);
-                  if (updatedTx) {
-                    console.log(`Updating transaction ${transaction.id} tags:`, transaction.tags, "->", updatedTx.tags);
-                    return updatedTx;
-                  }
-                  return transaction;
+                  return updatedTx ?? transaction;
                 })
               }))
             };
-            console.log("Updated infinite query cache");
-            return updated;
           }
         );
-        
+
         // Update regular query cache
         queryClient.setQueriesData<{ data: Transaction[] }>(
           { queryKey: ["transactions"] },
@@ -362,12 +316,10 @@ export function useBulkUpdateTransactions() {
           }
         );
       }
-      
+
       // Invalidate to trigger refetch for any queries that weren't updated
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["transactions-infinite"] });
-      
-      console.log("=== END BULK UPDATE SUCCESS ===");
     },
   });
 }
