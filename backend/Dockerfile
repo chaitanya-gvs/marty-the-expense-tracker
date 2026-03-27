@@ -39,7 +39,8 @@ ENV VIRTUAL_ENV=/app/.venv \
 COPY --from=builder /app/.venv /app/.venv
 COPY --chown=appuser:appgroup . .
 
-RUN chmod +x /app/entrypoint.sh
+RUN mkdir -p /app/logs && chown appuser:appgroup /app/logs && \
+    chmod +x /app/entrypoint.sh
 
 USER appuser
 
