@@ -20,6 +20,7 @@ class Transaction(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, server_default=func.gen_random_uuid())
     transaction_group_id: Mapped[Optional[UUID]] = mapped_column(nullable=True)
     transaction_date: Mapped[date] = mapped_column(Date, nullable=False)
+    original_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     transaction_time: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     user_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
