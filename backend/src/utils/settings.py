@@ -58,6 +58,7 @@ class Settings(BaseSettings):
 
     # Sentry
     SENTRY_DSN: str | None = None
+    VISION_AGENT_API_KEY: str | None = None
 
     @computed_field
     @property

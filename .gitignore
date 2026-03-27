@@ -1,3 +1,6 @@
+# Secrets — never commit the server environment file
+.env
+
 # macOS
 .DS_Store
 
