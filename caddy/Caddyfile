@@ -1,0 +1,22 @@
+# caddy/Caddyfile
+#
+# IP-based HTTP-only configuration (no domain yet).
+# To upgrade to HTTPS with a domain, replace ":80 {" with "yourdomain.com {"
+# and Caddy will automatically obtain a Let's Encrypt certificate.
+# No other changes required.
+
+:80 {
+    # Backend: API routes and health check
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+
+    handle /healthz {
+        reverse_proxy backend:8000
+    }
+
+    # Frontend: catch-all (must come last)
+    handle {
+        reverse_proxy frontend:3000
+    }
+}
