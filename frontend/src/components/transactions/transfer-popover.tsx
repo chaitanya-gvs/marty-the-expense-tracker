@@ -46,8 +46,7 @@ export function TransferPopover({
           onClick: () => handleUngroup(),
         },
       });
-    } catch (error) {
-      console.error("Failed to create transfer group:", error);
+    } catch {
       toast.error("Failed to create transfer group");
     }
   };
@@ -55,7 +54,7 @@ export function TransferPopover({
   const handleUngroup = async () => {
     try {
       // Update all transactions in the group to remove transaction_group_id
-      const updatePromises = transferGroup.map(t => 
+      const updatePromises = transferGroup.map(t =>
         apiClient.updateTransaction(t.id, { transaction_group_id: undefined })
       );
       await Promise.all(updatePromises);
@@ -67,8 +66,7 @@ export function TransferPopover({
           onClick: () => handleCreateGroup(transferGroup.filter(t => t.id !== transaction.id).map(t => t.id)),
         },
       });
-    } catch (error) {
-      console.error("Failed to ungroup transfer:", error);
+    } catch {
       toast.error("Failed to ungroup transfer");
     }
   };
@@ -84,8 +82,7 @@ export function TransferPopover({
           onClick: () => handleAddToGroup([transactionId]),
         },
       });
-    } catch (error) {
-      console.error("Failed to remove from group:", error);
+    } catch {
       toast.error("Failed to remove from group");
     }
   };
@@ -93,7 +90,7 @@ export function TransferPopover({
   const handleAddToGroup = async (transactionIds: string[]) => {
     try {
       // Add to existing group by setting the same transaction_group_id
-      const updatePromises = transactionIds.map(id => 
+      const updatePromises = transactionIds.map(id =>
         apiClient.updateTransaction(id, { transaction_group_id: transaction.transaction_group_id })
       );
       await Promise.all(updatePromises);
@@ -105,8 +102,7 @@ export function TransferPopover({
           onClick: () => handleRemoveFromGroup(transactionIds[0]),
         },
       });
-    } catch (error) {
-      console.error("Failed to add to group:", error);
+    } catch {
       toast.error("Failed to add to group");
     }
   };
@@ -201,9 +197,9 @@ export function TransferPopover({
               <div className="text-xs text-slate-500 pt-2 border-t border-slate-700">
                 To group transfers manually:
                 <ol className="list-decimal list-inside mt-2 space-y-1 text-slate-400">
-                  <li>Click "Multi-Select" at the top of the table</li>
+                  <li>Click &quot;Multi-Select&quot; at the top of the table</li>
                   <li>Select 2+ transactions with opposite directions</li>
-                  <li>Click "Group transfer" in the toolbar</li>
+                  <li>Click &quot;Group transfer&quot; in the toolbar</li>
                 </ol>
               </div>
             </div>

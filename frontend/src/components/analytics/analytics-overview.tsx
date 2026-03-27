@@ -180,7 +180,7 @@ function MonthlyNetChart({ filters }: { filters: ExpenseAnalyticsFilters }) {
   const { data: debitData } = useExpenseAnalytics(debitFilters);
   const { data: creditData } = useExpenseAnalytics(creditFilters);
 
-  const chartData = useMemo(() => {
+  const { chartData, totalGrossSpend, totalCredits, totalNet } = useMemo(() => {
     const debitMap = new Map<string, number>(
       (debitData?.data.data ?? []).map((d) => [d.group_key, d.amount])
     );
@@ -188,25 +188,54 @@ function MonthlyNetChart({ filters }: { filters: ExpenseAnalyticsFilters }) {
       (creditData?.data.data ?? []).map((d) => [d.group_key, d.amount])
     );
     const months = [...new Set([...debitMap.keys(), ...creditMap.keys()])].sort();
-    return months.map((m) => ({
-      month: m,
-      label: new Date(m + "-15").toLocaleDateString("en-IN", { month: "short", year: "2-digit" }),
-      netSpend: debitMap.get(m) ?? 0,
-      credits: -(creditMap.get(m) ?? 0),
-    }));
+    const rows = months.map((m) => {
+      const net = debitMap.get(m) ?? 0;       // direction=debit returns (debits - credits)
+      const credits = creditMap.get(m) ?? 0;
+      const grossSpend = net + credits;        // recover gross debits
+      return {
+        month: m,
+        label: new Date(m + "-15").toLocaleDateString("en-IN", { month: "short", year: "2-digit" }),
+        grossSpend,
+        credits,
+        net,
+      };
+    });
+    const totalGrossSpend = rows.reduce((s, r) => s + r.grossSpend, 0);
+    const totalCredits = rows.reduce((s, r) => s + r.credits, 0);
+    const totalNet = rows.reduce((s, r) => s + r.net, 0);
+    return { chartData: rows, totalGrossSpend, totalCredits, totalNet };
   }, [debitData, creditData]);
 
-  if (chartData.length < 2) return null;
+  if (chartData.length < 1) return null;
 
   return (
     <Card>
-      <CardHeader className="pb-2">
+      <CardHeader className="pb-3">
         <CardTitle className="text-sm font-semibold">Monthly Cash Flow</CardTitle>
-        <CardDescription className="text-xs">Net spend · Credits & refunds received</CardDescription>
+        {/* Period totals summary */}
+        <div className="flex items-center gap-5 pt-1">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#D97706] flex-shrink-0" />
+            <span className="text-xs text-muted-foreground">Spent</span>
+            <span className="text-xs font-mono font-medium text-foreground tabular-nums">{formatCurrency(totalGrossSpend)}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#0D9488] flex-shrink-0" />
+            <span className="text-xs text-muted-foreground">Received</span>
+            <span className="text-xs font-mono font-medium text-[#0D9488] tabular-nums">+{formatCurrency(totalCredits)}</span>
+          </div>
+          <div className="h-3 w-px bg-border" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Net</span>
+            <span className="text-xs font-mono font-semibold tabular-nums" style={{ color: totalNet >= 0 ? "#D97706" : "#0D9488" }}>
+              {totalNet >= 0 ? "" : "+"}{formatCurrency(Math.abs(totalNet))}
+            </span>
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="pt-0 pr-2">
         <ResponsiveContainer width="100%" height={220}>
-          <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
             <XAxis
               dataKey="label"
@@ -215,7 +244,7 @@ function MonthlyNetChart({ filters }: { filters: ExpenseAnalyticsFilters }) {
               tickLine={false}
             />
             <YAxis
-              tickFormatter={(v) => `₹${Math.abs(v) / 1000}k`}
+              tickFormatter={(v) => `₹${v / 1000}k`}
               tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
               axisLine={false}
               tickLine={false}
@@ -225,28 +254,32 @@ function MonthlyNetChart({ filters }: { filters: ExpenseAnalyticsFilters }) {
               cursor={{ fill: "var(--muted)", opacity: 0.3 }}
               content={({ active, payload, label }) => {
                 if (!active || !payload?.length) return null;
-                const netSpend = (payload.find((p) => p.dataKey === "netSpend")?.value as number) ?? 0;
-                const credits = Math.abs((payload.find((p) => p.dataKey === "credits")?.value as number) ?? 0);
+                const grossSpend = (payload.find((p) => p.dataKey === "grossSpend")?.value as number) ?? 0;
+                const credits = (payload.find((p) => p.dataKey === "credits")?.value as number) ?? 0;
+                const net = grossSpend - credits;
                 return (
-                  <div className="rounded-lg border bg-card shadow-md px-3 py-2 text-xs space-y-1.5 min-w-[140px]">
+                  <div className="rounded-lg border bg-card shadow-md px-3 py-2 text-xs space-y-1.5 min-w-[150px]">
                     <p className="font-medium text-foreground">{label}</p>
                     <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Net Spend</span>
-                      <span className="font-mono tabular-nums text-[#D97706]">{formatCurrency(netSpend)}</span>
+                      <span className="text-muted-foreground">Spent</span>
+                      <span className="font-mono tabular-nums text-[#D97706]">{formatCurrency(grossSpend)}</span>
                     </div>
                     {credits > 0 && (
                       <div className="flex justify-between gap-4">
-                        <span className="text-muted-foreground">Credits</span>
+                        <span className="text-muted-foreground">Received</span>
                         <span className="font-mono tabular-nums text-[#0D9488]">+{formatCurrency(credits)}</span>
                       </div>
                     )}
+                    <div className="flex justify-between gap-4 border-t border-border pt-1">
+                      <span className="text-muted-foreground">Net</span>
+                      <span className="font-mono tabular-nums font-medium text-foreground">{formatCurrency(net)}</span>
+                    </div>
                   </div>
                 );
               }}
             />
-            <ReferenceLine y={0} stroke="var(--border)" strokeWidth={1.5} />
-            <Bar dataKey="netSpend" fill="#D97706" radius={[3, 3, 0, 0]} maxBarSize={40} />
-            <Bar dataKey="credits" fill="#0D9488" radius={[0, 0, 3, 3]} maxBarSize={40} />
+            <Bar dataKey="grossSpend" fill="#D97706" fillOpacity={0.85} radius={[3, 3, 0, 0]} maxBarSize={36} name="Spent" />
+            <Bar dataKey="credits" fill="#0D9488" fillOpacity={0.85} radius={[3, 3, 0, 0]} maxBarSize={36} name="Received" />
           </ComposedChart>
         </ResponsiveContainer>
       </CardContent>
@@ -294,7 +327,7 @@ export function AnalyticsOverview() {
       ) : analytics ? (
         <>
           <SummaryCards analytics={analytics} />
-          <MonthlyNetChart filters={filters} />
+          {filters.group_by === "month" && <MonthlyNetChart filters={filters} />}
           <AnalyticsCharts analytics={analytics} analyticsFilters={filters} />
         </>
       ) : null}

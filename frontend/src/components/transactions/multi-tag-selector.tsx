@@ -53,7 +53,7 @@ export function MultiTagSelector({
         color: newTag.color,
       });
 
-      const tagId = response.data?.id || (response.data as any)?.id;
+      const tagId = response.data?.id || (response.data as { id?: string })?.id;
 
       if (!tagId) {
         throw new Error("Tag ID not returned from server");
@@ -79,8 +79,8 @@ export function MultiTagSelector({
 
       setShowCreateForm(false);
       setNewTag({ name: "", color: "#3B82F6" });
-    } catch (error: any) {
-      const errorMessage = error?.response?.data?.detail || error?.message || "Failed to create tag";
+    } catch (error: unknown) {
+      const errorMessage = (error as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail || (error as { message?: string })?.message || "Failed to create tag";
       toast.error(errorMessage);
     }
   };

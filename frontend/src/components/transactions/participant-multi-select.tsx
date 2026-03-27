@@ -47,7 +47,7 @@ export function ParticipantMultiSelect({
     }
   };
 
-  const handleRemove = (participantName: string, e: React.MouseEvent) => {
+  const handleRemove = (participantName: string, e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
     onChange(selectedParticipants.filter((p) => p !== participantName));
   };
@@ -84,7 +84,7 @@ export function ParticipantMultiSelect({
                     className="ml-1 ring-offset-background rounded-full outline-none cursor-pointer focus:ring-2 focus:ring-ring focus:ring-offset-2 inline-flex items-center"
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
-                        handleRemove(participant, e as any);
+                        handleRemove(participant, e);
                       }
                     }}
                     onMouseDown={(e) => {
@@ -148,7 +148,7 @@ export function ParticipantMultiSelect({
                   onClick={handleAddNew}
                 >
                   <UserPlus className="mr-2 h-4 w-4" />
-                  Add "{searchQuery}" as participant
+                  Add &quot;{searchQuery}&quot; as participant
                 </Button>
               )}
             </div>
@@ -191,7 +191,7 @@ export function ParticipantMultiSelect({
                     onClick={handleAddNew}
                   >
                     <UserPlus className="mr-2 h-4 w-4" />
-                    Add "{searchQuery}" as participant
+                    Add &quot;{searchQuery}&quot; as participant
                   </div>
                 </>
               )}

@@ -91,8 +91,7 @@ export function GroupTransferModal({
 
       const formattedSuggestions = formatSuggestions(response.data).slice(0, 10);
       setSuggestions(formattedSuggestions);
-    } catch (error) {
-      console.error("Failed to load transfer suggestions:", error);
+    } catch {
       setSuggestions([]);
     } finally {
       setIsLoading(false);
@@ -111,8 +110,7 @@ export function GroupTransferModal({
 
       const formattedResults = formatSuggestions(response.data).slice(0, 20);
       setSearchResults(formattedResults);
-    } catch (error) {
-      console.error("Search failed:", error);
+    } catch {
       setSearchResults([]);
     } finally {
       setIsLoading(false);

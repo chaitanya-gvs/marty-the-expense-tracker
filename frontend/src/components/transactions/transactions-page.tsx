@@ -83,8 +83,8 @@ export function TransactionsPage() {
   useEffect(() => {
     try {
       localStorage.setItem('transaction-filters', JSON.stringify(filters));
-    } catch (error) {
-      console.error('Error saving filters to localStorage:', error);
+    } catch {
+      // Swallow localStorage write errors silently
     }
   }, [filters]);
 
@@ -112,8 +112,8 @@ export function TransactionsPage() {
 
   // Stats come from the first page's pagination metadata (computed server-side over the full filtered set)
   const firstPagePagination = data?.pages?.[0]?.pagination;
-  const totalDebits = (firstPagePagination as any)?.total_debits ?? 0;
-  const totalCredits = (firstPagePagination as any)?.total_credits ?? 0;
+  const totalDebits = firstPagePagination?.total_debits ?? 0;
+  const totalCredits = firstPagePagination?.total_credits ?? 0;
   const net = totalCredits - totalDebits;
   const count = firstPagePagination?.total ?? allTransactions.length;
 

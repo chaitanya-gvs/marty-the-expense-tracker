@@ -101,8 +101,9 @@ export function AnalyticsCharts({ analytics, analyticsFilters }: AnalyticsCharts
   const isTimeBased = group_by === "month" || group_by === "category_month" || group_by === "tag_month";
   const isStacked = group_by === "tag_category";
 
-  let lineChartData: any[] = [];
-  let stackedBarData: any[] = [];
+  type ChartDataPoint = Record<string, string | number>;
+  let lineChartData: ChartDataPoint[] = [];
+  let stackedBarData: ChartDataPoint[] = [];
   let stackedKeys: string[] = [];
 
   if (isTimeBased) {
@@ -112,58 +113,59 @@ export function AnalyticsCharts({ analytics, analyticsFilters }: AnalyticsCharts
         amount: item.amount,
       }));
     } else if (group_by === "category_month") {
-      const monthMap = new Map<string, any>();
+      const monthMap = new Map<string, { month: string; data: { category: string | undefined; amount: number }[] }>();
       data.forEach((item) => {
         const month = item.month || "";
         if (!monthMap.has(month)) monthMap.set(month, { month, data: [] });
-        monthMap.get(month).data.push({ category: item.category, amount: item.amount });
+        monthMap.get(month)!.data.push({ category: item.category, amount: item.amount });
       });
       const categories = new Set(data.map((d) => d.category).filter(Boolean));
       lineChartData = Array.from(monthMap.values()).map((monthData) => {
-        const result: any = { month: monthData.month };
+        const result: ChartDataPoint = { month: monthData.month };
         categories.forEach((cat) => {
-          const item = monthData.data.find((d: any) => d.category === cat);
+          const item = monthData.data.find((d) => d.category === cat);
           result[cat || "Uncategorized"] = item ? item.amount : 0;
         });
         return result;
       });
     } else if (group_by === "tag_month") {
-      const monthMap = new Map<string, any>();
+      const monthMap = new Map<string, { month: string; data: { tag: string | undefined; amount: number }[] }>();
       data.forEach((item) => {
         const month = item.month || "";
         if (!monthMap.has(month)) monthMap.set(month, { month, data: [] });
-        monthMap.get(month).data.push({ tag: item.tag, amount: item.amount });
+        monthMap.get(month)!.data.push({ tag: item.tag, amount: item.amount });
       });
       const tags = new Set(data.map((d) => d.tag).filter(Boolean));
       lineChartData = Array.from(monthMap.values()).map((monthData) => {
-        const result: any = { month: monthData.month };
+        const result: ChartDataPoint = { month: monthData.month };
         tags.forEach((tag) => {
-          const item = monthData.data.find((d: any) => d.tag === tag);
+          const item = monthData.data.find((d) => d.tag === tag);
           result[tag || "Untagged"] = item ? item.amount : 0;
         });
         return result;
       });
     }
   } else if (isStacked) {
-    const tagMap = new Map<string, any>();
+    const tagMap = new Map<string, ChartDataPoint>();
     const categories = new Set<string>();
     data.forEach((item) => {
       const tag = item.tag || "Untagged";
       const category = item.category || "Uncategorized";
       categories.add(category);
       if (!tagMap.has(tag)) tagMap.set(tag, { name: tag });
-      tagMap.get(tag)[category] = item.amount;
+      const tagEntry = tagMap.get(tag);
+      if (tagEntry) tagEntry[category] = item.amount;
     });
     stackedBarData = Array.from(tagMap.values());
     stackedKeys = Array.from(categories);
   }
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ color: string; name: string; value: number; payload: { count?: number } }>; label?: string }) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-card border border-border p-3 rounded-md shadow-lg z-50 text-sm">
           <p className="font-medium text-foreground mb-1.5">{label}</p>
-          {payload.map((entry: any, index: number) => (
+          {payload.map((entry, index: number) => (
             <div key={index} className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: entry.color }} />
               <span className="text-muted-foreground">{entry.name}:</span>
@@ -218,8 +220,8 @@ export function AnalyticsCharts({ analytics, analyticsFilters }: AnalyticsCharts
                     outerRadius={105}
                     paddingAngle={2}
                     dataKey="value"
-                    activeIndex={activeIndex ?? undefined}
-                    activeShape={(props: any) => {
+                    activeShape={(unknownProps: unknown) => {
+                      const props = unknownProps as { cx: number; cy: number; innerRadius: number; outerRadius: number; startAngle: number; endAngle: number; fill: string };
                       const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props;
                       return (
                         <Sector
@@ -535,8 +537,8 @@ export function AnalyticsCharts({ analytics, analyticsFilters }: AnalyticsCharts
         </Card>
       )}
 
-      {/* Line Chart — for time-based groupings */}
-      {isTimeBased && lineChartData.length > 0 && (
+      {/* Line Chart — for time-based groupings (not month, which uses MonthlyNetChart) */}
+      {isTimeBased && group_by !== "month" && lineChartData.length > 0 && (
         <Card>
           <CardHeader className="pb-0">
             <div className="flex items-start justify-between">
@@ -556,18 +558,7 @@ export function AnalyticsCharts({ analytics, analyticsFilters }: AnalyticsCharts
                 <YAxis tickFormatter={(value) => `₹${value / 1000}k`} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend wrapperStyle={{ fontSize: "11px" }} />
-                {group_by === "month" ? (
-                  <Line
-                    type="monotone"
-                    dataKey="amount"
-                    stroke="#D97706"
-                    strokeWidth={2}
-                    dot={{ r: 3, fill: "var(--background)", strokeWidth: 2 }}
-                    activeDot={{ r: 5, fill: "#D97706" }}
-                    name="Amount"
-                  />
-                ) : (
-                  Object.keys(lineChartData[0] || {})
+                {Object.keys(lineChartData[0] || {})
                     .filter((key) => key !== "month")
                     .map((key, index) => (
                       <Line
@@ -581,7 +572,7 @@ export function AnalyticsCharts({ analytics, analyticsFilters }: AnalyticsCharts
                         name={key}
                       />
                     ))
-                )}
+                }
               </LineChart>
             </ResponsiveContainer>
           </CardContent>

@@ -77,7 +77,6 @@ export function useParticipants(search?: string) {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch participants';
       setError(errorMessage);
-      console.error('Error fetching participants:', err);
     } finally {
       setIsLoading(false);
     }
@@ -96,7 +95,6 @@ export function useParticipants(search?: string) {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to create participant';
       setError(errorMessage);
-      console.error('Error creating participant:', err);
       return null;
     } finally {
       setIsLoading(false);
@@ -116,7 +114,6 @@ export function useParticipants(search?: string) {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update participant';
       setError(errorMessage);
-      console.error('Error updating participant:', err);
       return null;
     } finally {
       setIsLoading(false);
@@ -135,7 +132,6 @@ export function useParticipants(search?: string) {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to delete participant';
       setError(errorMessage);
-      console.error('Error deleting participant:', err);
       return false;
     } finally {
       setIsLoading(false);

@@ -107,9 +107,8 @@ export function InlineCategoryDropdown({
       toast.success("Category updated successfully");
       setOpen(false);
       onSuccess();
-    } catch (error) {
+    } catch {
       toast.error("Failed to update category");
-      console.error("Update category error:", error);
     }
   };
 
@@ -165,7 +164,7 @@ export function InlineCategoryDropdown({
         name: "",
         color: "#3B82F6",
       });
-    } catch (error) {
+    } catch {
       // Error handling is done in the mutation
     }
   };
@@ -206,8 +205,8 @@ export function InlineCategoryDropdown({
       
       setEditingCategory(null);
       setEditForm({ name: "", color: "#3B82F6" });
-    } catch (error) {
-      console.error("Update category error:", error);
+    } catch {
+      // Error handled by mutation
     }
   };
 
@@ -226,8 +225,8 @@ export function InlineCategoryDropdown({
       if (selectedCategory?.id === categoryToDelete.id) {
         setSelectedCategory(null);
       }
-    } catch (error) {
-      console.error("Delete category error:", error);
+    } catch {
+      // Error handled by mutation
     } finally {
       setCategoryToDelete(null);
     }
@@ -249,9 +248,8 @@ export function InlineCategoryDropdown({
       toast.success("Category updated successfully");
       setOpen(false); // Close the popover
       onSuccess();
-    } catch (error) {
+    } catch {
       toast.error("Failed to update category");
-      console.error("Update category error:", error);
     }
   };
 

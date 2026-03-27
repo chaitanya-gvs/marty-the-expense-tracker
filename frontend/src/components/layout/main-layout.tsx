@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { Navigation } from "./navigation";
 
 interface MainLayoutProps {
@@ -8,20 +7,15 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ children }: MainLayoutProps) {
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-
-  const toggleSidebar = () => {
-    setIsSidebarCollapsed(!isSidebarCollapsed);
-  };
-
   return (
-    <div className="flex h-screen bg-background">
-      <Navigation isCollapsed={isSidebarCollapsed} onToggle={toggleSidebar} />
+    <div className="relative flex h-screen bg-background">
+      <div className="w-14 shrink-0" />
       <main className="flex-1 overflow-auto">
         <div className="p-6">
           {children}
         </div>
       </main>
+      <Navigation />
     </div>
   );
 }

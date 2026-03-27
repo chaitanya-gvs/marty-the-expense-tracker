@@ -57,10 +57,8 @@ export function PdfViewer({ transactionId, open, onOpenChange }: PdfViewerProps)
       
       if (pdfPath) {
         setPdfFilename(pdfPath);
-        console.log(`📄 Loading PDF: ${pdfPath}`);
       } else if (pdfFilename) {
         setPdfFilename(pdfFilename);
-        console.log(`📄 Loading PDF: ${pdfFilename}`);
       }
       
       const blob = await response.blob();

@@ -61,8 +61,8 @@ export function CategoriesManager() {
       await createCategory.mutateAsync(newCategory);
       setNewCategory({ name: "", color: "#3b82f6", transaction_type: null });
       setIsCreateDialogOpen(false);
-    } catch (error) {
-      console.error("Failed to create category:", error);
+    } catch {
+      // Error is handled by the mutation's onError callback
     }
   };
 
@@ -76,8 +76,8 @@ export function CategoriesManager() {
       setEditingCategory(null);
       setEditCategory({ name: "", color: "#3b82f6", transaction_type: null });
       setIsEditDialogOpen(false);
-    } catch (error) {
-      console.error("Failed to update category:", error);
+    } catch {
+      // Error is handled by the mutation's onError callback
     }
   };
 
