@@ -313,6 +313,7 @@ export function CategoryAutocomplete({
                 <Button
                   size="sm"
                   variant="ghost"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={handleRemoveCategory}
                   className="h-6 w-6 p-0 opacity-0 hover:opacity-100 transition-opacity"
                   title="Remove category"
@@ -324,6 +325,7 @@ export function CategoryAutocomplete({
                 <Button
                   size="sm"
                   variant="ghost"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => onSave?.()}
                   className="h-6 w-6 p-0 opacity-0 hover:opacity-100 transition-opacity"
                   title="Save category"
@@ -405,6 +407,7 @@ export function CategoryAutocomplete({
               )}
               onMouseDown={(e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 selectCategory("uncategorized");
               }}
               onMouseEnter={() => setHoveredIndex(filteredCategories.length)}
