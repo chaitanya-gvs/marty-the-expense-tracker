@@ -13,6 +13,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+} from "@/components/ui/popover";
 import { useCategories, useCreateCategory, useDeleteCategory } from "@/hooks/use-categories";
 import { cn } from "@/lib/utils";
 import { Check, X, Plus, Edit2, Loader2 } from "lucide-react";
@@ -49,10 +54,9 @@ export function CategoryAutocomplete({
   const [editForm, setEditForm] = useState({ name: "", color: "#3B82F6" });
   const [creatingCategory, setCreatingCategory] = useState(false);
   const [createForm, setCreateForm] = useState({ name: "", color: "#3B82F6" });
-  
+
   const inputRef = useRef<HTMLInputElement>(null);
-  const suggestionsRef = useRef<HTMLDivElement>(null);
-  
+
   // Filter categories by transaction direction if provided
   const { data: categories = [], isLoading } = useCategories(transactionDirection);
   const createCategoryMutation = useCreateCategory();
@@ -62,20 +66,20 @@ export function CategoryAutocomplete({
   // Filter categories based on input (exclude "uncategorized" as it's handled specially)
   const filteredCategories = categories.filter(category =>
     category.name.toLowerCase() !== "uncategorized" &&
-    (inputValue.trim() === "" || 
+    (inputValue.trim() === "" ||
      (category.name.toLowerCase().includes(inputValue.toLowerCase()) &&
       category.name.toLowerCase() !== inputValue.toLowerCase()))
   );
 
   // Check if current input matches an existing category (excluding "uncategorized")
-  const exactMatch = categories.find(cat => 
+  const exactMatch = categories.find(cat =>
     cat.name.toLowerCase() === inputValue.toLowerCase() &&
     cat.name.toLowerCase() !== "uncategorized"
   );
 
   // Check if we should show "create new" option
   const shouldShowCreate = inputValue.trim() && !exactMatch;
-  
+
   useEffect(() => {
     // If the value is "uncategorized" (case-insensitive), set to empty string
     if (value && value.toLowerCase() === "uncategorized") {
@@ -163,6 +167,7 @@ export function CategoryAutocomplete({
 
   const handleCreateCategory = () => {
     if (!inputValue.trim()) return;
+    setShowSuggestions(false);
     // Show the create category dialog
     setCreatingCategory(true);
     setCreateForm({ name: inputValue.trim(), color: "#3B82F6" });
@@ -181,18 +186,18 @@ export function CategoryAutocomplete({
       await createCategoryMutation.mutateAsync({
         name: createForm.name.trim(),
         color: createForm.color,
-        transaction_type: transactionDirection === "debit" || transactionDirection === "credit" 
-          ? transactionDirection 
+        transaction_type: transactionDirection === "debit" || transactionDirection === "credit"
+          ? transactionDirection
           : null, // If direction is not set, create a category that applies to both
       });
-      
+
       toast.success(`Category "${createForm.name.trim()}" created successfully`);
       setInputValue(createForm.name.trim());
       onValueChange(createForm.name.trim());
       setShowSuggestions(false);
       setCreatingCategory(false);
       setCreateForm({ name: "", color: "#3B82F6" });
-      
+
       // Call onSave when a new category is created
       setTimeout(() => {
         onSave?.();
@@ -210,6 +215,7 @@ export function CategoryAutocomplete({
   };
 
   const handleEditCategory = (category: { id: string; name: string; color?: string }) => {
+    setShowSuggestions(false);
     setEditingCategory(category.id);
     setEditForm({ name: category.name, color: category.color || "#3B82F6" });
   };
@@ -225,7 +231,7 @@ export function CategoryAutocomplete({
           color: editForm.color,
         },
       });
-      
+
       toast.success(`Category "${editForm.name.trim()}" updated successfully`);
       setEditingCategory(null);
       setEditForm({ name: "", color: "#3B82F6" });
@@ -276,11 +282,7 @@ export function CategoryAutocomplete({
     setShowSuggestions(true);
   };
 
-  const handleBlur = (e: React.FocusEvent) => {
-    // Don't hide suggestions if clicking on suggestions
-    if (suggestionsRef.current?.contains(e.relatedTarget as Node)) {
-      return;
-    }
+  const handleBlur = () => {
     setShowSuggestions(false);
   };
 
@@ -291,60 +293,62 @@ export function CategoryAutocomplete({
 
   return (
     <div className="relative w-full">
-      <div className="flex items-center gap-1 w-full">
-        <Input
-          ref={inputRef}
-          value={inputValue}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          onFocus={handleFocus}
-          onClick={handleClick}
-          onBlur={handleBlur}
-          placeholder={placeholder}
-          className={cn("flex-1 h-8 text-xs", className)}
-          autoFocus={autoFocus}
-        />
-        
-        {/* Hover actions */}
-        <div className="flex gap-0.5 flex-shrink-0">
-          {exactMatch && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleRemoveCategory}
-              className="h-6 w-6 p-0 opacity-0 hover:opacity-100 transition-opacity"
-              title="Remove category"
-            >
-              <X className="h-3 w-3 text-red-600" />
-            </Button>
-          )}
-          
-          {inputValue.trim() && !exactMatch && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => onSave?.()}
-              className="h-6 w-6 p-0 opacity-0 hover:opacity-100 transition-opacity"
-              title="Save category"
-            >
-              <Check className="h-3 w-3 text-green-600" />
-            </Button>
-          )}
-        </div>
-      </div>
+      <Popover open={showSuggestions}>
+        <PopoverAnchor asChild>
+          <div className="flex items-center gap-1 w-full">
+            <Input
+              ref={inputRef}
+              value={inputValue}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              onFocus={handleFocus}
+              onClick={handleClick}
+              onBlur={handleBlur}
+              placeholder={placeholder}
+              className={cn("flex-1 h-8 text-xs", className)}
+              autoFocus={autoFocus}
+            />
+            <div className="flex gap-0.5 flex-shrink-0">
+              {exactMatch && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={handleRemoveCategory}
+                  className="h-6 w-6 p-0 opacity-0 hover:opacity-100 transition-opacity"
+                  title="Remove category"
+                >
+                  <X className="h-3 w-3 text-red-600" />
+                </Button>
+              )}
+              {inputValue.trim() && !exactMatch && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => onSave?.()}
+                  className="h-6 w-6 p-0 opacity-0 hover:opacity-100 transition-opacity"
+                  title="Save category"
+                >
+                  <Check className="h-3 w-3 text-green-600" />
+                </Button>
+              )}
+            </div>
+          </div>
+        </PopoverAnchor>
 
-      {/* Suggestions dropdown */}
-      {showSuggestions && (
-        <div
-          ref={suggestionsRef}
-          className="absolute top-full left-0 z-50 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg max-h-48 overflow-y-auto min-w-[200px] w-max"
+        <PopoverContent
+          className="w-[var(--radix-popover-trigger-width)] p-0 max-h-48 overflow-y-auto"
+          align="start"
+          sideOffset={4}
+          onOpenAutoFocus={(e) => e.preventDefault()}
           onMouseLeave={() => {
             setHoveredCategoryId(null);
             setHoveredIndex(-1);
           }}
         >
           {filteredCategories.length === 0 && inputValue.trim() === "" ? (
-            <div className="px-3 py-2 text-sm text-gray-500">
+            <div className="px-3 py-2 text-sm text-muted-foreground">
               {isLoading ? "Loading categories..." : "No categories available"}
             </div>
           ) : (
@@ -353,41 +357,32 @@ export function CategoryAutocomplete({
                 <div
                   key={category.id}
                   className={cn(
-                    "flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none",
-                    hoveredIndex === index && "bg-gray-100 dark:bg-gray-700"
+                    "flex items-center gap-2 px-3 py-2 cursor-pointer select-none transition-colors",
+                    "hover:bg-accent hover:text-accent-foreground",
+                    hoveredIndex === index && "bg-accent text-accent-foreground"
                   )}
-       onMouseDown={(e) => {
-         e.preventDefault();
-         e.stopPropagation();
-         selectCategory(category.name);
-       }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    selectCategory(category.name);
+                  }}
                   onMouseEnter={() => {
                     setHoveredIndex(index);
                     setHoveredCategoryId(category.id);
-                  }}
-                  onMouseLeave={() => {
-                    // Don't clear hoveredCategoryId immediately to allow clicking the pencil
-                    // It will be cleared when mouse enters another category or leaves the dropdown
                   }}
                 >
                   <div
                     className="w-3 h-3 rounded-full flex-shrink-0"
                     style={{ backgroundColor: category.color || "#3B82F6" }}
                   />
-                  <span 
-                    className="text-sm flex-1 cursor-pointer"
-         onClick={(e) => {
-           e.preventDefault();
-           e.stopPropagation();
-           selectCategory(category.name);
-         }}
-                  >
+                  <span className="text-sm flex-1">
                     {category.name}
                   </span>
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={(e) => {
+                    onMouseDown={(e) => {
+                      e.preventDefault();
                       e.stopPropagation();
                       handleEditCategory(category);
                     }}
@@ -402,40 +397,41 @@ export function CategoryAutocomplete({
               ))}
             </>
           )}
-          
-          {/* Special "Uncategorized" option */}
+
           {inputValue.trim() === "" && (
             <div
               className={cn(
-                "flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 select-none",
-                hoveredIndex === filteredCategories.length && "bg-gray-100 dark:bg-gray-700"
+                "flex items-center gap-2 px-3 py-2 cursor-pointer select-none transition-colors text-muted-foreground",
+                "hover:bg-accent hover:text-accent-foreground",
+                hoveredIndex === filteredCategories.length && "bg-accent text-accent-foreground"
               )}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                selectCategory("uncategorized");
+              }}
               onMouseEnter={() => setHoveredIndex(filteredCategories.length)}
             >
-              <div className="w-3 h-3 rounded-full flex-shrink-0 bg-gray-300 dark:bg-gray-600" />
-              <span 
-                className="text-sm flex-1"
-                onClick={() => {
-                  selectCategory("uncategorized");
-                }}
-              >
-                Uncategorized
-              </span>
+              <div className="w-3 h-3 rounded-full flex-shrink-0 bg-muted-foreground/30" />
+              <span className="text-sm flex-1">Uncategorized</span>
             </div>
           )}
-          
+
           {shouldShowCreate && (
             <div
               className={cn(
-                "flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 text-blue-600 dark:text-blue-400 select-none",
-                hoveredIndex === filteredCategories.length + (inputValue.trim() === "" ? 1 : 0) && "bg-gray-100 dark:bg-gray-700"
+                "flex items-center gap-2 px-3 py-2 cursor-pointer select-none transition-colors text-primary",
+                "hover:bg-accent hover:text-accent-foreground",
+                hoveredIndex === filteredCategories.length + (inputValue.trim() === "" ? 1 : 0) && "bg-accent text-accent-foreground"
               )}
-              onMouseEnter={() => setHoveredIndex(filteredCategories.length + (inputValue.trim() === "" ? 1 : 0))}
-              onClick={(e) => {
+              onMouseDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 handleCreateCategory();
               }}
+              onMouseEnter={() =>
+                setHoveredIndex(filteredCategories.length + (inputValue.trim() === "" ? 1 : 0))
+              }
             >
               <Plus className="w-3 h-3" />
               <span className="text-sm flex-1">
@@ -443,8 +439,8 @@ export function CategoryAutocomplete({
               </span>
             </div>
           )}
-        </div>
-      )}
+        </PopoverContent>
+      </Popover>
 
       {/* Edit Category Dialog */}
       <Dialog open={!!editingCategory} onOpenChange={handleCancelEdit}>
