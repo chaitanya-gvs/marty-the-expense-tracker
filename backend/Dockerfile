@@ -21,9 +21,6 @@ RUN poetry install --no-root --only main
 FROM python:3.11-slim-bookworm AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    tesseract-ocr \
-    tesseract-ocr-eng \
-    poppler-utils \
     libmagic1 \
     libgl1 \
     libpq5 \

@@ -7,7 +7,6 @@ from typing import List, Dict, Any, Optional
 
 from src.services.email_ingestion.client import EmailClient
 from src.services.llm_parser.parser import LLMExpenseParser
-from src.services.ocr_engine.engine import OCREngine
 from src.utils.logger import get_logger
 from src.utils.settings import get_settings
 
