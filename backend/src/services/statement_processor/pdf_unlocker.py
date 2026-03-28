@@ -25,7 +25,7 @@ class PDFUnlocker:
 
     def __init__(self):
         self.password_manager = get_password_manager()
-        self.unlocked_dir = Path("data/statements/unlocked_statements")
+        self.unlocked_dir = Path("/tmp/statements/unlocked_statements")
         self.unlocked_dir.mkdir(parents=True, exist_ok=True)
 
     def unlock_pdf(self, pdf_path: str) -> Dict[str, Any]:
