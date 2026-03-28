@@ -4,6 +4,7 @@
 # The Makefile COMPOSE variable handles this automatically.
 services:
   postgres:
+    container_name: marty-postgres
     restart: unless-stopped
     ports: []  # No host ports in production — postgres is internal-only
 
@@ -63,6 +64,7 @@ services:
 
   caddy:
     image: caddy:2-alpine
+    container_name: marty-caddy
     restart: unless-stopped
     ports:
       - "80:80"
@@ -79,6 +81,7 @@ services:
 
   pgbackups:
     image: prodrigestivill/postgres-backup-local
+    container_name: marty-pgbackups
     restart: unless-stopped
     user: postgres:postgres
     volumes:
