@@ -53,10 +53,10 @@ services:
   frontend:
     build:
       context: ./frontend
-      container_name: marty-frontend
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8000/api
+    container_name: marty-frontend
     environment:
       - NEXT_PUBLIC_APP_ENV=development
     depends_on:
