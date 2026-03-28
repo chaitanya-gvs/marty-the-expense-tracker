@@ -188,17 +188,12 @@ export function FieldAutocomplete({
         align="start"
         sideOffset={4}
         onOpenAutoFocus={(e) => e.preventDefault()}
-        onInteractOutside={(e) => e.preventDefault()}
         onMouseLeave={() => setHoveredIndex(-1)}
       >
         {isLoading ? (
           <div className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
             <Loader2 className="h-3 w-3 animate-spin" />
             Loading suggestions...
-          </div>
-        ) : filteredSuggestions.length === 0 ? (
-          <div className="px-3 py-2 text-sm text-muted-foreground">
-            No suggestions found
           </div>
         ) : (
           filteredSuggestions.map((suggestion, index) => (
@@ -207,7 +202,7 @@ export function FieldAutocomplete({
               className={cn(
                 "px-3 py-2 cursor-pointer select-none text-sm transition-colors",
                 "hover:bg-accent hover:text-accent-foreground",
-                hoveredIndex === index && "bg-accent/10"
+                hoveredIndex === index && "bg-accent text-accent-foreground"
               )}
               onMouseDown={(e) => {
                 e.preventDefault();
