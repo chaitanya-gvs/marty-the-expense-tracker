@@ -2,11 +2,15 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Check, X, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { apiClient } from "@/lib/api/client";
 import { useQuery } from "@tanstack/react-query";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+} from "@/components/ui/popover";
 
 interface FieldAutocompleteProps {
   fieldName: string;
@@ -37,7 +41,6 @@ export function FieldAutocomplete({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [hoveredIndex, setHoveredIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
-  const suggestionsRef = useRef<HTMLDivElement>(null);
 
   // Fetch suggestions based on current input
   const { data: suggestions = [], isLoading } = useQuery({
@@ -157,68 +160,67 @@ export function FieldAutocomplete({
     setShowSuggestions(true);
   };
 
-  const handleBlur = (e: React.FocusEvent) => {
-    // Don't hide suggestions if clicking on suggestions
-    if (suggestionsRef.current?.contains(e.relatedTarget as Node)) {
-      return;
-    }
+  const handleBlur = () => {
     setShowSuggestions(false);
   };
 
   return (
-    <div className="relative w-full">
-      <Input
-        ref={inputRef}
-        type="text"
-        value={inputValue}
-        onChange={handleInputChange}
-        onKeyDown={handleKeyDown}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-        placeholder={placeholder}
-        className={cn("w-full", className)}
-        autoFocus
-        disabled={disabled}
-      />
-
-      {/* Suggestions dropdown */}
-      {showSuggestions && (filteredSuggestions.length > 0 || isLoading) && (
-        <div
-          ref={suggestionsRef}
-          className="absolute top-full left-0 z-50 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg max-h-60 overflow-y-auto min-w-full"
-          onMouseLeave={() => setHoveredIndex(-1)}
-        >
-          {isLoading ? (
-            <div className="px-3 py-2 text-sm text-gray-500 flex items-center gap-2">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Loading suggestions...
-            </div>
-          ) : filteredSuggestions.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-gray-500">
-              No suggestions found
-            </div>
-          ) : (
-            filteredSuggestions.map((suggestion, index) => (
-              <div
-                key={`${suggestion}-${index}`}
-                className={cn(
-                  "px-3 py-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none text-sm",
-                  hoveredIndex === index && "bg-gray-100 dark:bg-gray-700"
-                )}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  selectSuggestion(suggestion);
-                }}
-                onMouseEnter={() => setHoveredIndex(index)}
-              >
-                {suggestion}
-              </div>
-            ))
-          )}
+    <Popover open={showSuggestions && (filteredSuggestions.length > 0 || isLoading)}>
+      <PopoverAnchor asChild>
+        <div className="w-full">
+          <Input
+            ref={inputRef}
+            type="text"
+            value={inputValue}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            placeholder={placeholder}
+            className={cn("w-full", className)}
+            autoFocus
+            disabled={disabled}
+          />
         </div>
-      )}
-    </div>
+      </PopoverAnchor>
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] p-0 max-h-60 overflow-y-auto"
+        align="start"
+        sideOffset={4}
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+        onMouseLeave={() => setHoveredIndex(-1)}
+      >
+        {isLoading ? (
+          <div className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Loading suggestions...
+          </div>
+        ) : filteredSuggestions.length === 0 ? (
+          <div className="px-3 py-2 text-sm text-muted-foreground">
+            No suggestions found
+          </div>
+        ) : (
+          filteredSuggestions.map((suggestion, index) => (
+            <div
+              key={`${suggestion}-${index}`}
+              className={cn(
+                "px-3 py-2 cursor-pointer select-none text-sm transition-colors",
+                "hover:bg-accent hover:text-accent-foreground",
+                hoveredIndex === index && "bg-accent/10"
+              )}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                selectSuggestion(suggestion);
+              }}
+              onMouseEnter={() => setHoveredIndex(index)}
+            >
+              {suggestion}
+            </div>
+          ))
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
