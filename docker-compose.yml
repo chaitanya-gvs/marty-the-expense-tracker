@@ -25,6 +25,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: marty-backend
     volumes:
       # Mount only source files — avoids overwriting the container's .venv
       - ./backend/src:/app/src
@@ -52,6 +53,7 @@ services:
   frontend:
     build:
       context: ./frontend
+      container_name: marty-frontend
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8000/api
