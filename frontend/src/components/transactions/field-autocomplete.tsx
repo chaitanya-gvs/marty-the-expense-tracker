@@ -206,6 +206,7 @@ export function FieldAutocomplete({
               )}
               onMouseDown={(e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 selectSuggestion(suggestion);
               }}
               onMouseEnter={() => setHoveredIndex(index)}
