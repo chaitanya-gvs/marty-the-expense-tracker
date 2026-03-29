@@ -540,7 +540,7 @@ export function TransactionFilters({
           ref={filtersButtonRef}
           onClick={() => setExpanded(!expanded)}
           aria-expanded={expanded}
-          aria-controls="filters-panel"
+          aria-controls="transaction-filter-panel"
           className="rounded-full bg-muted hover:bg-primary/10 hover:text-primary px-3 py-1 text-foreground flex items-center gap-1 transition-colors"
         >
           Filters
@@ -550,7 +550,7 @@ export function TransactionFilters({
         {/* Active Filter Chips */}
         <div className="flex flex-wrap gap-2 items-center">
           {activeFilterBadges.length === 0 ? (
-            <span className="text-xs text-muted-foreground">No active filters</span>
+            <span className="text-xs text-muted-foreground/40 italic">All transactions shown</span>
           ) : (
             activeFilterBadges.map((badge) => (
               <button
@@ -571,8 +571,8 @@ export function TransactionFilters({
           )}
         </div>
 
-        {/* Quick Presets (Desktop Only) */}
-        <div className="ml-auto hidden md:flex items-center gap-2">
+        {/* Quick Presets */}
+        <div className="ml-auto flex items-center gap-1.5 overflow-x-auto scrollbar-none">
           <button
             onClick={() => applyQuickDatePreset("this_month")}
             className="rounded-md px-2 py-1 text-xs bg-muted hover:bg-accent text-foreground transition-colors"
@@ -590,7 +590,9 @@ export function TransactionFilters({
 
       {/* Expanded Panel (Animated) */}
       <div
-        id="filters-panel"
+        id="transaction-filter-panel"
+        role="region"
+        aria-label="Filter options"
         ref={panelRef}
         data-open={expanded}
         className={cn(
