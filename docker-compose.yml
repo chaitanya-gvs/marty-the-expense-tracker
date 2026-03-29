@@ -60,6 +60,7 @@ services:
     container_name: marty-frontend
     environment:
       - NEXT_PUBLIC_APP_ENV=development
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
     depends_on:
       - backend
     ports:

@@ -50,6 +50,10 @@ services:
       - SENTRY_DSN=${SENTRY_DSN}
       - ENABLE_SECONDARY_ACCOUNT=${ENABLE_SECONDARY_ACCOUNT:-true}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - AUTH_USERNAME=${AUTH_USERNAME}
+      - AUTH_PASSWORD_HASH=${AUTH_PASSWORD_HASH}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - FRONTEND_URL=${FRONTEND_URL}
     ports: []  # No host ports — only Caddy is externally reachable
 
   frontend:
@@ -61,6 +65,8 @@ services:
       args:
         NEXT_PUBLIC_API_URL: http://${SERVER_IP}/api
         NEXT_PUBLIC_APP_ENV: production
+    environment:
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
     ports: []  # No host ports — only Caddy is externally reachable
 
   caddy:
