@@ -43,7 +43,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
 const ghostRows = [
   { label: "Transport", pct: 53, amount: "₹1,504" },
-  { label: "Utilities", pct:  8, amount: "₹224"   },
+  { label: "Utilities", pct:  8, amount: "₹202"   },
   { label: "Groceries", pct: 85, amount: "₹2,406" },
   { label: "Dining",    pct: 36, amount: "₹1,006" },
 ];
