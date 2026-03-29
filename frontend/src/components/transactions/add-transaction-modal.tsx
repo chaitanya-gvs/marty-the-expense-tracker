@@ -167,7 +167,7 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
                     onClick={() => setDirection("credit")}
                     className={cn(
                       "relative z-10 flex-1 flex items-center justify-center gap-1.5 transition-colors border-l border-border",
-                      direction === "credit" ? "text-emerald-400" : "text-muted-foreground hover:text-foreground"
+                      direction === "credit" ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"
                     )}
                   >
                     <ArrowUpRight className="h-3 w-3" />
