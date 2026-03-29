@@ -41,7 +41,7 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
-// Ghost data rows for left panel decoration
+// Decorative ghost data rows for left panel
 const ghostRows = [
   { label: "Groceries", pct: 68, amount: "₹4,230" },
   { label: "Transport", pct: 42, amount: "₹1,890" },
@@ -55,7 +55,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const prefersReducedMotion = useReducedMotion();
 
-  // Magnetic button
+  // Magnetic button — useMotionValue keeps this off the render cycle
   const buttonRef = useRef<HTMLDivElement>(null);
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
@@ -103,12 +103,9 @@ export default function LoginPage() {
     }
   };
 
-  // Stagger container — spring physics throughout
   const containerVariants = {
     hidden: {},
-    visible: {
-      transition: { staggerChildren: 0.07, delayChildren: 0.1 },
-    },
+    visible: { transition: { staggerChildren: 0.07, delayChildren: 0.1 } },
   };
 
   const itemVariants = {
@@ -116,113 +113,86 @@ export default function LoginPage() {
     visible: {
       opacity: 1,
       y: 0,
-      transition: {
-        type: "spring" as const,
-        stiffness: 120,
-        damping: 22,
-        mass: 0.8,
-      },
+      transition: { type: "spring" as const, stiffness: 120, damping: 22, mass: 0.8 },
     },
   };
 
   const panelVariants = {
     hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: { duration: prefersReducedMotion ? 0 : 0.9, ease: "easeOut" },
-    },
-  };
-
-  const crosshatchStyle = {
-    backgroundImage: [
-      "linear-gradient(rgba(99,102,241,0.08) 1px, transparent 1px)",
-      "linear-gradient(90deg, rgba(99,102,241,0.08) 1px, transparent 1px)",
-    ].join(", "),
-    backgroundSize: "36px 36px",
+    visible: { opacity: 1, transition: { duration: prefersReducedMotion ? 0 : 1, ease: "easeOut" } },
   };
 
   return (
     <main
       className={`${bricolage.variable} relative min-h-[100dvh] flex overflow-hidden bg-background`}
-      style={crosshatchStyle}
+      style={{
+        backgroundImage: [
+          "linear-gradient(rgba(99,102,241,0.07) 1px, transparent 1px)",
+          "linear-gradient(90deg, rgba(99,102,241,0.07) 1px, transparent 1px)",
+        ].join(", "),
+        backgroundSize: "36px 36px",
+      }}
     >
+
       {/* ─── Left brand panel (desktop only) ─── */}
       <motion.div
-        className="hidden lg:flex lg:w-[55%] relative flex-col items-start justify-center px-16 overflow-hidden"
+        className="hidden lg:flex lg:w-[55%] relative flex-col justify-center px-16 overflow-hidden"
         variants={panelVariants}
         initial="hidden"
         animate="visible"
         aria-hidden="true"
       >
-        {/* Background orbs — asymmetric */}
-        <div className="absolute -top-40 -left-40 w-[36rem] h-[36rem] rounded-full bg-primary/10 blur-[160px] pointer-events-none" />
-        <div className="absolute top-1/3 -left-16 w-80 h-80 rounded-full bg-violet-500/[0.06] blur-[100px] pointer-events-none" />
-        <div className="absolute bottom-0 right-0 w-64 h-64 rounded-full bg-primary/[0.04] blur-[80px] pointer-events-none" />
+        {/* Orbs — only primary, no violet */}
+        <div className="absolute -top-48 -left-48 w-[40rem] h-[40rem] rounded-full bg-primary/[0.08] blur-[180px] pointer-events-none" />
+        <div className="absolute bottom-0 left-1/4 w-96 h-96 rounded-full bg-primary/[0.05] blur-[120px] pointer-events-none" />
 
-        {/* Giant ghost MARTY watermark */}
+        {/* Ghost MARTY watermark — anchored bottom-left, huge, cropped */}
         <div
-          className="absolute inset-0 flex items-center justify-start pl-8 select-none pointer-events-none overflow-hidden"
+          className="absolute bottom-[-2rem] left-[-1rem] select-none pointer-events-none leading-none tracking-[0.06em] whitespace-nowrap text-foreground/[0.04]"
+          style={{
+            fontFamily: "var(--font-bricolage), sans-serif",
+            fontWeight: 800,
+            fontSize: "clamp(9rem, 16vw, 16rem)",
+          }}
         >
-          <span
-            className="text-foreground/[0.032] leading-none tracking-[0.06em] whitespace-nowrap"
-            style={{
-              fontFamily: "var(--font-bricolage), sans-serif",
-              fontWeight: 800,
-              fontSize: "clamp(8rem, 14vw, 14rem)",
-            }}
-          >
-            MARTY
-          </span>
+          MARTY
         </div>
 
-        {/* Ghost Sigma icon */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-          <Sigma className="h-28 w-28 text-primary/[0.06]" />
-        </div>
-
-        {/* Brand content — foreground layer */}
-        <div className="relative z-10 space-y-10">
-          {/* Brand identity */}
+        {/* Foreground content — no competing icons, just type + data */}
+        <div className="relative z-10 space-y-8 max-w-sm">
+          {/* Headline */}
           <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/15 border border-primary/20">
-                <Sigma className="h-5 w-5 text-primary" />
-              </div>
-              <span
-                className="text-foreground/50 text-sm tracking-widest uppercase"
-                style={{ fontFamily: "var(--font-bricolage), sans-serif", fontWeight: 600 }}
-              >
-                MARTY
-              </span>
-            </div>
+            <p className="text-xs text-primary/70 tracking-[0.2em] uppercase font-medium">
+              Personal Finance
+            </p>
             <h2
-              className="text-foreground/80 leading-tight max-w-sm"
+              className="text-foreground leading-[1.1]"
               style={{
                 fontFamily: "var(--font-bricolage), sans-serif",
                 fontWeight: 700,
-                fontSize: "2.25rem",
+                fontSize: "2.5rem",
                 letterSpacing: "-0.01em",
               }}
             >
               Your finances,{" "}
               <span className="text-foreground/40">privately yours.</span>
             </h2>
-            <p className="text-sm text-muted-foreground/60 max-w-xs leading-relaxed">
-              Money Analysis &amp; Recording Tool for You — track every rupee, understand every pattern.
+            <p className="text-sm text-muted-foreground/70 leading-relaxed">
+              Track every transaction. Understand every pattern. All on your own terms.
             </p>
           </div>
 
-          {/* Ghost data decorations */}
-          <div className="space-y-3 opacity-[0.45] pointer-events-none" aria-hidden="true">
+          {/* Ghost budget rows — subtle data preview */}
+          <div className="space-y-2.5 pointer-events-none" aria-hidden="true">
             {ghostRows.map((row) => (
               <div key={row.label} className="space-y-1">
-                <div className="flex items-center justify-between text-[0.65rem] text-muted-foreground/50 tracking-wide uppercase">
+                <div className="flex items-center justify-between text-[0.6rem] text-muted-foreground/40 tracking-widest uppercase">
                   <span>{row.label}</span>
                   <span className="font-mono">{row.amount}</span>
                 </div>
-                <div className="h-[3px] rounded-full bg-muted-foreground/10 overflow-hidden">
+                <div className="h-px w-full bg-border/50">
                   <div
-                    className="h-full rounded-full bg-primary/30"
+                    className="h-full bg-primary/25"
                     style={{ width: `${row.pct}%` }}
                   />
                 </div>
@@ -234,8 +204,11 @@ export default function LoginPage() {
 
       {/* ─── Right login panel ─── */}
       <div className="w-full lg:w-[45%] flex items-center justify-center px-6 py-12 relative z-10">
-        {/* Mobile-only orb (hidden on lg+ where left panel has the orbs) */}
-        <div className="lg:hidden absolute -top-32 -left-32 w-80 h-80 rounded-full bg-primary/10 blur-[120px] pointer-events-none" aria-hidden="true" />
+        {/* Mobile-only orb */}
+        <div
+          className="lg:hidden absolute -top-32 -left-32 w-80 h-80 rounded-full bg-primary/[0.08] blur-[120px] pointer-events-none"
+          aria-hidden="true"
+        />
 
         <motion.div
           className="w-full max-w-md"
@@ -243,13 +216,13 @@ export default function LoginPage() {
           initial="hidden"
           animate="visible"
         >
-          <Card className="w-full backdrop-blur-xl bg-card/80 border-[rgba(255,255,255,0.10)] shadow-[0_0_0_1px_rgba(99,102,241,0.12),0_24px_64px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.07)]">
+          <Card className="w-full backdrop-blur-xl bg-card/80 border-[rgba(255,255,255,0.08)] shadow-[0_0_0_1px_rgba(99,102,241,0.10),0_24px_64px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.06)]">
 
-            {/* Header: icon + name */}
+            {/* Card header: icon + brand */}
             <CardHeader className="flex flex-row items-center gap-4 pb-5 pt-7 px-7">
               <motion.div variants={itemVariants} className="shrink-0">
                 <motion.div
-                  className="flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/20 to-violet-600/10 border border-primary/20"
+                  className="flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20"
                   animate={prefersReducedMotion ? {} : { scale: [1, 1.04, 1] }}
                   transition={{
                     type: "spring",
@@ -269,7 +242,7 @@ export default function LoginPage() {
                   <h1
                     className="leading-none text-foreground"
                     style={{
-                      fontFamily: "var(--font-bricolage), var(--font-dm-sans), sans-serif",
+                      fontFamily: "var(--font-bricolage), sans-serif",
                       fontWeight: 800,
                       fontSize: "1.75rem",
                       letterSpacing: "0.06em",
@@ -278,18 +251,18 @@ export default function LoginPage() {
                     MARTY
                   </h1>
                   <span
-                    className="leading-none text-foreground"
+                    className="leading-none text-foreground/70"
                     style={{
-                      fontFamily: "var(--font-bricolage), var(--font-dm-sans), sans-serif",
-                      fontWeight: 700,
-                      fontSize: "1rem",
+                      fontFamily: "var(--font-bricolage), sans-serif",
+                      fontWeight: 600,
+                      fontSize: "0.95rem",
                     }}
                   >
                     The Expense Tracker
                   </span>
                 </div>
-                <p className="text-[0.8rem] text-muted-foreground/70 leading-snug mt-0.5">
-                  Your finances, privately yours.
+                <p className="text-[0.78rem] text-muted-foreground/60 leading-snug mt-0.5">
+                  Sign in to continue
                 </p>
               </motion.div>
             </CardHeader>
@@ -300,7 +273,7 @@ export default function LoginPage() {
                 className="space-y-4"
                 aria-label="Sign in to MARTY"
               >
-                {/* Username field */}
+                {/* Username */}
                 <motion.div variants={itemVariants} className="space-y-1.5">
                   <Label htmlFor="username">Username</Label>
                   <div className="relative">
@@ -331,11 +304,11 @@ export default function LoginPage() {
                   </AnimatePresence>
                 </motion.div>
 
-                {/* Password field */}
+                {/* Password */}
                 <motion.div variants={itemVariants} className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="password">Password</Label>
-                    <span className="text-xs text-muted-foreground/60 hover:text-muted-foreground cursor-pointer transition-colors select-none">
+                    <span className="text-xs text-muted-foreground/50 hover:text-muted-foreground cursor-pointer transition-colors select-none">
                       Forgot password?
                     </span>
                   </div>
@@ -381,21 +354,17 @@ export default function LoginPage() {
                   </AnimatePresence>
                 </motion.div>
 
-                {/* Submit button — magnetic */}
+                {/* Magnetic submit button */}
                 <motion.div variants={itemVariants} className="pt-1">
                   <motion.div
                     ref={buttonRef}
-                    style={
-                      prefersReducedMotion
-                        ? {}
-                        : { x: translateX, y: translateY }
-                    }
+                    style={prefersReducedMotion ? {} : { x: translateX, y: translateY }}
                     onMouseMove={handleButtonMouseMove}
                     onMouseLeave={handleButtonMouseLeave}
                   >
                     <Button
                       type="submit"
-                      className="w-full h-11 bg-primary hover:bg-primary/90 active:scale-[0.98] transition-all duration-150 font-medium tracking-wide shadow-[inset_0_-1px_0_rgba(0,0,0,0.25)]"
+                      className="w-full h-11 bg-primary hover:bg-primary/90 active:scale-[0.98] transition-all duration-150 font-medium tracking-wide shadow-[inset_0_-1px_0_rgba(0,0,0,0.2)]"
                       disabled={isLoading}
                     >
                       {isLoading ? (
