@@ -11,6 +11,7 @@ services:
   backend:
     container_name: marty-backend
     restart: unless-stopped
+    ports: []  # No host ports — only Caddy is externally reachable
     # In production: no source bind-mounts, use image as built.
     # Only secrets and logs volumes are mounted.
     volumes:
