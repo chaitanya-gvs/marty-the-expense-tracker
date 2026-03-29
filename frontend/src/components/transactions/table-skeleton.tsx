@@ -15,46 +15,60 @@ export function TableSkeleton() {
             <Table>
                 <TableHeader>
                     <TableRow className="hover:bg-transparent border-border">
-                        <TableHead className="w-[40px]"><Skeleton className="h-4 w-4" /></TableHead>
-                        <TableHead className="w-[100px]"><Skeleton className="h-4 w-20" /></TableHead>
-                        <TableHead className="w-[350px]"><Skeleton className="h-4 w-40" /></TableHead>
-                        <TableHead className="w-[120px] text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableHead>
-                        <TableHead className="w-[150px]"><Skeleton className="h-4 w-24" /></TableHead>
-                        <TableHead className="w-[150px]"><Skeleton className="h-4 w-20" /></TableHead>
-                        <TableHead className="w-[200px]"><Skeleton className="h-4 w-32" /></TableHead>
-                        <TableHead className="w-[100px] text-right"><Skeleton className="h-4 w-8 ml-auto" /></TableHead>
+                        {/* Date ~120px */}
+                        <TableHead className="w-[120px]"><Skeleton className="h-3 w-16 bg-muted/40" /></TableHead>
+                        {/* Description ~420px */}
+                        <TableHead className="w-[420px]"><Skeleton className="h-3 w-40 bg-muted/40" /></TableHead>
+                        {/* Amount ~120px right-aligned */}
+                        <TableHead className="w-[120px] text-right"><Skeleton className="h-3 w-20 bg-muted/40 ml-auto" /></TableHead>
+                        {/* Account ~110px */}
+                        <TableHead className="w-[110px]"><Skeleton className="h-3 w-24 bg-muted/40" /></TableHead>
+                        {/* Category ~110px */}
+                        <TableHead className="w-[110px]"><Skeleton className="h-3 w-28 bg-muted/40" /></TableHead>
+                        {/* Tags ~120px */}
+                        <TableHead className="w-[120px]"><Skeleton className="h-3 w-16 bg-muted/40" /></TableHead>
+                        {/* Actions ~60px */}
+                        <TableHead className="w-[60px] text-right"><Skeleton className="h-3 w-10 bg-muted/40 ml-auto" /></TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {Array.from({ length: 15 }).map((_, i) => (
                         <TableRow key={i} className="border-border hover:bg-transparent">
-                            <TableCell><Skeleton className="h-4 w-4" /></TableCell>
-                            <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                            {/* Date */}
                             <TableCell>
-                                <div className="space-y-2">
-                                    <Skeleton className="h-4 w-[250px]" />
-                                    <Skeleton className="h-3 w-[200px]" />
+                                <div className="h-3 w-16 bg-muted/40 rounded animate-pulse" />
+                            </TableCell>
+                            {/* Description */}
+                            <TableCell>
+                                <div className="space-y-1.5">
+                                    <div className="h-3 w-64 bg-muted/40 rounded animate-pulse" />
+                                    <div className="h-2.5 w-40 bg-muted/30 rounded animate-pulse" />
                                 </div>
                             </TableCell>
+                            {/* Amount */}
                             <TableCell>
-                                <div className="flex flex-col items-end gap-1">
-                                    <Skeleton className="h-6 w-20 rounded-full" />
-                                    <Skeleton className="h-3 w-12" />
+                                <div className="flex justify-end">
+                                    <div className="h-6 w-20 bg-muted/40 rounded-md animate-pulse ml-auto" />
                                 </div>
                             </TableCell>
-                            <TableCell><Skeleton className="h-6 w-28 rounded-full" /></TableCell>
-                            <TableCell><Skeleton className="h-6 w-24 rounded-full" /></TableCell>
+                            {/* Account */}
+                            <TableCell>
+                                <div className="h-6 w-24 bg-muted/40 rounded-md animate-pulse" />
+                            </TableCell>
+                            {/* Category */}
+                            <TableCell>
+                                <div className="h-6 w-28 bg-muted/40 rounded-md animate-pulse" />
+                            </TableCell>
+                            {/* Tags — two pill shapes */}
                             <TableCell>
                                 <div className="flex gap-1">
-                                    <Skeleton className="h-5 w-16 rounded-full" />
-                                    <Skeleton className="h-5 w-16 rounded-full" />
+                                    <div className="h-4 w-14 bg-muted/40 rounded-full animate-pulse" />
+                                    <div className="h-4 w-12 bg-muted/40 rounded-full animate-pulse" />
                                 </div>
                             </TableCell>
+                            {/* Actions */}
                             <TableCell>
-                                <div className="flex justify-end gap-2">
-                                    <Skeleton className="h-8 w-8 rounded-md" />
-                                    <Skeleton className="h-8 w-8 rounded-md" />
-                                </div>
+                                <div className="h-4 w-10 bg-muted/40 rounded animate-pulse ml-auto" />
                             </TableCell>
                         </TableRow>
                     ))}

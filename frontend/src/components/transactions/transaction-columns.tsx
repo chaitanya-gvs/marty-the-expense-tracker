@@ -251,11 +251,11 @@ export function buildTransactionColumns(
           <CalendarDays className="size-3" />
           Date
           {column.getIsSorted() === "asc" ? (
-            <ArrowUp className="ml-1 h-3 w-3 text-primary" />
+            <ArrowUp className="ml-1 h-3 w-3 text-primary shrink-0" />
           ) : column.getIsSorted() === "desc" ? (
-            <ArrowDown className="ml-1 h-3 w-3 text-primary" />
+            <ArrowDown className="ml-1 h-3 w-3 text-primary shrink-0" />
           ) : (
-            <ArrowUpDown className="ml-1 h-3 w-3" />
+            <ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground/25 shrink-0" />
           )}
         </Button>
       ),
@@ -453,11 +453,11 @@ export function buildTransactionColumns(
           <IndianRupee className="size-3" />
           Amount
           {column.getIsSorted() === "asc" ? (
-            <ArrowUp className="ml-1 h-3 w-3 text-primary" />
+            <ArrowUp className="ml-1 h-3 w-3 text-primary shrink-0" />
           ) : column.getIsSorted() === "desc" ? (
-            <ArrowDown className="ml-1 h-3 w-3 text-primary" />
+            <ArrowDown className="ml-1 h-3 w-3 text-primary shrink-0" />
           ) : (
-            <ArrowUpDown className="ml-1 h-3 w-3" />
+            <ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground/25 shrink-0" />
           )}
         </Button>
       ),
@@ -814,9 +814,12 @@ export function buildTransactionColumns(
           );
         }
 
+        const visibleTags = tagObjects.slice(0, 2);
+        const overflowCount = tagObjects.length - 2;
+
         return (
           <div
-            className="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30 cursor-pointer hover:bg-muted/50 p-1 rounded max-w-[140px]"
+            className="cursor-pointer hover:bg-muted/50 p-1 rounded"
             onClick={(e) => {
               e.stopPropagation();
               setEditingTagsForTransaction(transaction.id);
@@ -824,8 +827,8 @@ export function buildTransactionColumns(
             title="Click to edit tags"
           >
             {tagObjects && tagObjects.length > 0 ? (
-              <div className="flex gap-1 whitespace-nowrap">
-                {tagObjects.map((tag) => (
+              <div className="flex items-center gap-1 flex-nowrap min-w-0">
+                {visibleTags.map((tag) => (
                   <TagPill
                     key={tag.id}
                     tag={tag}
@@ -847,6 +850,14 @@ export function buildTransactionColumns(
                     }}
                   />
                 ))}
+                {overflowCount > 0 && (
+                  <span
+                    title={tagObjects.slice(2).map((t) => t.name).join(", ")}
+                    className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground border border-border cursor-default shrink-0"
+                  >
+                    +{overflowCount}
+                  </span>
+                )}
               </div>
             ) : (
               <span className="text-xs text-muted-foreground hover:text-foreground whitespace-nowrap">
