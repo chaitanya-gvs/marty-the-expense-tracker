@@ -7,10 +7,6 @@
 
 # caddy/Caddyfile
 
-{
-    trusted_proxies cloudflare
-}
-
 expenses.chaitanya-gvs.com {
     handle /api/* {
         reverse_proxy backend:8000
