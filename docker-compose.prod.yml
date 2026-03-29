@@ -55,7 +55,6 @@ services:
       - AUTH_PASSWORD_HASH=${AUTH_PASSWORD_HASH}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - FRONTEND_URL=${FRONTEND_URL}
-    ports: []  # No host ports — only Caddy is externally reachable
 
   frontend:
     container_name: marty-frontend
