@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Eye, EyeOff, Loader2, Lock, TrendingUp, User } from "lucide-react";
+import { Eye, EyeOff, Loader2, Lock, Sigma, User } from "lucide-react";
 import { Bricolage_Grotesque } from "next/font/google";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -139,13 +139,13 @@ export default function LoginPage() {
                 animate={prefersReducedMotion ? {} : { scale: [1, 1.04, 1] }}
                 transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
               >
-                <TrendingUp className="h-7 w-7 text-primary" />
+                <Sigma className="h-7 w-7 text-primary" />
               </motion.div>
             </motion.div>
 
             <motion.div variants={itemVariants} className="flex flex-col gap-1">
-              {/* MARTY + the Expense Tracker on one line */}
-              <div className="flex items-center gap-3">
+              {/* MARTY + the Expense Tracker on one line, baseline-aligned */}
+              <div className="flex items-baseline gap-2">
                 <h1
                   className="leading-none bg-gradient-to-r from-foreground to-foreground/75 bg-clip-text text-transparent"
                   style={{
@@ -157,7 +157,14 @@ export default function LoginPage() {
                 >
                   MARTY
                 </h1>
-                <span className="text-sm font-normal text-muted-foreground/70 tracking-wide">
+                <span
+                  className="leading-none text-foreground"
+                  style={{
+                    fontFamily: "var(--font-bricolage), var(--font-dm-sans), sans-serif",
+                    fontWeight: 700,
+                    fontSize: "1rem",
+                  }}
+                >
                   the Expense Tracker
                 </span>
               </div>
