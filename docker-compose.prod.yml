@@ -63,7 +63,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: http://${SERVER_IP}/api
+        NEXT_PUBLIC_API_URL: ${FRONTEND_URL}/api
         NEXT_PUBLIC_APP_ENV: production
     environment:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
