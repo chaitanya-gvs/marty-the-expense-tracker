@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     # Settlements
     CURRENT_USER_NAMES: str = "me,chaitanya gvs,chaitanya"
 
+    # Auth
+    AUTH_USERNAME: str = "admin"
+    AUTH_PASSWORD_HASH: str = ""
+    JWT_SECRET_KEY: str = ""
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRY_DAYS: int = 7
+    FRONTEND_URL: str = "http://localhost:3000"
+
     # Sentry
     SENTRY_DSN: str | None = None
     VISION_AGENT_API_KEY: str | None = None

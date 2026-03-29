@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import {
@@ -12,6 +12,7 @@ import {
   HandCoins,
   ScanSearch,
   SlidersHorizontal,
+  LogOut,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
@@ -30,9 +31,17 @@ const navigation = [
   { name: "Settings", href: "/settings", icon: SlidersHorizontal },
 ];
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+
 export function Navigation() {
   const pathname = usePathname();
+  const router = useRouter();
   const [isHovered, setIsHovered] = useState(false);
+
+  const handleLogout = async () => {
+    await fetch(`${API_BASE}/auth/logout`, { method: "POST", credentials: "include" });
+    router.replace("/login");
+  };
 
   return (
     <TooltipProvider>
@@ -104,7 +113,7 @@ export function Navigation() {
               );
             })}
           </ul>
-          <div className="border-t border-sidebar-border pt-1 mt-1">
+          <div className="border-t border-sidebar-border pt-1 mt-1 space-y-0.5">
             {(() => {
               const settingsItem = navigation.find(item => item.href === "/settings")!;
               const isActive = pathname === settingsItem.href;
@@ -142,6 +151,30 @@ export function Navigation() {
                 </Link>
               );
             })()}
+
+            {!isHovered ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center justify-center p-2.5 rounded-md text-sm transition-all duration-150 text-muted-foreground hover:bg-sidebar-accent hover:text-destructive font-medium"
+                  >
+                    <LogOut className="h-4 w-4 flex-shrink-0" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="ml-2">
+                  <p>Logout</p>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-all duration-150 text-muted-foreground hover:bg-sidebar-accent hover:text-destructive font-medium"
+              >
+                <LogOut className="h-4 w-4 flex-shrink-0" />
+                Logout
+              </button>
+            )}
           </div>
         </div>
       </nav>
