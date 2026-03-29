@@ -9,6 +9,13 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -56,45 +63,51 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="w-full max-w-sm space-y-6 p-8 rounded-xl border border-border bg-card shadow-sm">
-        <div className="flex flex-col items-center gap-2">
-          <Wallet className="h-8 w-8 text-primary" />
-          <h1 className="text-xl font-semibold tracking-tight">Expense Tracker</h1>
-          <p className="text-sm text-muted-foreground">Sign in to your account</p>
-        </div>
-
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="username">Username</Label>
-            <Input
-              id="username"
-              {...register("username")}
-              autoComplete="username"
-              autoFocus
-            />
-            {errors.username && (
-              <p className="text-xs text-destructive">{errors.username.message}</p>
-            )}
+      <Card className="w-full max-w-sm">
+        <CardHeader className="items-center text-center gap-3">
+          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10">
+            <Wallet className="h-5 w-5 text-primary" />
           </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              {...register("password")}
-              autoComplete="current-password"
-            />
-            {errors.password && (
-              <p className="text-xs text-destructive">{errors.password.message}</p>
-            )}
+          <div>
+            <CardTitle className="text-lg">Expense Tracker</CardTitle>
+            <CardDescription className="mt-1">Sign in to your account</CardDescription>
           </div>
+        </CardHeader>
 
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "Signing in…" : "Sign in"}
-          </Button>
-        </form>
-      </div>
+        <CardContent>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                {...register("username")}
+                autoComplete="username"
+                autoFocus
+              />
+              {errors.username && (
+                <p className="text-xs text-destructive">{errors.username.message}</p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                {...register("password")}
+                autoComplete="current-password"
+              />
+              {errors.password && (
+                <p className="text-xs text-destructive">{errors.password.message}</p>
+              )}
+            </div>
+
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? "Signing in…" : "Sign in"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }
