@@ -33,8 +33,6 @@ services:
       - ./backend/main.py:/app/main.py
       - ./backend/alembic.ini:/app/alembic.ini
       - ./backend/configs:/app/configs
-      # Named volume preserves the container's .venv across restarts
-      - venv_data:/app/.venv
       - backend_logs:/app/logs
     environment:
       - APP_ENV=dev
@@ -75,4 +73,3 @@ networks:
 volumes:
   postgres_data:
   backend_logs:
-  venv_data:
