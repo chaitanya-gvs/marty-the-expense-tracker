@@ -127,8 +127,8 @@ export default function LoginPage() {
       className={`${bricolage.variable} relative min-h-[100dvh] flex overflow-hidden bg-background`}
       style={{
         backgroundImage: [
-          "linear-gradient(rgba(99,102,241,0.07) 1px, transparent 1px)",
-          "linear-gradient(90deg, rgba(99,102,241,0.07) 1px, transparent 1px)",
+          "linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px)",
+          "linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)",
         ].join(", "),
         backgroundSize: "36px 36px",
       }}
@@ -142,17 +142,16 @@ export default function LoginPage() {
         animate="visible"
         aria-hidden="true"
       >
-        {/* Orbs — only primary, no violet */}
-        <div className="absolute -top-48 -left-48 w-[40rem] h-[40rem] rounded-full bg-primary/[0.08] blur-[180px] pointer-events-none" />
-        <div className="absolute bottom-0 left-1/4 w-96 h-96 rounded-full bg-primary/[0.05] blur-[120px] pointer-events-none" />
+        {/* Single subtle orb — low opacity so background stays neutral dark */}
+        <div className="absolute -top-48 -left-48 w-[40rem] h-[40rem] rounded-full bg-primary/[0.04] blur-[200px] pointer-events-none" />
 
-        {/* Ghost MARTY watermark — anchored bottom-left, huge, cropped */}
+        {/* Ghost MARTY watermark — fits within panel, no cropping */}
         <div
-          className="absolute bottom-[-2rem] left-[-1rem] select-none pointer-events-none leading-none tracking-[0.06em] whitespace-nowrap text-foreground/[0.04]"
+          className="absolute bottom-[-0.5rem] left-0 select-none pointer-events-none leading-none tracking-[0.06em] whitespace-nowrap text-foreground/[0.04]"
           style={{
             fontFamily: "var(--font-bricolage), sans-serif",
             fontWeight: 800,
-            fontSize: "clamp(9rem, 16vw, 16rem)",
+            fontSize: "clamp(7rem, 12vw, 12rem)",
           }}
         >
           MARTY
@@ -162,7 +161,7 @@ export default function LoginPage() {
         <div className="relative z-10 space-y-8 max-w-sm">
           {/* Headline */}
           <div className="space-y-3">
-            <p className="text-xs text-primary/70 tracking-[0.2em] uppercase font-medium">
+            <p className="text-xs text-muted-foreground/50 tracking-[0.2em] uppercase font-medium">
               Personal Finance
             </p>
             <h2
@@ -177,8 +176,11 @@ export default function LoginPage() {
               Your finances,{" "}
               <span className="text-foreground/40">privately yours.</span>
             </h2>
-            <p className="text-sm text-muted-foreground/70 leading-relaxed">
+            <p className="text-sm text-muted-foreground/60 leading-relaxed">
               Track every transaction. Understand every pattern. All on your own terms.
+            </p>
+            <p className="text-[0.7rem] text-muted-foreground/40 tracking-[0.15em] uppercase">
+              Money Analysis &amp; Recording Tool for You
             </p>
           </div>
 
@@ -190,9 +192,9 @@ export default function LoginPage() {
                   <span>{row.label}</span>
                   <span className="font-mono">{row.amount}</span>
                 </div>
-                <div className="h-px w-full bg-border/50">
+                <div className="h-px w-full bg-muted-foreground/10">
                   <div
-                    className="h-full bg-primary/25"
+                    className="h-full bg-muted-foreground/25"
                     style={{ width: `${row.pct}%` }}
                   />
                 </div>
@@ -206,7 +208,7 @@ export default function LoginPage() {
       <div className="w-full lg:w-[45%] flex items-center justify-center px-6 py-12 relative z-10">
         {/* Mobile-only orb */}
         <div
-          className="lg:hidden absolute -top-32 -left-32 w-80 h-80 rounded-full bg-primary/[0.08] blur-[120px] pointer-events-none"
+          className="lg:hidden absolute -top-32 -left-32 w-80 h-80 rounded-full bg-primary/[0.04] blur-[120px] pointer-events-none"
           aria-hidden="true"
         />
 
@@ -216,7 +218,7 @@ export default function LoginPage() {
           initial="hidden"
           animate="visible"
         >
-          <Card className="w-full backdrop-blur-xl bg-card/80 border-[rgba(255,255,255,0.08)] shadow-[0_0_0_1px_rgba(99,102,241,0.10),0_24px_64px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.06)]">
+          <Card className="w-full backdrop-blur-xl bg-card/90 border-[rgba(255,255,255,0.07)] shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_24px_64px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.05)]">
 
             {/* Card header: icon + brand */}
             <CardHeader className="flex flex-row items-center gap-4 pb-5 pt-7 px-7">
