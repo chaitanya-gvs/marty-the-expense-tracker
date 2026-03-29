@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Eye, EyeOff, Loader2, Lock, User, Wallet } from "lucide-react";
+import { Bricolage_Grotesque } from "next/font/google";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -20,6 +21,12 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
+const bricolage = Bricolage_Grotesque({
+  subsets: ["latin"],
+  variable: "--font-bricolage",
+  weight: ["400", "500", "600", "700", "800"],
+});
 
 const loginSchema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -94,11 +101,13 @@ export default function LoginPage() {
 
   return (
     <div
-      className="relative min-h-screen flex items-center justify-center bg-background overflow-hidden px-4"
+      className={`${bricolage.variable} relative min-h-screen flex items-center justify-center bg-background overflow-hidden px-4`}
       style={{
-        backgroundImage:
-          "radial-gradient(circle, rgba(99,102,241,0.09) 1px, transparent 1px)",
-        backgroundSize: "28px 28px",
+        backgroundImage: [
+          "linear-gradient(rgba(99,102,241,0.055) 1px, transparent 1px)",
+          "linear-gradient(90deg, rgba(99,102,241,0.055) 1px, transparent 1px)",
+        ].join(", "),
+        backgroundSize: "36px 36px",
       }}
     >
       {/* Atmospheric glow orbs */}
@@ -108,12 +117,12 @@ export default function LoginPage() {
         animate="visible"
         aria-hidden="true"
       >
-        <div className="absolute -top-40 -left-40 w-[28rem] h-[28rem] rounded-full bg-primary/10 blur-[140px] pointer-events-none" />
+        <div className="absolute -top-40 -left-40 w-[32rem] h-[32rem] rounded-full bg-primary/10 blur-[150px] pointer-events-none" />
         <div className="absolute -bottom-32 -right-20 w-80 h-80 rounded-full bg-violet-500/[0.07] blur-[100px] pointer-events-none" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[32rem] h-[32rem] rounded-full bg-primary/[0.03] blur-[120px] pointer-events-none" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[36rem] h-[36rem] rounded-full bg-primary/[0.025] blur-[130px] pointer-events-none" />
       </motion.div>
 
-      {/* Card stagger container */}
+      {/* Card */}
       <motion.div
         className="w-full max-w-md relative z-10"
         variants={containerVariants}
@@ -135,16 +144,31 @@ export default function LoginPage() {
             </motion.div>
 
             <motion.div variants={itemVariants} className="flex flex-col gap-0.5">
-              <CardTitle className="text-2xl font-semibold bg-gradient-to-r from-foreground to-foreground/75 bg-clip-text text-transparent leading-tight">
+              <h1
+                className="leading-none tracking-tight bg-gradient-to-r from-foreground via-foreground to-foreground/60 bg-clip-text text-transparent"
+                style={{
+                  fontFamily: "var(--font-bricolage), var(--font-dm-sans), sans-serif",
+                  fontWeight: 800,
+                  fontSize: "1.75rem",
+                }}
+              >
                 Marty
-              </CardTitle>
-              <CardDescription className="text-sm text-muted-foreground/80">
-                the expense tracker
-              </CardDescription>
+              </h1>
+              <p className="text-[0.8rem] tracking-wide text-muted-foreground/70 font-medium">
+                the Expense Tracker
+              </p>
             </motion.div>
           </CardHeader>
 
           <CardContent className="px-7 pb-2">
+            {/* Tagline */}
+            <motion.p
+              variants={itemVariants}
+              className="text-sm text-muted-foreground/80 mb-5 -mt-1"
+            >
+              Your finances, privately yours.
+            </motion.p>
+
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               {/* Username field */}
               <motion.div variants={itemVariants} className="space-y-1.5">
