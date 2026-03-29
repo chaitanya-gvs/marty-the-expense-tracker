@@ -148,13 +148,17 @@ export function TransactionDetailsDrawer({
 
                     <Separator />
 
-                    {/* Raw Data (Debug) */}
-                    <div>
-                        <h3 className="text-sm font-medium text-muted-foreground mb-2">Raw Data (Debug)</h3>
-                        <pre className="bg-slate-950 text-slate-50 text-xs p-4 rounded-md overflow-x-auto">
-                            {JSON.stringify(transaction, null, 2)}
+                    {/* Raw Data (Dev Only) */}
+                    {process.env.NEXT_PUBLIC_APP_ENV === 'development' && (
+                      <details className="mt-4">
+                        <summary className="text-xs text-muted-foreground/40 cursor-pointer select-none">
+                          Raw data (dev only)
+                        </summary>
+                        <pre className="mt-2 bg-muted text-muted-foreground text-[10px] p-3 rounded-md overflow-x-auto leading-relaxed">
+                          {JSON.stringify(transaction, null, 2)}
                         </pre>
-                    </div>
+                      </details>
+                    )}
                 </div>
             </SheetContent>
         </Sheet>

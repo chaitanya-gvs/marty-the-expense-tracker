@@ -10,6 +10,16 @@ import { formatCurrency, formatDate } from "@/lib/format-utils";
 import { Transaction } from "@/lib/types";
 import { apiClient } from "@/lib/api/client";
 import { Search, Loader2, Layers, Ungroup } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 
 interface GroupExpenseSearchModalProps {
@@ -305,15 +315,33 @@ export function GroupExpenseSearchModal({
           Cancel
         </Button>
         {isViewExistingGroup && onUngroup && (
-          <Button
-            variant="outline"
-            className="border-destructive/50 text-destructive hover:bg-destructive/10"
-            onClick={handleUngroup}
-            disabled={ungrouping}
-          >
-            {ungrouping ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Ungroup className="h-4 w-4 mr-2" />}
-            Ungroup
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="outline"
+                className="border-destructive/50 text-destructive hover:bg-destructive/10"
+                disabled={ungrouping}
+              >
+                {ungrouping ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Ungroup className="h-4 w-4 mr-2" />}
+                Ungroup
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogTitle>Ungroup transactions?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will remove the group link between these transactions. They will remain in your records but will no longer be grouped together.
+              </AlertDialogDescription>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleUngroup}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Ungroup
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
         <Button onClick={handleGroupSelected} disabled={!canGroup}>
           <Layers className="h-4 w-4 mr-2" />

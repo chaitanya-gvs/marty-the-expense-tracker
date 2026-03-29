@@ -396,7 +396,7 @@ export function RelatedTransactionsDrawer({
           }
         </div>
 
-        <Button variant="outline" onClick={handleUngroup} className={cn("w-full", VIOLET_TEXT)}>
+        <Button variant="outline" onClick={handleUngroup} className="w-full border-destructive/50 text-destructive hover:bg-destructive/10">
           <Trash2 className="h-4 w-4 mr-2" />
           Remove Split &amp; Restore Original
         </Button>

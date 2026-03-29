@@ -5,11 +5,12 @@ import { Modal } from "@/components/ui/modal";
 import {
   FieldRow,
   MoneyInput,
-  CategorySelect,
   SummaryStat,
   RemainingBar,
   KeepOriginalToggle,
 } from "@/components/ui/modal/primitives";
+import { CategorySelector } from "@/components/transactions/category-selector";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useSplitTransaction } from "@/hooks/use-transactions";
@@ -349,15 +350,15 @@ export function SplitTransactionModal({
                             />
                           </FieldRow>
 
-                          <FieldRow label="Category">
-                            <CategorySelect
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">Category</Label>
+                            <CategorySelector
                               value={part.category}
-                              onChange={(val) =>
+                              onValueChange={(val) =>
                                 updatePart(part.id, "category", val)
                               }
-                              categories={categories}
                             />
-                          </FieldRow>
+                          </div>
 
                           <FieldRow label="Notes" hint="Optional additional notes">
                             <Input

@@ -161,7 +161,7 @@ export function TransactionEditModal({
               </CardHeader>
               <CardContent className="space-y-3 pt-0">
                 <div>
-                  <Label htmlFor="date">Date</Label>
+                  <Label htmlFor="date">Date <span className="text-destructive/70">*</span></Label>
                   <Input
                     id="date"
                     type="date"
@@ -172,7 +172,7 @@ export function TransactionEditModal({
                 </div>
 
                 <div>
-                  <Label htmlFor="description">Description</Label>
+                  <Label htmlFor="description">Description <span className="text-destructive/70">*</span></Label>
                   <FieldAutocomplete
                     fieldName="description"
                     value={formData.description || ""}
@@ -206,7 +206,7 @@ export function TransactionEditModal({
                 </div>
 
                 <div>
-                  <Label htmlFor="amount">Amount</Label>
+                  <Label htmlFor="amount">Amount <span className="text-destructive/70">*</span></Label>
                   <Input
                     id="amount"
                     type="number"
@@ -271,7 +271,7 @@ export function TransactionEditModal({
           {/* Tags */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">Tags</CardTitle>
+              <CardTitle className="text-base font-semibold">Tags <span className="ml-1 text-xs font-normal text-muted-foreground/50">(optional)</span></CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 pt-0">
               <MultiTagSelector
@@ -285,7 +285,7 @@ export function TransactionEditModal({
           {/* Notes & Flags */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">Notes & Flags</CardTitle>
+              <CardTitle className="text-base font-semibold">Notes & Flags <span className="ml-1 text-xs font-normal text-muted-foreground/50">(optional)</span></CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 pt-0">
               <div>
@@ -340,7 +340,7 @@ export function TransactionEditModal({
           {/* Transfer Group */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">Transfer Group</CardTitle>
+              <CardTitle className="text-base font-semibold">Transfer Group <span className="ml-1 text-xs font-normal text-muted-foreground/50">(optional)</span></CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 pt-0">
               <TransferGroupSection
