@@ -41,13 +41,15 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
-// Decorative ghost data rows for left panel
 const ghostRows = [
-  { label: "Groceries", pct: 68, amount: "₹4,230" },
-  { label: "Transport", pct: 42, amount: "₹1,890" },
-  { label: "Dining", pct: 81, amount: "₹6,100" },
-  { label: "Utilities", pct: 29, amount: "₹980" },
+  { label: "Transport", pct: 53, amount: "₹1,504" },
+  { label: "Utilities", pct:  8, amount: "₹224"   },
+  { label: "Groceries", pct: 85, amount: "₹2,406" },
+  { label: "Dining",    pct: 36, amount: "₹1,006" },
 ];
+
+// Spring config reused across all entrance items
+const SPRING = { type: "spring" as const, stiffness: 120, damping: 22, mass: 0.8 };
 
 export default function LoginPage() {
   const router = useRouter();
@@ -103,24 +105,6 @@ export default function LoginPage() {
     }
   };
 
-  const containerVariants = {
-    hidden: {},
-    visible: { transition: { staggerChildren: 0.07, delayChildren: 0.1 } },
-  };
-
-  const itemVariants = {
-    hidden: { opacity: 0, y: prefersReducedMotion ? 0 : 14 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: { type: "spring" as const, stiffness: 120, damping: 22, mass: 0.8 },
-    },
-  };
-
-  const panelVariants = {
-    hidden: { opacity: 0 },
-    visible: { opacity: 1, transition: { duration: prefersReducedMotion ? 0 : 1, ease: "easeOut" } },
-  };
 
   return (
     <main
@@ -135,17 +119,14 @@ export default function LoginPage() {
     >
 
       {/* ─── Left brand panel (desktop only) ─── */}
-      <motion.div
-        className="hidden lg:flex lg:w-[55%] relative flex-col justify-center px-16 overflow-hidden"
-        variants={panelVariants}
-        initial="hidden"
-        animate="visible"
+      <div
+        className="hidden lg:flex lg:w-[55%] relative flex-col justify-center px-16 overflow-hidden animate-in fade-in-0 duration-700"
         aria-hidden="true"
       >
-        {/* Single subtle orb — low opacity so background stays neutral dark */}
+        {/* Subtle orb */}
         <div className="absolute -top-48 -left-48 w-[40rem] h-[40rem] rounded-full bg-primary/[0.04] blur-[200px] pointer-events-none" />
 
-        {/* Ghost MARTY watermark — fits within panel, no cropping */}
+        {/* Ghost MARTY watermark */}
         <div
           className="absolute bottom-[-0.5rem] left-0 select-none pointer-events-none leading-none tracking-[0.06em] whitespace-nowrap text-foreground/[0.04]"
           style={{
@@ -157,9 +138,8 @@ export default function LoginPage() {
           MARTY
         </div>
 
-        {/* Foreground content — no competing icons, just type + data */}
+        {/* Foreground content */}
         <div className="relative z-10 space-y-8 max-w-sm">
-          {/* Headline */}
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground/50 tracking-[0.2em] uppercase font-medium">
               Personal Finance
@@ -179,12 +159,16 @@ export default function LoginPage() {
             <p className="text-sm text-muted-foreground/60 leading-relaxed">
               Track every transaction. Understand every pattern. All on your own terms.
             </p>
-            <p className="text-[0.7rem] text-muted-foreground/40 tracking-[0.15em] uppercase">
-              Money Analysis &amp; Recording Tool for You
+            <p className="text-[0.7rem] text-muted-foreground/50 tracking-[0.04em]">
+              <span className="text-primary/70 font-bold">M</span>oney{" "}
+              <span className="text-primary/70 font-bold">A</span>nalysis &amp;{" "}
+              <span className="text-primary/70 font-bold">R</span>ecording{" "}
+              <span className="text-primary/70 font-bold">T</span>ool for{" "}
+              <span className="text-primary/70 font-bold">Y</span>ou
             </p>
           </div>
 
-          {/* Ghost budget rows — subtle data preview */}
+          {/* Ghost budget rows */}
           <div className="space-y-2.5 pointer-events-none" aria-hidden="true">
             {ghostRows.map((row) => (
               <div key={row.label} className="space-y-1">
@@ -193,16 +177,13 @@ export default function LoginPage() {
                   <span className="font-mono">{row.amount}</span>
                 </div>
                 <div className="h-px w-full bg-muted-foreground/10">
-                  <div
-                    className="h-full bg-muted-foreground/25"
-                    style={{ width: `${row.pct}%` }}
-                  />
+                  <div className="h-full bg-muted-foreground/25" style={{ width: `${row.pct}%` }} />
                 </div>
               </div>
             ))}
           </div>
         </div>
-      </motion.div>
+      </div>
 
       {/* ─── Right login panel ─── */}
       <div className="w-full lg:w-[45%] flex items-center justify-center px-6 py-12 relative z-10">
@@ -212,34 +193,23 @@ export default function LoginPage() {
           aria-hidden="true"
         />
 
-        <motion.div
-          className="w-full max-w-md"
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-        >
+        <div className="w-full max-w-md animate-in fade-in-0 slide-in-from-bottom-3 duration-500 delay-100">
           <Card className="w-full backdrop-blur-xl bg-card/90 border-[rgba(255,255,255,0.07)] shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_24px_64px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.05)]">
 
-            {/* Card header: icon + brand */}
             <CardHeader className="flex flex-row items-center gap-4 pb-5 pt-7 px-7">
-              <motion.div variants={itemVariants} className="shrink-0">
+              {/* Icon */}
+              <div className="shrink-0">
                 <motion.div
                   className="flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20"
                   animate={prefersReducedMotion ? {} : { scale: [1, 1.04, 1] }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 60,
-                    damping: 8,
-                    repeat: Infinity,
-                    repeatType: "mirror",
-                    duration: 2,
-                  }}
+                  transition={{ type: "spring", stiffness: 60, damping: 8, repeat: Infinity, repeatType: "mirror", duration: 2 }}
                 >
                   <Sigma className="h-7 w-7 text-primary" />
                 </motion.div>
-              </motion.div>
+              </div>
 
-              <motion.div variants={itemVariants} className="flex flex-col gap-1">
+              {/* Brand text */}
+              <div className="flex flex-col gap-1">
                 <div className="flex items-baseline gap-2">
                   <h1
                     className="leading-none text-foreground"
@@ -263,20 +233,21 @@ export default function LoginPage() {
                     The Expense Tracker
                   </span>
                 </div>
-                <p className="text-[0.78rem] text-muted-foreground/60 leading-snug mt-0.5">
-                  Sign in to continue
+                <p className="text-[0.72rem] text-muted-foreground/50 leading-snug mt-0.5 tracking-[0.02em]">
+                  <span className="text-primary/60 font-semibold">M</span>oney{" "}
+                  <span className="text-primary/60 font-semibold">A</span>nalysis &amp;{" "}
+                  <span className="text-primary/60 font-semibold">R</span>ecording{" "}
+                  <span className="text-primary/60 font-semibold">T</span>ool for{" "}
+                  <span className="text-primary/60 font-semibold">Y</span>ou
                 </p>
-              </motion.div>
+              </div>
             </CardHeader>
 
             <CardContent className="px-7 pb-2">
-              <form
-                onSubmit={handleSubmit(onSubmit)}
-                className="space-y-4"
-                aria-label="Sign in to MARTY"
-              >
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" aria-label="Sign in to MARTY">
+
                 {/* Username */}
-                <motion.div variants={itemVariants} className="space-y-1.5">
+                <div className="space-y-1.5">
                   <Label htmlFor="username">Username</Label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
@@ -304,10 +275,10 @@ export default function LoginPage() {
                       </motion.p>
                     )}
                   </AnimatePresence>
-                </motion.div>
+                </div>
 
                 {/* Password */}
-                <motion.div variants={itemVariants} className="space-y-1.5">
+                <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="password">Password</Label>
                     <span className="text-xs text-muted-foreground/50 hover:text-muted-foreground cursor-pointer transition-colors select-none">
@@ -354,10 +325,10 @@ export default function LoginPage() {
                       </motion.p>
                     )}
                   </AnimatePresence>
-                </motion.div>
+                </div>
 
                 {/* Magnetic submit button */}
-                <motion.div variants={itemVariants} className="pt-1">
+                <div className="pt-1">
                   <motion.div
                     ref={buttonRef}
                     style={prefersReducedMotion ? {} : { x: translateX, y: translateY }}
@@ -379,20 +350,17 @@ export default function LoginPage() {
                       )}
                     </Button>
                   </motion.div>
-                </motion.div>
+                </div>
               </form>
             </CardContent>
 
             <CardFooter className="justify-center pb-6 pt-3 px-7">
-              <motion.p
-                variants={itemVariants}
-                className="text-xs text-muted-foreground/60 text-center"
-              >
+              <p className="text-xs text-muted-foreground/60 text-center">
                 Protected by end-to-end encryption
-              </motion.p>
+              </p>
             </CardFooter>
           </Card>
-        </motion.div>
+        </div>
       </div>
     </main>
   );
