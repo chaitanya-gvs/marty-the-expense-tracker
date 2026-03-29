@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Eye, EyeOff, Loader2, Lock, User, Wallet } from "lucide-react";
+import { Calculator, Eye, EyeOff, Loader2, Lock, User } from "lucide-react";
 import { Bricolage_Grotesque } from "next/font/google";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -132,43 +132,43 @@ export default function LoginPage() {
         <Card className="w-full backdrop-blur-xl bg-card/80 border-[rgba(255,255,255,0.10)] shadow-[0_0_0_1px_rgba(99,102,241,0.12),0_24px_64px_rgba(0,0,0,0.6)]">
 
           {/* Header: icon + name side-by-side */}
-          <CardHeader className="flex flex-row items-center gap-4 pb-6 pt-7 px-7">
+          <CardHeader className="flex flex-row items-center gap-4 pb-5 pt-7 px-7">
             <motion.div variants={itemVariants} className="shrink-0">
               <motion.div
                 className="flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/20 to-violet-600/10 border border-primary/20"
                 animate={prefersReducedMotion ? {} : { scale: [1, 1.04, 1] }}
                 transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
               >
-                <Wallet className="h-7 w-7 text-primary" />
+                <Calculator className="h-7 w-7 text-primary" />
               </motion.div>
             </motion.div>
 
-            <motion.div variants={itemVariants} className="flex flex-col gap-0.5">
-              <h1
-                className="leading-none tracking-tight bg-gradient-to-r from-foreground via-foreground to-foreground/60 bg-clip-text text-transparent"
-                style={{
-                  fontFamily: "var(--font-bricolage), var(--font-dm-sans), sans-serif",
-                  fontWeight: 800,
-                  fontSize: "1.75rem",
-                }}
-              >
-                Marty
-              </h1>
-              <p className="text-[0.8rem] tracking-wide text-muted-foreground/70 font-medium">
-                the Expense Tracker
+            <motion.div variants={itemVariants} className="flex flex-col gap-1">
+              {/* MARTY + the Expense Tracker on one line */}
+              <div className="flex items-baseline gap-2.5">
+                <h1
+                  className="leading-none bg-gradient-to-r from-foreground to-foreground/75 bg-clip-text text-transparent"
+                  style={{
+                    fontFamily: "var(--font-bricolage), var(--font-dm-sans), sans-serif",
+                    fontWeight: 800,
+                    fontSize: "1.75rem",
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  MARTY
+                </h1>
+                <span className="text-[0.78rem] font-medium text-muted-foreground/60 tracking-wide leading-none pb-0.5">
+                  the Expense Tracker
+                </span>
+              </div>
+              {/* Tagline as subheading */}
+              <p className="text-[0.8rem] text-muted-foreground/70 leading-snug">
+                Your finances, privately yours.
               </p>
             </motion.div>
           </CardHeader>
 
           <CardContent className="px-7 pb-2">
-            {/* Tagline */}
-            <motion.p
-              variants={itemVariants}
-              className="text-sm text-muted-foreground/80 mb-5 -mt-1"
-            >
-              Your finances, privately yours.
-            </motion.p>
-
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               {/* Username field */}
               <motion.div variants={itemVariants} className="space-y-1.5">
