@@ -15,6 +15,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useReviewCount } from "@/hooks/use-transactions";
 import {
   Tooltip,
   TooltipContent,
@@ -37,6 +38,7 @@ export function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
   const [isHovered, setIsHovered] = useState(false);
+  const { data: reviewCount } = useReviewCount();
 
   const handleLogout = async () => {
     await fetch(`${API_BASE}/auth/logout`, { method: "POST", credentials: "include" });
@@ -88,7 +90,14 @@ export function Navigation() {
                               : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground font-medium"
                           )}
                         >
-                          <item.icon className="h-4 w-4 flex-shrink-0" />
+                          <span className="relative">
+                            <item.icon className="h-4 w-4 flex-shrink-0" />
+                            {item.href === "/review" && reviewCount && reviewCount > 0 && (
+                              <span className="absolute -top-1 -right-1.5 h-3.5 min-w-3.5 rounded-full bg-primary text-primary-foreground text-[8px] font-bold flex items-center justify-center px-0.5 leading-none">
+                                {reviewCount > 99 ? "99+" : reviewCount}
+                              </span>
+                            )}
+                          </span>
                         </Link>
                       </TooltipTrigger>
                       <TooltipContent side="right" className="ml-2">
@@ -105,7 +114,14 @@ export function Navigation() {
                           : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground font-medium"
                       )}
                     >
-                      <item.icon className="h-4 w-4 flex-shrink-0" />
+                      <span className="relative">
+                        <item.icon className="h-4 w-4 flex-shrink-0" />
+                        {item.href === "/review" && reviewCount && reviewCount > 0 && (
+                          <span className="absolute -top-1 -right-1.5 h-3.5 min-w-3.5 rounded-full bg-primary text-primary-foreground text-[8px] font-bold flex items-center justify-center px-0.5 leading-none">
+                            {reviewCount > 99 ? "99+" : reviewCount}
+                          </span>
+                        )}
+                      </span>
                       {item.name}
                     </Link>
                   )}
