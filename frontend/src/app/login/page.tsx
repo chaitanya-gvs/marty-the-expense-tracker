@@ -165,11 +165,14 @@ export default function LoginPage() {
                     fontSize: "1rem",
                   }}
                 >
-                  the Expense Tracker
+                  The Expense Tracker
                 </span>
               </div>
-              {/* Tagline as subheading */}
-              <p className="text-[0.8rem] text-muted-foreground/70 leading-snug">
+              {/* Acronym expansion then tagline */}
+              <p className="text-[0.6rem] text-muted-foreground/35 tracking-widest uppercase leading-none">
+                Money Analysis &amp; Recording Tool for You
+              </p>
+              <p className="text-[0.8rem] text-muted-foreground/70 leading-snug mt-1">
                 Your finances, privately yours.
               </p>
             </motion.div>

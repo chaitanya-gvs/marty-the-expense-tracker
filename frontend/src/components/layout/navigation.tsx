@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import {
-  Wallet,
+  Sigma,
   ArrowLeftRight,
   TrendingUp,
   Target,
@@ -60,13 +60,13 @@ export function Navigation() {
           {isHovered ? (
             <>
               <div className="flex items-center gap-2">
-                <Wallet className="h-5 w-5 text-primary" />
-                <h1 className="text-sm font-semibold text-sidebar-foreground tracking-tight">Expense Tracker</h1>
+                <Sigma className="h-5 w-5 text-primary" />
+                <h1 className="text-sm font-semibold text-sidebar-foreground tracking-widest">MARTY</h1>
               </div>
               <ThemeToggle />
             </>
           ) : (
-            <Wallet className="h-5 w-5 text-primary" />
+            <Sigma className="h-5 w-5 text-primary" />
           )}
         </div>
 
