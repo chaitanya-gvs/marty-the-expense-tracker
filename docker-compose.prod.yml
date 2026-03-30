@@ -24,6 +24,7 @@ services:
       - backend_logs:/app/logs
     environment:
       - APP_ENV=production
+      - COOKIE_SAMESITE_NONE=${COOKIE_SAMESITE_NONE:-false}
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=${POSTGRES_DB}
