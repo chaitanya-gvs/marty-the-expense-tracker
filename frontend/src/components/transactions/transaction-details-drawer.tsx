@@ -55,27 +55,27 @@ export function TransactionDetailsDrawer({
                     {/* Details Grid */}
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <p className="text-sm font-medium text-slate-500">Date</p>
+                            <p className="text-sm font-medium text-muted-foreground">Date</p>
                             <p>{formatDate(transaction.date)}</p>
                         </div>
                         <div>
-                            <p className="text-sm font-medium text-slate-500">Category</p>
+                            <p className="text-sm font-medium text-muted-foreground">Category</p>
                             <p>{transaction.category || "Uncategorized"}</p>
                         </div>
                         {transaction.subcategory && (
                             <div>
-                                <p className="text-sm font-medium text-slate-500">Subcategory</p>
+                                <p className="text-sm font-medium text-muted-foreground">Subcategory</p>
                                 <p>{transaction.subcategory}</p>
                             </div>
                         )}
                         <div>
-                            <p className="text-sm font-medium text-slate-500">Status</p>
+                            <p className="text-sm font-medium text-muted-foreground">Status</p>
                             <div className="flex gap-1 mt-1 flex-wrap">
                                 {transaction.is_flagged && <Badge variant="destructive">Flagged</Badge>}
                                 {transaction.is_shared && <Badge variant="secondary">Shared</Badge>}
                                 {transaction.is_split && <Badge variant="secondary">Split</Badge>}
                                 {transaction.is_grouped_expense && (
-                                    <Badge variant="outline" className="bg-[#7C3AED]/10 border-[#7C3AED]/30">
+                                    <Badge variant="outline" className="bg-primary/10 border-primary/30">
                                         <Layers className="h-3 w-3 mr-1" />
                                         Grouped
                                     </Badge>
@@ -88,24 +88,24 @@ export function TransactionDetailsDrawer({
 
                     {/* Grouped Expense Info */}
                     {transaction.is_grouped_expense && (
-                        <div className="rounded-lg bg-[#7C3AED]/10 border border-[#7C3AED]/20 p-4">
+                        <div className="rounded-lg bg-primary/10 border border-primary/20 p-4">
                             <div className="flex items-start gap-2">
-                                <Layers className="h-5 w-5 text-[#7C3AED] flex-shrink-0 mt-0.5" />
+                                <Layers className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
                                 <div className="flex-1">
-                                    <h3 className="text-sm font-semibold text-[#7C3AED] mb-1">
+                                    <h3 className="text-sm font-semibold text-primary mb-1">
                                         Grouped Expense
                                     </h3>
-                                    <p className="text-xs text-[#7C3AED]/80">
+                                    <p className="text-xs text-primary/80">
                                         This transaction represents multiple transactions combined into a single net amount.
                                         The amount shown is the algebraic sum of all credits (positive) and debits (negative)
                                         in the group.
                                     </p>
                                     {transaction.transaction_group_id && (
-                                        <p className="text-xs text-[#7C3AED]/70 mt-2 font-mono">
+                                        <p className="text-xs text-primary/70 mt-2 font-mono">
                                             Group ID: {transaction.transaction_group_id.slice(0, 8)}...
                                         </p>
                                     )}
-                                    
+
                                     {/* Ungroup button */}
                                     {onUngroupExpense && (
                                         <button
@@ -113,7 +113,7 @@ export function TransactionDetailsDrawer({
                                                 await onUngroupExpense(transaction);
                                                 onClose();
                                             }}
-                                            className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-[#7C3AED] bg-[#7C3AED]/10 border border-[#7C3AED]/30 rounded-md hover:bg-[#7C3AED]/20 transition-colors"
+                                            className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-destructive bg-destructive/10 border border-destructive/30 rounded-md hover:bg-destructive/15 transition-colors"
                                         >
                                             <Layers className="h-4 w-4" />
                                             Ungroup Expense
@@ -127,7 +127,7 @@ export function TransactionDetailsDrawer({
                     {/* Notes */}
                     {transaction.notes && (
                         <div>
-                            <h3 className="text-sm font-medium text-slate-500 mb-1">Notes</h3>
+                            <h3 className="text-sm font-medium text-muted-foreground mb-1">Notes</h3>
                             <p className="text-sm bg-slate-50 dark:bg-slate-900 p-3 rounded-md">
                                 {transaction.notes}
                             </p>
@@ -137,7 +137,7 @@ export function TransactionDetailsDrawer({
                     {/* Tags */}
                     {transaction.tags && transaction.tags.length > 0 && (
                         <div>
-                            <h3 className="text-sm font-medium text-slate-500 mb-2">Tags</h3>
+                            <h3 className="text-sm font-medium text-muted-foreground mb-2">Tags</h3>
                             <div className="flex flex-wrap gap-2">
                                 {transaction.tags.map(tag => (
                                     <Badge key={tag} variant="secondary">{tag}</Badge>
@@ -148,13 +148,17 @@ export function TransactionDetailsDrawer({
 
                     <Separator />
 
-                    {/* Raw Data (Debug) */}
-                    <div>
-                        <h3 className="text-sm font-medium text-slate-500 mb-2">Raw Data (Debug)</h3>
-                        <pre className="bg-slate-950 text-slate-50 text-xs p-4 rounded-md overflow-x-auto">
-                            {JSON.stringify(transaction, null, 2)}
+                    {/* Raw Data (Dev Only) */}
+                    {process.env.NEXT_PUBLIC_APP_ENV === 'development' && (
+                      <details className="mt-4">
+                        <summary className="text-xs text-muted-foreground/40 cursor-pointer select-none">
+                          Raw data (dev only)
+                        </summary>
+                        <pre className="mt-2 bg-muted text-muted-foreground text-[10px] p-3 rounded-md overflow-x-auto leading-relaxed">
+                          {JSON.stringify(transaction, null, 2)}
                         </pre>
-                    </div>
+                      </details>
+                    )}
                 </div>
             </SheetContent>
         </Sheet>

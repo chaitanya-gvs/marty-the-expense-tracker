@@ -341,7 +341,7 @@ export function EmailLinksDrawer({
                 <Mail className="h-3.5 w-3.5" />
                 Linked Emails
                 {linkedEmails.length > 0 && (
-                  <Badge className="bg-violet-400/15 text-violet-300 border border-violet-400/30 text-xs">{linkedEmails.length}</Badge>
+                  <Badge className="bg-primary/10 text-primary/70 border border-primary/20 text-xs">{linkedEmails.length}</Badge>
                 )}
               </h3>
             </div>
@@ -390,7 +390,7 @@ export function EmailLinksDrawer({
                     id="custom-dates"
                     checked={useCustomDates}
                     onCheckedChange={setUseCustomDates}
-                    className="data-[state=checked]:bg-violet-500"
+                    className="data-[state=checked]:bg-primary"
                   />
                   <Label htmlFor="custom-dates" className="text-sm">
                     Use custom date range
@@ -448,7 +448,7 @@ export function EmailLinksDrawer({
                   id="amount-filter"
                   checked={includeAmountFilter}
                   onCheckedChange={setIncludeAmountFilter}
-                  className="data-[state=checked]:bg-violet-500"
+                  className="data-[state=checked]:bg-primary"
                 />
                 <Label htmlFor="amount-filter" className="text-sm">
                   Filter by amount (₹{transaction.amount.toFixed(2)})
@@ -478,7 +478,7 @@ export function EmailLinksDrawer({
                 onClick={handleSearch}
                 disabled={isSearching}
                 variant="outline"
-                className="w-full bg-violet-500/15 text-violet-300 border border-violet-400/40 hover:bg-violet-500/25 hover:text-violet-200"
+                className="w-full bg-primary/10 text-primary/70 border border-primary/20 hover:bg-primary/20 hover:text-primary"
               >
                 {isSearching ? (
                   <>

@@ -30,6 +30,8 @@ import {
   Edit,
   Layers,
   Keyboard,
+  Loader2,
+  ScanSearch,
   Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -803,6 +805,16 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         </div>
       </div>
 
+      {isMultiSelectMode && selectedTransactionIds.size > 0 && (
+        <div className="flex items-center justify-between px-3 py-2 bg-primary/10 border-x border-t border-primary/20 rounded-t-lg text-xs font-medium text-primary -mb-px mx-0">
+          <span>{selectedTransactionIds.size} transaction{selectedTransactionIds.size !== 1 ? "s" : ""} selected</span>
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="ghost" className="h-6 text-xs px-2 text-primary hover:bg-primary/10" onClick={() => setIsBulkEditModalOpen(true)}>Edit</Button>
+            <Button size="sm" variant="ghost" className="h-6 text-xs px-2 text-destructive hover:bg-destructive/10" onClick={() => setIsDeleteConfirmationOpen(true)}>Delete</Button>
+            <Button size="sm" variant="ghost" className="h-6 text-xs px-2 text-muted-foreground hover:text-foreground" onClick={() => setSelectedTransactionIds(new Set())}>Clear</Button>
+          </div>
+        </div>
+      )}
       <div className="w-full" style={{ height: "70vh", display: "flex", flexDirection: "column" }}>
         {/* Sticky Header */}
         <div
@@ -935,7 +947,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                       )}
                     <tr
                       className={cn(
-                        "group hover:bg-muted/20 border-b border-border transition-colors duration-150 h-12 cursor-pointer",
+                        "group border-b border-border/50 transition-colors duration-100 h-12",
+                        selectedTransactionIds.has(row.original.id)
+                          ? "bg-primary/[0.07] hover:bg-primary/[0.10]"
+                          : "hover:bg-muted/30 cursor-default",
                         editingRow === row.original.id && "bg-primary/5",
                         highlightedTransactionIds.has(row.original.id) && "bg-primary/5 border-l-2 border-l-primary",
                         isFocusedRow && "bg-primary/10 border-l-2 border-l-primary"
@@ -967,7 +982,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                     {isGroupedExpense && isExpanded && members.length > 0 && members.map((member) => (
                       <tr
                         key={`member-${member.id}`}
-                        className="bg-muted/10 border-l-2 border-l-chart-4 hover:bg-muted/20 border-b border-border"
+                        className="bg-muted/10 border-l-2 border-l-chart-4 hover:bg-muted/30 border-b border-border/50 transition-colors duration-100 cursor-default"
                       >
                         {isMultiSelectMode && <td className="px-3 py-2"></td>}
                         <td className="px-3 py-2 text-xs text-muted-foreground/60">
@@ -1001,8 +1016,29 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 );
               });
               })()}
+              {isFetchingNextPage && (
+                <tr>
+                  <td colSpan={table.getAllColumns().length} className="py-5 text-center border-b-0">
+                    <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground/50">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Loading more transactions…
+                    </div>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
+          {!isLoading && allTransactions.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center">
+                <ScanSearch className="h-6 w-6 text-muted-foreground/40" />
+              </div>
+              <p className="text-sm font-medium text-foreground/70">No transactions found</p>
+              <p className="text-xs text-muted-foreground/60 max-w-[280px] leading-relaxed">
+                Try adjusting your filters or date range to see results.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

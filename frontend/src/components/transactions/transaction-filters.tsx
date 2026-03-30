@@ -540,7 +540,7 @@ export function TransactionFilters({
           ref={filtersButtonRef}
           onClick={() => setExpanded(!expanded)}
           aria-expanded={expanded}
-          aria-controls="filters-panel"
+          aria-controls="transaction-filter-panel"
           className="rounded-full bg-muted hover:bg-primary/10 hover:text-primary px-3 py-1 text-foreground flex items-center gap-1 transition-colors"
         >
           Filters
@@ -550,17 +550,17 @@ export function TransactionFilters({
         {/* Active Filter Chips */}
         <div className="flex flex-wrap gap-2 items-center">
           {activeFilterBadges.length === 0 ? (
-            <span className="text-xs text-muted-foreground">No active filters</span>
+            <span className="text-xs text-muted-foreground/40 italic">All transactions shown</span>
           ) : (
             activeFilterBadges.map((badge) => (
               <button
                 key={badge.key}
                 onClick={() => expandAndFocusControl(badge.key)}
-                className="rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/40 px-2 py-0.5 text-xs flex items-center gap-1 hover:bg-violet-500/25 transition-colors"
+                className="rounded-full bg-primary/15 text-primary/80 border border-primary/30 px-2 py-0.5 text-xs flex items-center gap-1 hover:bg-primary/25 transition-colors"
               >
                 {badge.label}
                 <X
-                  className="h-3 w-3 hover:text-violet-100"
+                  className="h-3 w-3 hover:text-primary"
                   onClick={(e) => {
                     e.stopPropagation();
                     clearFilter(badge.key as keyof TransactionFilters);
@@ -571,8 +571,8 @@ export function TransactionFilters({
           )}
         </div>
 
-        {/* Quick Presets (Desktop Only) */}
-        <div className="ml-auto hidden md:flex items-center gap-2">
+        {/* Quick Presets */}
+        <div className="ml-auto flex items-center gap-1.5 overflow-x-auto scrollbar-none">
           <button
             onClick={() => applyQuickDatePreset("this_month")}
             className="rounded-md px-2 py-1 text-xs bg-muted hover:bg-accent text-foreground transition-colors"
@@ -590,7 +590,9 @@ export function TransactionFilters({
 
       {/* Expanded Panel (Animated) */}
       <div
-        id="filters-panel"
+        id="transaction-filter-panel"
+        role="region"
+        aria-label="Filter options"
         ref={panelRef}
         data-open={expanded}
         className={cn(
@@ -610,7 +612,7 @@ export function TransactionFilters({
                   placeholder="Search transactions..."
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  className="h-9 text-sm bg-muted border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-slate-500"
+                  className="h-9 text-sm bg-muted border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-primary/50"
                 />
               </div>
             </div>
@@ -759,11 +761,11 @@ export function TransactionFilters({
                             <Badge
                               key={`include-${account}`}
                               variant="secondary"
-                              className="mr-1 mb-0.5 bg-violet-400/15 text-violet-300 border-violet-400/30 max-w-[140px]"
+                              className="mr-1 mb-0.5 bg-primary/15 text-primary/80 border-primary/30 max-w-[140px]"
                             >
                               <span className="truncate min-w-0">{account}</span>
                               <X
-                                className="h-3 w-3 ml-1 cursor-pointer hover:text-violet-100 flex-shrink-0"
+                                className="h-3 w-3 ml-1 cursor-pointer hover:text-primary flex-shrink-0"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setSelectedAccounts(selectedAccounts.filter((a) => a !== account));
@@ -842,10 +844,10 @@ export function TransactionFilters({
                                   className={cn(
                                     "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
                                     inInclude
-                                      ? "border-violet-400 bg-violet-400/25 text-violet-200"
+                                      ? "border-primary bg-primary/25 text-primary/80"
                                       : inExclude
                                         ? "border-red-400 bg-red-400/25 text-red-200"
-                                        : "border-slate-500 opacity-50 [&_svg]:invisible"
+                                        : "border-border opacity-50 [&_svg]:invisible"
                                   )}
                                 >
                                   <Check className="h-4 w-4" />
@@ -853,7 +855,7 @@ export function TransactionFilters({
                                 <div className="flex items-center gap-2 flex-1 min-w-0">
                                   <span className="truncate min-w-0">{account}</span>
                                   {inInclude && (
-                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-violet-500/50 text-violet-300">
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-primary/50 text-primary/80">
                                       Include
                                     </Badge>
                                   )}
@@ -873,9 +875,9 @@ export function TransactionFilters({
                   {(selectedAccounts.length > 0 || excludeAccounts.length > 0) && (
                     <div className="border-t border-border p-2">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-slate-400 text-xs">
+                        <span className="text-muted-foreground text-xs">
                           {selectedAccounts.length > 0 && (
-                            <span className="text-violet-300">{selectedAccounts.length} included</span>
+                            <span className="text-primary/80">{selectedAccounts.length} included</span>
                           )}
                           {selectedAccounts.length > 0 && excludeAccounts.length > 0 && " · "}
                           {excludeAccounts.length > 0 && (
@@ -926,11 +928,11 @@ export function TransactionFilters({
                             <Badge
                               key={`include-${category}`}
                               variant="secondary"
-                              className="mr-1 mb-0.5 bg-violet-400/15 text-violet-300 border-violet-400/30 max-w-[140px]"
+                              className="mr-1 mb-0.5 bg-primary/15 text-primary/80 border-primary/30 max-w-[140px]"
                             >
                               <span className="truncate min-w-0">{category}</span>
                               <X
-                                className="h-3 w-3 ml-1 cursor-pointer hover:text-violet-100 flex-shrink-0"
+                                className="h-3 w-3 ml-1 cursor-pointer hover:text-primary flex-shrink-0"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setSelectedCategories(selectedCategories.filter((c) => c !== category));
@@ -957,11 +959,11 @@ export function TransactionFilters({
                           {includeUncategorized && (
                             <Badge
                               variant="secondary"
-                              className="mr-1 mb-0.5 bg-purple-600/20 text-purple-200 border-purple-500/50"
+                              className="mr-1 mb-0.5 bg-primary/15 text-primary/80 border-primary/30"
                             >
                               Uncategorized
                               <X
-                                className="h-3 w-3 ml-1 cursor-pointer hover:text-purple-100"
+                                className="h-3 w-3 ml-1 cursor-pointer hover:text-primary"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setIncludeUncategorized(false);
@@ -1023,10 +1025,10 @@ export function TransactionFilters({
                                   className={cn(
                                     "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
                                     inInclude
-                                      ? "border-violet-400 bg-violet-400/25 text-violet-200"
+                                      ? "border-primary bg-primary/25 text-primary/80"
                                       : inExclude
                                         ? "border-red-400 bg-red-400/25 text-red-200"
-                                        : "border-slate-500 opacity-50 [&_svg]:invisible"
+                                        : "border-border opacity-50 [&_svg]:invisible"
                                   )}
                                 >
                                   <Check className="h-4 w-4" />
@@ -1034,7 +1036,7 @@ export function TransactionFilters({
                                 <div className="flex items-center gap-2 flex-1 min-w-0">
                                   <span className="truncate">{name}</span>
                                   {inInclude && (
-                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-violet-500/50 text-violet-300">
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-primary/50 text-primary/80">
                                       Include
                                     </Badge>
                                   )}
@@ -1067,8 +1069,8 @@ export function TransactionFilters({
                               className={cn(
                                 "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
                                 includeUncategorized
-                                  ? "border-purple-500 bg-purple-500 text-white"
-                                  : "border-slate-500 opacity-50 [&_svg]:invisible"
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : "border-border opacity-50 [&_svg]:invisible"
                               )}
                             >
                               <Check className="h-4 w-4" />
@@ -1082,7 +1084,7 @@ export function TransactionFilters({
                                     : "Include uncategorized"}
                               </span>
                               {includeUncategorized && (
-                                <Badge variant="outline" className="text-[10px] px-1 py-0 border-purple-500/50 text-purple-300">
+                                <Badge variant="outline" className="text-[10px] px-1 py-0 border-primary/50 text-primary/80">
                                   Active
                                 </Badge>
                               )}
@@ -1095,9 +1097,9 @@ export function TransactionFilters({
                   {(selectedCategories.length > 0 || excludeCategories.length > 0 || includeUncategorized) && (
                     <div className="border-t border-border p-2">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-slate-400 text-xs">
+                        <span className="text-muted-foreground text-xs">
                           {selectedCategories.length > 0 && (
-                            <span className="text-violet-300">{selectedCategories.length} included</span>
+                            <span className="text-primary/80">{selectedCategories.length} included</span>
                           )}
                           {selectedCategories.length > 0 && excludeCategories.length > 0 && " · "}
                           {excludeCategories.length > 0 && (
@@ -1105,7 +1107,7 @@ export function TransactionFilters({
                           )}
                           {(selectedCategories.length > 0 || excludeCategories.length > 0) && includeUncategorized && " · "}
                           {includeUncategorized && (
-                            <span className="text-purple-300">uncategorized</span>
+                            <span className="text-primary/80">uncategorized</span>
                           )}
                         </span>
                         <Button
@@ -1151,9 +1153,9 @@ export function TransactionFilters({
                         <>
                           {selectedParticipants.map((p) => (
                             <Badge key={`include-${p}`} variant="secondary"
-                              className="mr-1 mb-0.5 bg-violet-400/15 text-violet-300 border-violet-400/30 max-w-[140px]">
+                              className="mr-1 mb-0.5 bg-primary/15 text-primary/80 border-primary/30 max-w-[140px]">
                               <span className="truncate min-w-0">{p}</span>
-                              <X className="h-3 w-3 ml-1 cursor-pointer hover:text-violet-100 flex-shrink-0"
+                              <X className="h-3 w-3 ml-1 cursor-pointer hover:text-primary flex-shrink-0"
                                 onClick={(e) => { e.stopPropagation(); setSelectedParticipants(selectedParticipants.filter(x => x !== p)); }} />
                             </Badge>
                           ))}
@@ -1205,9 +1207,9 @@ export function TransactionFilters({
                                 }
                               }}>
                               <div className={cn("mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
-                                inInclude ? "border-violet-400 bg-violet-400/25 text-violet-200"
+                                inInclude ? "border-primary bg-primary/25 text-primary/80"
                                 : inExclude ? "border-red-400 bg-red-400/25 text-red-200"
-                                : "border-slate-500 opacity-50 [&_svg]:invisible")}>
+                                : "border-border opacity-50 [&_svg]:invisible")}>
                                 <Check className="h-4 w-4" />
                               </div>
                               <span className="truncate">{p.name}</span>
@@ -1220,7 +1222,7 @@ export function TransactionFilters({
                   {(selectedParticipants.length > 0 || excludeParticipants.length > 0) && (
                     <div className="border-t border-border p-2 flex justify-between items-center text-xs">
                       <span className="text-muted-foreground">
-                        {selectedParticipants.length > 0 && <span className="text-violet-300">{selectedParticipants.length} included</span>}
+                        {selectedParticipants.length > 0 && <span className="text-primary/80">{selectedParticipants.length} included</span>}
                         {selectedParticipants.length > 0 && excludeParticipants.length > 0 && " · "}
                         {excludeParticipants.length > 0 && <span className="text-red-300">{excludeParticipants.length} excluded</span>}
                       </span>
@@ -1294,7 +1296,7 @@ export function TransactionFilters({
                 className={cn(
                   "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium border transition-colors select-none",
                   active
-                    ? "bg-violet-500/15 border-violet-500/40 text-violet-300"
+                    ? "bg-primary/15 border-primary/30 text-primary/80"
                     : "bg-transparent border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground"
                 )}
               >

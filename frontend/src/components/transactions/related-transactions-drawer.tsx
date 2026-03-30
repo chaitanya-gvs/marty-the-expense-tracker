@@ -4,6 +4,16 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
 import { Transaction } from "@/lib/types";
 import { toast } from "sonner";
@@ -236,10 +246,26 @@ export function RelatedTransactionsDrawer({
       return (
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground text-center">No transactions in this group.</p>
-          <Button variant="outline" onClick={handleUngroup} className={cn("w-full", VIOLET_TEXT)}>
-            <Unlink className="h-4 w-4 mr-2" />
-            Ungroup expense
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" className="w-full border-destructive/50 text-destructive hover:bg-destructive/10">
+                <Unlink className="h-4 w-4 mr-2" />
+                Ungroup expense
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogTitle>Ungroup transactions?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will remove the group link between these transactions. They will remain in your records but will no longer be grouped together.
+              </AlertDialogDescription>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleUngroup} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  Ungroup
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       );
     }
@@ -251,10 +277,26 @@ export function RelatedTransactionsDrawer({
           {members.map((t) => <TxCard key={t.id} t={t} />)}
         </div>
         <NetAmount amount={groupNet} label="Net Amount" />
-        <Button variant="outline" onClick={handleUngroup} className={cn("w-full", VIOLET_TEXT)}>
-          <Unlink className="h-4 w-4 mr-2" />
-          Ungroup expense
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="outline" className="w-full border-destructive/50 text-destructive hover:bg-destructive/10">
+              <Unlink className="h-4 w-4 mr-2" />
+              Ungroup expense
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogTitle>Ungroup transactions?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the group link between these transactions. They will remain in your records but will no longer be grouped together.
+            </AlertDialogDescription>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleUngroup} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Ungroup
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     );
   };
@@ -297,10 +339,26 @@ export function RelatedTransactionsDrawer({
             : <><AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Imbalance of {formatCurrency(Math.abs(netAmount))} — should be zero</>
           }
         </div>
-        <Button variant="outline" onClick={handleUngroup} className="w-full text-muted-foreground hover:text-destructive">
-          <Trash2 className="h-4 w-4 mr-2" />
-          Remove Entire Group
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="outline" className="w-full border-destructive/50 text-destructive hover:bg-destructive/10">
+              <Trash2 className="h-4 w-4 mr-2" />
+              Remove Entire Group
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogTitle>Remove entire group?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will unlink all transactions in this group. They will remain in your records but will no longer be grouped together.
+            </AlertDialogDescription>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleUngroup} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Remove Group
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     );
   };
@@ -328,11 +386,11 @@ export function RelatedTransactionsDrawer({
             <div className={cn("p-4 rounded-lg border-2", VIOLET_BG, VIOLET_BORDER)}>
               <div className="space-y-1.5">
                 <div className="font-medium text-sm text-foreground">{parentTx.description}</div>
-                <div className={cn("text-xs", VIOLET_TEXT)}>
+                <div className={cn("text-xs", "text-muted-foreground")}>
                   {formatDate(parentTx.date)}
                   {parentTx.account && ` · ${parentTx.account.split(" ").slice(0, -2).join(" ") || parentTx.account}`}
                 </div>
-                <div className={cn("text-xs font-mono", VIOLET_TEXT)}>
+                <div className={cn("text-xs font-mono", "text-muted-foreground")}>
                   {parentTx.is_shared && parentTx.split_share_amount != null
                     ? <>Your share: {formatCurrency(Math.abs(parentTx.split_share_amount))} · Total: {formatCurrency(parentAmount)}</>
                     : <>Amount: {formatCurrency(parentAmount)}</>
@@ -361,11 +419,11 @@ export function RelatedTransactionsDrawer({
                 <div key={t.id} className={txCard}>
                   <div className="space-y-1.5">
                     <div className="font-medium text-sm text-foreground truncate">{t.description}</div>
-                    <div className={cn("text-xs", VIOLET_TEXT)}>
+                    <div className={cn("text-xs", "text-muted-foreground")}>
                       {formatDate(t.date)}
                       {t.account && ` · ${t.account.split(" ").slice(0, -2).join(" ") || t.account}`}
                     </div>
-                    <div className={cn("text-xs font-mono", VIOLET_TEXT)}>
+                    <div className={cn("text-xs font-mono", "text-muted-foreground")}>
                       {t.is_shared && t.split_share_amount != null
                         ? <>Your share: {formatCurrency(Math.abs(t.split_share_amount))} · Total: {formatCurrency(Math.abs(t.amount))}</>
                         : <>Amount: {formatCurrency(Math.abs(t.amount))}</>
@@ -396,10 +454,26 @@ export function RelatedTransactionsDrawer({
           }
         </div>
 
-        <Button variant="outline" onClick={handleUngroup} className={cn("w-full", VIOLET_TEXT)}>
-          <Trash2 className="h-4 w-4 mr-2" />
-          Remove Split &amp; Restore Original
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="outline" className="w-full border-destructive/50 text-destructive hover:bg-destructive/10">
+              <Trash2 className="h-4 w-4 mr-2" />
+              Remove Split &amp; Restore Original
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogTitle>Remove split?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove all split parts and restore the original transaction. This cannot be undone.
+            </AlertDialogDescription>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleUngroup} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Remove Split
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     );
   };
