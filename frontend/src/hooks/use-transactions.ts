@@ -376,7 +376,6 @@ export function useReviewCount() {
       );
       return result.pagination?.total ?? 0;
     },
-    staleTime: 60_000,
-    refetchInterval: 120_000,
+    staleTime: 5 * 60_000,
   });
 }
