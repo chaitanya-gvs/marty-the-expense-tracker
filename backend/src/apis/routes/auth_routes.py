@@ -38,12 +38,13 @@ async def login(request: Request, body: LoginRequest, response: Response):
 
     token = create_access_token()
     is_secure = settings.APP_ENV != "dev"
+    samesite = "none" if settings.COOKIE_SAMESITE_NONE else "lax"
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
         httponly=True,
-        secure=is_secure,
-        samesite="lax",
+        secure=is_secure or settings.COOKIE_SAMESITE_NONE,
+        samesite=samesite,
         max_age=60 * 60 * 24 * 7,
         path="/",
     )
@@ -54,12 +55,13 @@ async def login(request: Request, body: LoginRequest, response: Response):
 async def logout(response: Response):
     settings = get_settings()
     is_secure = settings.APP_ENV != "dev"
+    samesite = "none" if settings.COOKIE_SAMESITE_NONE else "lax"
     response.delete_cookie(
         key=COOKIE_NAME,
         path="/",
         httponly=True,
-        secure=is_secure,
-        samesite="lax",
+        secure=is_secure or settings.COOKIE_SAMESITE_NONE,
+        samesite=samesite,
     )
     return {"ok": True}
 

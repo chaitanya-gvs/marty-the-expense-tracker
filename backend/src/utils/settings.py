@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRY_DAYS: int = 7
     FRONTEND_URL: str = "http://localhost:3000"
+    # Set to true temporarily when accessing production backend from a local dev
+    # frontend on a different domain (cross-site cookie support).
+    COOKIE_SAMESITE_NONE: bool = False
 
     # Sentry
     SENTRY_DSN: str | None = None

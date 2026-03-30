@@ -10,6 +10,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // In development the frontend may run against a remote backend on a different
+  // domain, so the auth cookie won't be present on localhost. Skip middleware
+  // auth and let the API client handle 401 redirects instead.
+  if (process.env.NEXT_PUBLIC_APP_ENV === "development") {
+    return NextResponse.next();
+  }
+
   const token = request.cookies.get("access_token")?.value;
 
   if (!token) {
