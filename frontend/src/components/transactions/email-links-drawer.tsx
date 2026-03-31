@@ -1,25 +1,19 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import { Transaction, EmailMetadata, EmailDetails, EmailSearchFilters } from "@/lib/types";
 import { apiClient } from "@/lib/api/client";
 import { EmailCard } from "./email-card";
-import { cn } from "@/lib/utils";
-import { Search, Loader2, Mail, AlertCircle } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Search, Loader2, Mail, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { format, addDays, subDays } from "date-fns";
+import { formatCurrency, formatDate } from "@/lib/format-utils";
 
 interface EmailLinksDrawerProps {
   transaction: Transaction;
@@ -40,8 +34,9 @@ export function EmailLinksDrawer({
   const [isLoadingLinkedEmails, setIsLoadingLinkedEmails] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [isAutoSearch, setIsAutoSearch] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Search filters state
+  // Search filter state
   const transactionDate = new Date(transaction.date);
   const [dateOffsetDays, setDateOffsetDays] = useState(1);
   const [includeAmountFilter, setIncludeAmountFilter] = useState(true);
@@ -54,50 +49,7 @@ export function EmailLinksDrawer({
   const [useCustomDates, setUseCustomDates] = useState(false);
   const [customSearchTerm, setCustomSearchTerm] = useState("");
 
-  // Helper function to extract merchant name from UPI description
-  const extractMerchantFromUPI = (description: string): string | null => {
-    // Common UPI transaction patterns:
-    // "UPI/merchant_name@paytm"
-    // "UPI-merchant-name-123456"
-    // "merchant_name UPI"
-    // "UPI merchant_name"
-    
-    const lowerDesc = description.toLowerCase();
-    
-    // Try to extract merchant name after UPI/
-    const upiMatch = description.match(/upi[\/-]([a-z0-9]+)/i);
-    if (upiMatch && upiMatch[1]) {
-      return upiMatch[1];
-    }
-    
-    // Try to extract merchant before/after UPI keyword
-    const parts = description.split(/upi/i);
-    if (parts.length > 1) {
-      // Check part before UPI
-      if (parts[0].trim().length > 0 && parts[0].trim().length < 30) {
-        return parts[0].trim().toLowerCase();
-      }
-      // Check part after UPI
-      if (parts[1].trim().length > 0 && parts[1].trim().length < 30) {
-        const afterUPI = parts[1].trim().split(/[@\s\-]/)[0];
-        if (afterUPI.length > 0 && afterUPI.length < 30) {
-          return afterUPI.toLowerCase();
-        }
-      }
-    }
-    
-    // Common merchants in UPI transactions - check if mentioned
-    const commonMerchants = ['uber', 'ola', 'swiggy', 'zomato', 'amazon', 'flipkart', 'bigbasket'];
-    for (const merchant of commonMerchants) {
-      if (lowerDesc.includes(merchant)) {
-        return merchant;
-      }
-    }
-    
-    return null;
-  };
-
-  // Define handleAutoSearch before useEffect hooks that use it
+  // ── Auto-search on open ──────────────────────────────────────────
   const handleAutoSearch = useCallback(async () => {
     setIsAutoSearch(true);
     setIsSearching(true);
@@ -105,38 +57,20 @@ export function EmailLinksDrawer({
 
     try {
       const description = transaction.description?.toLowerCase() || "";
-      const isSwiggy = description.includes("swiggy");
       const isUPI = description.includes("upi");
-      
+
       const filters: EmailSearchFilters = {
-        date_offset_days: 1, // Default to ±1 day for all
-        include_amount_filter: true, // Default to enabled
+        date_offset_days: 1,
+        include_amount_filter: true,
       };
 
-      if (isSwiggy) {
-        // Swiggy: Search with exact amount
-        filters.include_amount_filter = true;
-        // Amount filter is already exact, so just enable it
-      } else if (isUPI) {
-        // UPI: Always search for Uber emails + exact amount + amount-1
-        // Use the exact transaction amount as that's what appears in emails
-        // Also search for amount-1 because original might have been ₹101.56 and paid ₹102
-        // Always search for "uber" for UPI transactions
-        // (Many UPI transactions are Uber rides, and we want to show them in suggestions)
+      if (isUPI) {
         filters.custom_search_term = "uber";
-        
-        // Use exact amount for search (not rounded)
-        filters.include_amount_filter = true; // Enable amount filter with exact amount
-        filters.also_search_amount_minus_one = true; // Also search for amount-1 (for rounding scenarios)
-      } else {
-        // Default: Use exact amount with amount filter
-        filters.include_amount_filter = true;
+        filters.also_search_amount_minus_one = true;
       }
 
       const response = await apiClient.searchTransactionEmails(transaction.id, filters);
       setSearchResults(response.data);
-      
-      // Don't show toast for auto-search to avoid noise
     } catch {
       setSearchResults([]);
     } finally {
@@ -144,7 +78,8 @@ export function EmailLinksDrawer({
     }
   }, [transaction.id, transaction.description, transaction.amount]);
 
-  const fetchLinkedEmails = async () => {
+  // ── Fetch linked emails ──────────────────────────────────────────
+  const fetchLinkedEmails = useCallback(async () => {
     if (!transaction.related_mails || transaction.related_mails.length === 0) {
       setLinkedEmails([]);
       return;
@@ -152,19 +87,15 @@ export function EmailLinksDrawer({
 
     setIsLoadingLinkedEmails(true);
     try {
-      // Fetch details for each linked email
-      // Note: related_mails is an array of message IDs (strings)
       const emailPromises = transaction.related_mails.map(async (messageId) => {
         try {
           const response = await apiClient.getEmailDetails(transaction.id, messageId);
-          // Return just the metadata part for the list
           const { id, subject, sender, date, snippet } = response.data;
-          return { id, subject, sender, date, snippet };
+          return { id, subject, sender, date, snippet } as EmailMetadata;
         } catch {
           return null;
         }
       });
-
       const emails = await Promise.all(emailPromises);
       setLinkedEmails(emails.filter((e): e is EmailMetadata => e !== null));
     } catch {
@@ -172,51 +103,45 @@ export function EmailLinksDrawer({
     } finally {
       setIsLoadingLinkedEmails(false);
     }
-  };
+  }, [transaction.id, transaction.related_mails]);
 
-  // Fetch linked emails when drawer opens
   useEffect(() => {
     if (isOpen && transaction.related_mails && transaction.related_mails.length > 0) {
       fetchLinkedEmails();
-    } else {
+    } else if (!isOpen) {
       setLinkedEmails([]);
     }
-  }, [isOpen, transaction.related_mails]);
+  }, [isOpen, transaction.related_mails, fetchLinkedEmails]);
 
-  // Reset state when drawer closes
   useEffect(() => {
     if (!isOpen) {
       setSearchResults([]);
       setHasSearched(false);
       setIsAutoSearch(false);
       setIsSearching(false);
+      setShowAdvanced(false);
+      setCustomSearchTerm("");
     }
   }, [isOpen]);
 
-  // Auto-search for suggested emails when drawer opens (if no linked emails)
   useEffect(() => {
     if (isOpen && !hasSearched) {
-      // Only auto-search if transaction has no linked emails yet
       const hasNoLinks = !transaction.related_mails || transaction.related_mails.length === 0;
       if (hasNoLinks) {
-        // Auto-search with default filters after a short delay
-        const timer = setTimeout(() => {
-          handleAutoSearch();
-        }, 300); // Small delay to let drawer open smoothly
+        const timer = setTimeout(() => handleAutoSearch(), 300);
         return () => clearTimeout(timer);
       }
     }
   }, [isOpen, hasSearched, transaction.related_mails, handleAutoSearch]);
 
-  const handleSearch = async () => {
-    setIsAutoSearch(false); // Manual search, not auto
+  // ── Manual search ────────────────────────────────────────────────
+  const handleSearch = useCallback(async () => {
+    setIsAutoSearch(false);
     setIsSearching(true);
     setHasSearched(true);
 
     try {
-      const filters: EmailSearchFilters = {
-        include_amount_filter: includeAmountFilter,
-      };
+      const filters: EmailSearchFilters = { include_amount_filter: includeAmountFilter };
 
       if (useCustomDates) {
         filters.start_date = customStartDate;
@@ -231,11 +156,9 @@ export function EmailLinksDrawer({
 
       const response = await apiClient.searchTransactionEmails(transaction.id, filters);
       setSearchResults(response.data);
-      
+
       if (response.data.length === 0) {
         toast.info("No emails found matching the criteria");
-      } else {
-        toast.success(`Found ${response.data.length} emails`);
       }
     } catch {
       toast.error("Failed to search emails");
@@ -243,21 +166,35 @@ export function EmailLinksDrawer({
     } finally {
       setIsSearching(false);
     }
+  }, [
+    includeAmountFilter, useCustomDates, customStartDate, customEndDate,
+    dateOffsetDays, customSearchTerm, transaction.id,
+  ]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !isSearching) handleSearch();
   };
 
+  // ── Link / Unlink — card moves between sections ──────────────────
   const handleFetchEmailDetails = async (messageId: string): Promise<EmailDetails> => {
     const response = await apiClient.getEmailDetails(transaction.id, messageId);
     return response.data;
   };
 
   const handleLinkEmail = async (messageId: string) => {
+    const emailToLink = searchResults.find((e) => e.id === messageId);
     try {
       const response = await apiClient.linkEmailToTransaction(transaction.id, messageId);
       onTransactionUpdate(response.data);
       toast.success("Email linked successfully");
-      
-      // Refresh linked emails
-      await fetchLinkedEmails();
+
+      // Optimistically move card: results → linked
+      if (emailToLink) {
+        setLinkedEmails((prev) => [emailToLink, ...prev]);
+        setSearchResults((prev) => prev.filter((e) => e.id !== messageId));
+      } else {
+        await fetchLinkedEmails();
+      }
     } catch (err) {
       toast.error("Failed to link email");
       throw err;
@@ -269,284 +206,277 @@ export function EmailLinksDrawer({
       const response = await apiClient.unlinkEmailFromTransaction(transaction.id, messageId);
       onTransactionUpdate(response.data);
       toast.success("Email unlinked successfully");
-      
-      // Refresh linked emails
-      await fetchLinkedEmails();
-      
-      // Also refresh search results to update link status
-      if (hasSearched) {
-        // Don't show loading state, just refresh in background
-        const filters: EmailSearchFilters = {
-          include_amount_filter: includeAmountFilter,
-        };
-        if (useCustomDates) {
-          filters.start_date = customStartDate;
-          filters.end_date = customEndDate;
-        } else {
-          filters.date_offset_days = dateOffsetDays;
-        }
-        const response = await apiClient.searchTransactionEmails(transaction.id, filters);
-        setSearchResults(response.data);
-      }
+      // Remove from linked section (card animates out)
+      setLinkedEmails((prev) => prev.filter((e) => e.id !== messageId));
     } catch (err) {
       toast.error("Failed to unlink email");
       throw err;
     }
   };
 
-  const isEmailLinked = (messageId: string): boolean => {
-    return transaction.related_mails?.includes(messageId) || false;
-  };
+  const isEmailLinked = (messageId: string) =>
+    transaction.related_mails?.includes(messageId) || false;
+
+  const accountDisplay = transaction.account
+    ? transaction.account.split(" ").slice(0, -2).join(" ") || transaction.account
+    : null;
 
   return (
-    <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto bg-card border-border">
-        <SheetHeader>
-          <SheetTitle className="text-foreground">Email Links</SheetTitle>
-          <SheetDescription className="text-muted-foreground">
-            Search and link emails related to this transaction
-          </SheetDescription>
-        </SheetHeader>
+    <Modal open={isOpen} onClose={onClose} size="lg">
+      <Modal.Header
+        icon={<Mail className="h-4 w-4" />}
+        title="Email Links"
+        subtitle={[transaction.description, formatDate(transaction.date), accountDisplay]
+          .filter(Boolean)
+          .join(" · ")}
+        onClose={onClose}
+        variant="link-parent"
+      />
 
-        <div className="mt-6 space-y-6">
-          {/* Transaction Info */}
-          <div className="bg-muted/50 p-4 rounded-lg space-y-2 border border-border">
-            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Transaction Details</div>
-            <div className="text-sm text-muted-foreground space-y-1.5">
-              <div className="flex justify-between">
-                <span>Description</span>
-                <span className="font-medium text-foreground">
-                  {transaction.description}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Amount</span>
-                <span className="font-mono tabular-nums font-medium text-foreground">
-                  ₹{transaction.amount.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Date</span>
-                <span className="font-medium text-foreground">
-                  {format(new Date(transaction.date), "MMM dd, yyyy")}
-                </span>
-              </div>
+      <Modal.Body className="scrollbar-none space-y-6">
+        {/* ── Zone 1: Linked Emails ─────────────────────────────────── */}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+            Linked{linkedEmails.length > 0 && ` (${linkedEmails.length})`}
+          </p>
+
+          {isLoadingLinkedEmails ? (
+            <div className="flex items-center gap-2 px-3 py-4 rounded-lg bg-muted/20">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/40 flex-shrink-0" />
+              <p className="text-sm text-muted-foreground/60">Loading linked emails…</p>
             </div>
-          </div>
-
-          {/* Linked Emails Section */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <Mail className="h-3.5 w-3.5" />
-                Linked Emails
-                {linkedEmails.length > 0 && (
-                  <Badge className="bg-primary/10 text-primary/70 border border-primary/20 text-xs">{linkedEmails.length}</Badge>
-                )}
-              </h3>
-            </div>
-
-            {isLoadingLinkedEmails ? (
-              <div className="flex items-center justify-center py-8 bg-muted/50 rounded-lg border border-border">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                <span className="ml-2 text-sm text-muted-foreground">Loading linked emails...</span>
-              </div>
-            ) : linkedEmails.length > 0 ? (
-              <div className="space-y-3">
-                {linkedEmails.map((email) => (
+          ) : linkedEmails.length > 0 ? (
+            <AnimatePresence mode="popLayout" initial={false}>
+              {linkedEmails.map((email) => (
+                <motion.div
+                  key={email.id}
+                  layout
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.22 }}
+                  className="mb-3 last:mb-0"
+                >
                   <EmailCard
-                    key={email.id}
                     email={email}
                     isLinked={true}
                     onLink={handleLinkEmail}
                     onUnlink={handleUnlinkEmail}
                     onFetchDetails={handleFetchEmailDetails}
                   />
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 bg-muted/50 rounded-lg border border-border">
-                <Mail className="h-12 w-12 mx-auto text-muted-foreground/30 mb-2" />
-                <p className="text-sm text-muted-foreground">No emails linked yet</p>
-                <p className="text-xs text-muted-foreground/70 mt-1">
-                  Use the search below to find and link related emails
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Search Section */}
-          <div className="border-t border-border pt-6">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-4 flex items-center gap-2">
-              <Search className="h-3.5 w-3.5" />
-              Search & Link Emails
-            </h3>
-
-            <div className="space-y-4">
-              {/* Date Range Controls */}
-              <div className="space-y-3">
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="custom-dates"
-                    checked={useCustomDates}
-                    onCheckedChange={setUseCustomDates}
-                    className="data-[state=checked]:bg-primary"
-                  />
-                  <Label htmlFor="custom-dates" className="text-sm">
-                    Use custom date range
-                  </Label>
-                </div>
-
-                {useCustomDates ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label htmlFor="start-date" className="text-xs">
-                        Start Date
-                      </Label>
-                      <Input
-                        id="start-date"
-                        type="date"
-                        value={customStartDate}
-                        onChange={(e) => setCustomStartDate(e.target.value)}
-                        className="text-sm"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="end-date" className="text-xs">
-                        End Date
-                      </Label>
-                      <Input
-                        id="end-date"
-                        type="date"
-                        value={customEndDate}
-                        onChange={(e) => setCustomEndDate(e.target.value)}
-                        className="text-sm"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <Label htmlFor="date-offset" className="text-xs">
-                      Days before/after transaction (±{dateOffsetDays} days)
-                    </Label>
-                    <Input
-                      id="date-offset"
-                      type="number"
-                      min="0"
-                      max="30"
-                      value={dateOffsetDays}
-                      onChange={(e) => setDateOffsetDays(parseInt(e.target.value) || 1)}
-                      className="text-sm"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Amount Filter Toggle */}
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="amount-filter"
-                  checked={includeAmountFilter}
-                  onCheckedChange={setIncludeAmountFilter}
-                  className="data-[state=checked]:bg-primary"
-                />
-                <Label htmlFor="amount-filter" className="text-sm">
-                  Filter by amount (₹{transaction.amount.toFixed(2)})
-                </Label>
-              </div>
-
-              {/* Custom Search Term */}
-              <div className="space-y-2">
-                <Label htmlFor="custom-search" className="text-sm font-medium">
-                  Custom Search Term (Optional)
-                </Label>
-                <Input
-                  id="custom-search"
-                  type="text"
-                  placeholder="e.g., Uber, Ola, Swiggy, Amazon..."
-                  value={customSearchTerm}
-                  onChange={(e) => setCustomSearchTerm(e.target.value)}
-                  className="text-sm"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Search for specific keywords in email subject or content. This will override amount filtering.
-                </p>
-              </div>
-
-              {/* Search Button */}
-              <Button
-                onClick={handleSearch}
-                disabled={isSearching}
-                variant="outline"
-                className="w-full bg-primary/10 text-primary/70 border border-primary/20 hover:bg-primary/20 hover:text-primary"
-              >
-                {isSearching ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Searching...
-                  </>
-                ) : (
-                  <>
-                    <Search className="mr-2 h-4 w-4" />
-                    Search Emails
-                  </>
-                )}
-              </Button>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          ) : (
+            <div className="flex items-center gap-2.5 px-3 py-4 rounded-lg bg-muted/20 border border-dashed border-border/60">
+              <Mail className="h-4 w-4 text-muted-foreground/30 flex-shrink-0" />
+              <p className="text-sm text-muted-foreground/60">
+                No emails linked yet · Search below to find related emails
+              </p>
             </div>
+          )}
+        </div>
+
+        {/* ── Zone 2: Search ────────────────────────────────────────── */}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+            Search & Link
+          </p>
+
+          {/* Search bar */}
+          <div className="relative flex items-center">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Search by keyword, merchant name…"
+              value={customSearchTerm}
+              onChange={(e) => setCustomSearchTerm(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="pl-9 pr-24 h-10 bg-muted/50 border-border/50"
+            />
+            <Button
+              size="sm"
+              onClick={handleSearch}
+              disabled={isSearching}
+              className="absolute right-1.5 h-7 text-xs px-3"
+            >
+              {isSearching ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                "Search"
+              )}
+            </Button>
           </div>
 
-          {/* Search Results / Suggested Emails */}
-          {hasSearched && (
-            <div className="border-t border-border pt-6">
-              <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
-                {isAutoSearch ? (
-                  <>
-                    <Mail className="h-3.5 w-3.5" />
-                    Suggested Emails
-                  </>
-                ) : (
-                  <>
-                    <Search className="h-3.5 w-3.5" />
-                    Search Results
-                  </>
-                )}
-                {searchResults.length > 0 && (
-                  <Badge className="bg-muted/80 text-muted-foreground border border-border text-xs">{searchResults.length}</Badge>
-                )}
-              </h3>
-              {isAutoSearch && (
-                <p className="text-xs text-muted-foreground mb-3">
-                  We found these emails that might be related to this transaction. You can refine your search using the filters above.
-                </p>
-              )}
+          {/* Advanced toggle */}
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors mt-2.5"
+          >
+            <SlidersHorizontal className="h-3 w-3" />
+            {showAdvanced ? "Hide filters" : "Advanced filters"}
+          </button>
 
-              {searchResults.length > 0 ? (
-                <div className="space-y-3">
-                  {searchResults.map((email) => (
-                    <EmailCard
-                      key={email.id}
-                      email={email}
-                      isLinked={isEmailLinked(email.id)}
-                      onLink={handleLinkEmail}
-                      onUnlink={handleUnlinkEmail}
-                      onFetchDetails={handleFetchEmailDetails}
+          {/* Advanced filter panel */}
+          <AnimatePresence initial={false}>
+            {showAdvanced && (
+              <motion.div
+                key="advanced"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 400, damping: 40 }}
+                style={{ overflow: "hidden" }}
+              >
+                <div className="space-y-3 pt-4 pb-1 border-t border-border/40 mt-3">
+                  {/* Date range row */}
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="custom-dates"
+                        checked={useCustomDates}
+                        onCheckedChange={setUseCustomDates}
+                        className="data-[state=checked]:bg-primary"
+                      />
+                      <Label htmlFor="custom-dates" className="text-sm cursor-pointer">
+                        Custom date range
+                      </Label>
+                    </div>
+                    {!useCustomDates && (
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-xs text-muted-foreground">±</span>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="30"
+                          value={dateOffsetDays}
+                          onChange={(e) =>
+                            setDateOffsetDays(parseInt(e.target.value) || 1)
+                          }
+                          className="w-14 h-8 text-xs text-center"
+                        />
+                        <span className="text-xs text-muted-foreground">days</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Custom date inputs */}
+                  <AnimatePresence initial={false}>
+                    {useCustomDates && (
+                      <motion.div
+                        key="custom-dates"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 40 }}
+                        style={{ overflow: "hidden" }}
+                      >
+                        <div className="grid grid-cols-2 gap-3 pt-1">
+                          <div>
+                            <Label
+                              htmlFor="start-date"
+                              className="text-xs text-muted-foreground mb-1 block"
+                            >
+                              Start Date
+                            </Label>
+                            <Input
+                              id="start-date"
+                              type="date"
+                              value={customStartDate}
+                              onChange={(e) => setCustomStartDate(e.target.value)}
+                              className="h-9 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <Label
+                              htmlFor="end-date"
+                              className="text-xs text-muted-foreground mb-1 block"
+                            >
+                              End Date
+                            </Label>
+                            <Input
+                              id="end-date"
+                              type="date"
+                              value={customEndDate}
+                              onChange={(e) => setCustomEndDate(e.target.value)}
+                              className="h-9 text-sm"
+                            />
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Amount filter */}
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id="amount-filter"
+                      checked={includeAmountFilter}
+                      onCheckedChange={setIncludeAmountFilter}
+                      className="data-[state=checked]:bg-primary"
                     />
-                  ))}
+                    <Label htmlFor="amount-filter" className="text-sm cursor-pointer">
+                      Filter by amount ({formatCurrency(Math.abs(transaction.amount))})
+                    </Label>
+                  </div>
                 </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* ── Search Results ──────────────────────────────────────── */}
+          {hasSearched && (
+            <div className="mt-5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                {isAutoSearch ? "Suggested" : "Results"}
+                {searchResults.length > 0 && ` (${searchResults.length})`}
+              </p>
+
+              {isSearching ? (
+                <div className="flex items-center gap-2 px-3 py-4">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/40 flex-shrink-0" />
+                  <p className="text-sm text-muted-foreground/60">Searching…</p>
+                </div>
+              ) : searchResults.length > 0 ? (
+                <AnimatePresence mode="popLayout" initial={false}>
+                  {searchResults.map((email) => (
+                    <motion.div
+                      key={email.id}
+                      layout
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0, x: -16, height: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="mb-3 last:mb-0"
+                    >
+                      <EmailCard
+                        email={email}
+                        isLinked={isEmailLinked(email.id)}
+                        onLink={handleLinkEmail}
+                        onUnlink={handleUnlinkEmail}
+                        onFetchDetails={handleFetchEmailDetails}
+                      />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               ) : (
-                <div className="text-center py-8 bg-muted/50 rounded-lg border border-border">
-                  <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground/30 mb-2" />
-                  <p className="text-sm text-muted-foreground">No emails found</p>
-                  <p className="text-xs text-muted-foreground/70 mt-1">
-                    Try adjusting your search filters
+                <div className="flex items-center gap-2.5 px-3 py-4 rounded-lg bg-muted/20 border border-dashed border-border/60">
+                  <Search className="h-4 w-4 text-muted-foreground/30 flex-shrink-0" />
+                  <p className="text-sm text-muted-foreground/60">
+                    No emails found · Try adjusting your filters
                   </p>
                 </div>
               )}
             </div>
           )}
         </div>
-      </SheetContent>
-    </Sheet>
+      </Modal.Body>
+
+      <Modal.Footer>
+        <Button variant="outline" onClick={onClose}>
+          Close
+        </Button>
+      </Modal.Footer>
+    </Modal>
   );
 }
-

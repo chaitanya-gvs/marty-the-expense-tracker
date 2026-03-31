@@ -8,14 +8,40 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Download, Loader2 } from "lucide-react";
+import { Download, Loader2, X, AlertCircle, RotateCcw, FileText } from "lucide-react";
 import { apiClient } from "@/lib/api/client";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface PdfViewerProps {
   transactionId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+// Parse a raw error message into something user-friendly
+function parseErrorMessage(raw: string): string {
+  // Try to extract "detail" from a JSON body embedded in the error string
+  try {
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.detail) return parsed.detail;
+    }
+  } catch {
+    // ignore parse failures
+  }
+  // Fall back to the HTTP status description
+  if (raw.includes("401")) return "Not authenticated — check your session and try again.";
+  if (raw.includes("403")) return "Access denied — you don't have permission to view this PDF.";
+  if (raw.includes("404")) return "PDF not found — the source file may have been moved or deleted.";
+  if (raw.includes("500")) return "Server error — the PDF could not be retrieved right now.";
+  return "Something went wrong while loading the PDF.";
+}
+
+// Extract just the filename from a full path
+function extractFilename(path: string): string {
+  return path.split("/").pop() ?? path;
 }
 
 export function PdfViewer({ transactionId, open, onOpenChange }: PdfViewerProps) {
@@ -29,54 +55,51 @@ export function PdfViewer({ transactionId, open, onOpenChange }: PdfViewerProps)
     if (open && transactionId) {
       loadPdf();
     } else {
-      // Cleanup when sidebar closes
       if (pdfUrl) {
         URL.revokeObjectURL(pdfUrl);
         setPdfUrl(null);
       }
       setError(null);
+      setPdfFilename(null);
     }
   }, [open, transactionId]);
 
   const loadPdf = async () => {
     setLoading(true);
     setError(null);
+    setPdfUrl(null);
     setPdfFilename(null);
-    
+
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/transactions/${transactionId}/source-pdf`);
-      
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/transactions/${transactionId}/source-pdf`
+      );
+
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}. ${errorText}`);
       }
-      
-      // Get PDF path from response headers for debugging
+
       const pdfPath = response.headers.get("X-PDF-Path");
-      const pdfFilename = response.headers.get("X-PDF-Filename");
-      
-      if (pdfPath) {
-        setPdfFilename(pdfPath);
-      } else if (pdfFilename) {
-        setPdfFilename(pdfFilename);
+      const pdfFilenameHeader = response.headers.get("X-PDF-Filename");
+      const rawPath = pdfPath || pdfFilenameHeader;
+      if (rawPath) {
+        setPdfFilename(extractFilename(rawPath));
       }
-      
+
       const blob = await response.blob();
-      
-      // Create object URL for the PDF blob to use in iframe
       const url = URL.createObjectURL(blob);
       setPdfUrl(url);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to load PDF";
-      setError(errorMessage);
-      
-      // Try to extract PDF path from error message if available
-      const pathMatch = errorMessage.match(/unlocked-statements[^"]+\.pdf|unlocked_statements[^"]+\.pdf/);
+      const rawMessage = err instanceof Error ? err.message : "Failed to load PDF";
+      const friendlyMessage = parseErrorMessage(rawMessage);
+      setError(friendlyMessage);
+
+      // Still try to extract a filename from the raw error for display
+      const pathMatch = rawMessage.match(/unlocked-statements[^"]+\.pdf|unlocked_statements[^"]+\.pdf/);
       if (pathMatch) {
-        setPdfFilename(pathMatch[0]);
+        setPdfFilename(extractFilename(pathMatch[0]));
       }
-      
-      toast.error(`Failed to load PDF: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -86,7 +109,7 @@ export function PdfViewer({ transactionId, open, onOpenChange }: PdfViewerProps)
     if (pdfUrl) {
       const link = document.createElement("a");
       link.href = pdfUrl;
-      link.download = `transaction-${transactionId}-source.pdf`;
+      link.download = pdfFilename ?? `transaction-${transactionId}-source.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -94,19 +117,19 @@ export function PdfViewer({ transactionId, open, onOpenChange }: PdfViewerProps)
     }
   };
 
-  const handleOpenChange = useCallback((newOpen: boolean) => {
-    // Only allow opening, or closing if explicitly allowed (close button or ESC)
-    if (newOpen) {
-      onOpenChange(true);
-    } else {
-      // Only close if explicitly allowed
-      if (allowCloseRef.current) {
-        allowCloseRef.current = false;
-        onOpenChange(false);
+  const handleOpenChange = useCallback(
+    (newOpen: boolean) => {
+      if (newOpen) {
+        onOpenChange(true);
+      } else {
+        if (allowCloseRef.current) {
+          allowCloseRef.current = false;
+          onOpenChange(false);
+        }
       }
-      // Otherwise, ignore the close request (from outside click)
-    }
-  }, [onOpenChange]);
+    },
+    [onOpenChange]
+  );
 
   const handleCloseClick = useCallback(() => {
     allowCloseRef.current = true;
@@ -115,71 +138,112 @@ export function PdfViewer({ transactionId, open, onOpenChange }: PdfViewerProps)
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange} modal={false}>
-      <SheetContent 
-        side="right" 
+      <SheetContent
+        side="right"
         modal={false}
+        hideCloseButton
         className="w-full sm:max-w-4xl p-0 flex flex-col"
-        onClose={handleCloseClick}
         onInteractOutside={(e) => {
-          // Prevent closing when clicking outside - allow interaction with main content
           e.preventDefault();
           e.stopPropagation();
-          return false;
         }}
         onPointerDownOutside={(e) => {
-          // Prevent closing on pointer down outside
           e.preventDefault();
           e.stopPropagation();
-          return false;
         }}
-        onEscapeKeyDown={(e) => {
-          // Allow ESC to close
+        onEscapeKeyDown={() => {
           allowCloseRef.current = true;
           onOpenChange(false);
         }}
       >
-        <SheetHeader className="px-6 py-4 border-b">
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col">
-              <SheetTitle>Source PDF Statement</SheetTitle>
-              {pdfFilename && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono truncate max-w-md" title={pdfFilename}>
-                  {pdfFilename}
-                </p>
-              )}
+        {/* ── Header ─────────────────────────────────────────────────── */}
+        <SheetHeader className="px-5 py-3.5 border-b shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Icon + title block */}
+            <div className="flex items-center gap-2.5 flex-1 min-w-0">
+              <div className="h-7 w-7 rounded-lg bg-muted/60 border border-border/50 flex items-center justify-center flex-shrink-0">
+                <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+              </div>
+              <div className="min-w-0">
+                <SheetTitle className="text-sm font-semibold leading-tight">
+                  Source PDF Statement
+                </SheetTitle>
+                {pdfFilename && (
+                  <p
+                    className="text-[11px] text-muted-foreground/60 font-mono mt-0.5 truncate max-w-xs"
+                    title={pdfFilename}
+                  >
+                    {pdfFilename}
+                  </p>
+                )}
+              </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleDownload}
-              disabled={!pdfUrl}
-              className="flex items-center gap-2"
-            >
-              <Download className="h-4 w-4" />
-              Download
-            </Button>
+
+            {/* Actions */}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownload}
+                disabled={!pdfUrl}
+                className="h-8 gap-1.5 text-xs"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download
+              </Button>
+              <button
+                type="button"
+                onClick={handleCloseClick}
+                className="h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </SheetHeader>
-        
+
+        {/* ── Body ───────────────────────────────────────────────────── */}
         <div className="flex-1 overflow-hidden relative">
+          {/* Loading */}
           {loading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-              <div className="flex flex-col items-center gap-2">
-                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-                <span className="text-sm text-gray-400">Loading PDF...</span>
+            <div className="absolute inset-0 flex items-center justify-center bg-background">
+              <div className="flex flex-col items-center gap-3">
+                <Loader2 className="h-7 w-7 animate-spin text-muted-foreground/50" />
+                <span className="text-sm text-muted-foreground/60">Loading PDF…</span>
               </div>
             </div>
           )}
-          
-          {error && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-              <div className="text-red-500 text-center px-6">
-                <p className="font-semibold">Error loading PDF</p>
-                <p className="text-sm mt-2">{error}</p>
+
+          {/* Error */}
+          {error && !loading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background">
+              <div className="flex flex-col items-center gap-4 text-center px-8 max-w-sm">
+                <div className="h-12 w-12 rounded-2xl bg-[#F44D4D]/10 border border-[#F44D4D]/20 flex items-center justify-center">
+                  <AlertCircle className="h-6 w-6 text-[#F44D4D]" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground mb-1">
+                    Could not load PDF
+                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {error}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={loadPdf}
+                  className="gap-1.5"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Try again
+                </Button>
               </div>
             </div>
           )}
-          
+
+          {/* PDF iframe */}
           {pdfUrl && !loading && !error && (
             <iframe
               src={pdfUrl}
@@ -193,4 +257,3 @@ export function PdfViewer({ transactionId, open, onOpenChange }: PdfViewerProps)
     </Sheet>
   );
 }
-

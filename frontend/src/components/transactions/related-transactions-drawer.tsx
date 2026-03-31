@@ -3,7 +3,8 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Modal } from "@/components/ui/modal";
+import { useCategories } from "@/hooks/use-categories";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,7 +20,7 @@ import { Transaction } from "@/lib/types";
 import { toast } from "sonner";
 import {
   ArrowDown, ArrowRight, ArrowLeftRight, Unlink, Trash2,
-  Layers, Zap, CornerUpLeft, Check, AlertTriangle,
+  Layers, Split, CornerUpLeft, Check, AlertTriangle,
 } from "lucide-react";
 import { apiClient } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
@@ -50,6 +51,16 @@ const VIOLET_TEXT = "text-violet-300";
 const VIOLET_BG = "bg-violet-400/15";
 const VIOLET_BORDER = "border-violet-400/30";
 
+// Part colors — same palette as split-transaction-modal
+const PART_COLORS = [
+  "#6366f1",
+  "#14b8a6",
+  "#f59e0b",
+  "#f43f5e",
+  "#a78bfa",
+  "#84cc16",
+];
+
 // Neutral transaction card — no alarming red background
 const txCard = "p-4 rounded-lg border bg-muted/50 border-border";
 
@@ -75,10 +86,18 @@ export function RelatedTransactionsDrawer({
         : "transfer");
 
   const netAmount = transferGroup.reduce((sum, t) => sum + t.amount, 0);
+  const { data: categories = [] } = useCategories();
+
+  const getCategoryColor = (categoryName: string, fallbackIndex: number): string => {
+    const cat = categories.find(
+      (c: { name: string; color?: string }) => c.name === categoryName
+    );
+    return cat?.color || PART_COLORS[fallbackIndex % PART_COLORS.length];
+  };
 
   const modeConfig = {
     refund:        { icon: <CornerUpLeft className="h-4 w-4" />, title: "Refund Details" },
-    split:         { icon: <Zap className="h-4 w-4" />,          title: "Split Transaction" },
+    split:         { icon: <Split className="h-4 w-4" />,         title: "Split Transaction" },
     groupedExpense:{ icon: <Layers className="h-4 w-4" />,       title: "Grouped Expense" },
     transfer:      { icon: <ArrowLeftRight className="h-4 w-4" />, title: "Transfer Group" },
   };
@@ -244,29 +263,7 @@ export function RelatedTransactionsDrawer({
 
     if (members.length === 0) {
       return (
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground text-center">No transactions in this group.</p>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="outline" className="w-full border-destructive/50 text-destructive hover:bg-destructive/10">
-                <Unlink className="h-4 w-4 mr-2" />
-                Ungroup expense
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogTitle>Ungroup transactions?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will remove the group link between these transactions. They will remain in your records but will no longer be grouped together.
-              </AlertDialogDescription>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleUngroup} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                  Ungroup
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
+        <p className="text-sm text-muted-foreground text-center py-4">No transactions in this group.</p>
       );
     }
 
@@ -277,26 +274,6 @@ export function RelatedTransactionsDrawer({
           {members.map((t) => <TxCard key={t.id} t={t} />)}
         </div>
         <NetAmount amount={groupNet} label="Net Amount" />
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="outline" className="w-full border-destructive/50 text-destructive hover:bg-destructive/10">
-              <Unlink className="h-4 w-4 mr-2" />
-              Ungroup expense
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogTitle>Ungroup transactions?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will remove the group link between these transactions. They will remain in your records but will no longer be grouped together.
-            </AlertDialogDescription>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleUngroup} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                Ungroup
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </div>
     );
   };
@@ -368,112 +345,182 @@ export function RelatedTransactionsDrawer({
 
     const parentTx = transferGroup.find(t => t.is_split === false);
     const childTxs = transferGroup.filter(t => t.is_split === true);
-    const childrenTotal = childTxs.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const childrenTotal = childTxs.reduce((sum, t) => {
+      return sum + Math.abs(t.is_shared && t.split_share_amount != null ? t.split_share_amount : t.amount);
+    }, 0);
     const parentAmount = parentTx ? Math.abs(parentTx.amount) : 0;
-    // When the parent is a shared/split transaction, compare against the user's share, not the full amount
-    const parentComparableAmount = parentTx?.is_shared && parentTx?.split_share_amount != null
-      ? Math.abs(parentTx.split_share_amount)
-      : parentAmount;
-    const isValid = Math.abs(childrenTotal - parentComparableAmount) < 0.01;
+    const parentComparableAmount =
+      parentTx?.is_shared && parentTx?.split_share_amount != null
+        ? Math.abs(parentTx.split_share_amount)
+        : parentAmount;
+    const isBalanced = Math.abs(childrenTotal - parentComparableAmount) < 0.01;
 
     return (
       <div className="space-y-4">
-        <p className="text-xs text-muted-foreground text-center">One transaction split into multiple categories</p>
-
+        {/* Source strip */}
         {parentTx && (
-          <>
-            <SectionLabel>Original Transaction</SectionLabel>
-            <div className={cn("p-4 rounded-lg border-2", VIOLET_BG, VIOLET_BORDER)}>
-              <div className="space-y-1.5">
-                <div className="font-medium text-sm text-foreground">{parentTx.description}</div>
-                <div className={cn("text-xs", "text-muted-foreground")}>
-                  {formatDate(parentTx.date)}
-                  {parentTx.account && ` · ${parentTx.account.split(" ").slice(0, -2).join(" ") || parentTx.account}`}
-                </div>
-                <div className={cn("text-xs font-mono", "text-muted-foreground")}>
-                  {parentTx.is_shared && parentTx.split_share_amount != null
-                    ? <>Your share: {formatCurrency(Math.abs(parentTx.split_share_amount))} · Total: {formatCurrency(parentAmount)}</>
-                    : <>Amount: {formatCurrency(parentAmount)}</>
-                  }
-                </div>
-                {(parentTx.category || parentTx.subcategory) && (
-                  <div className="flex items-center gap-1 pt-0.5">
-                    {parentTx.category && <Badge variant="secondary" className="text-xs">{parentTx.category}</Badge>}
-                    {parentTx.subcategory && <Badge variant="outline" className="text-xs">{parentTx.subcategory}</Badge>}
-                  </div>
-                )}
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border/40">
+            <div className="w-0.5 self-stretch rounded-full bg-[#6366f1]/50 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-foreground truncate">
+                {parentTx.description}
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                {[
+                  formatDate(parentTx.date),
+                  parentTx.account
+                    ? parentTx.account.split(" ").slice(0, -2).join(" ") || parentTx.account
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </div>
             </div>
-          </>
+            <div className="text-sm font-mono text-muted-foreground flex-shrink-0 text-right">
+              {parentTx.is_shared && parentTx.split_share_amount != null ? (
+                <>
+                  <span className="text-foreground font-semibold">
+                    {formatCurrency(Math.abs(parentTx.split_share_amount))}
+                  </span>
+                  <span className="text-xs block text-muted-foreground/60">
+                    / {formatCurrency(parentAmount)} total
+                  </span>
+                </>
+              ) : (
+                <span className="text-foreground font-semibold">
+                  {formatCurrency(parentAmount)}
+                </span>
+              )}
+            </div>
+          </div>
         )}
 
-        {parentTx && childTxs.length > 0 && (
-          <div className="flex justify-center"><ArrowDown className="h-4 w-4 text-muted-foreground" /></div>
+        {/* Read-only allocation bar */}
+        {childTxs.length > 0 && (
+          <div className="space-y-2">
+            <div className="relative h-2 rounded-full overflow-hidden bg-muted/40">
+              <div className="absolute inset-0 flex">
+                {childTxs.map((t, i) => {
+                  const amt = Math.abs(
+                    t.is_shared && t.split_share_amount != null
+                      ? t.split_share_amount
+                      : t.amount
+                  );
+                  const pct =
+                    parentComparableAmount > 0
+                      ? Math.min(100, (amt / parentComparableAmount) * 100)
+                      : 0;
+                  return (
+                    <div
+                      key={t.id}
+                      className="h-full transition-all duration-300"
+                      style={{
+                        width: `${pct}%`,
+                        backgroundColor: isBalanced
+                          ? getCategoryColor(t.category || "", i)
+                          : "#f43f5e",
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+            {/* Legend */}
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              {childTxs.map((t, i) => {
+                const amt = Math.abs(
+                  t.is_shared && t.split_share_amount != null ? t.split_share_amount : t.amount
+                );
+                return (
+                  <div key={t.id} className="flex items-center gap-1.5 text-xs">
+                    <div
+                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: getCategoryColor(t.category || "", i) }}
+                    />
+                    <span className="text-muted-foreground truncate max-w-[72px]">
+                      {t.description}
+                    </span>
+                    <span className="font-mono text-foreground/60 tabular-nums">
+                      {formatCurrency(amt)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
 
+        {/* Parts list */}
         {childTxs.length > 0 && (
           <>
             <SectionLabel>Split Parts ({childTxs.length})</SectionLabel>
-            <div className="space-y-2 pl-4 border-l-2 border-border">
-              {childTxs.map((t) => (
-                <div key={t.id} className={txCard}>
-                  <div className="space-y-1.5">
-                    <div className="font-medium text-sm text-foreground truncate">{t.description}</div>
-                    <div className={cn("text-xs", "text-muted-foreground")}>
-                      {formatDate(t.date)}
-                      {t.account && ` · ${t.account.split(" ").slice(0, -2).join(" ") || t.account}`}
-                    </div>
-                    <div className={cn("text-xs font-mono", "text-muted-foreground")}>
-                      {t.is_shared && t.split_share_amount != null
-                        ? <>Your share: {formatCurrency(Math.abs(t.split_share_amount))} · Total: {formatCurrency(Math.abs(t.amount))}</>
-                        : <>Amount: {formatCurrency(Math.abs(t.amount))}</>
-                      }
-                    </div>
-                    {(t.category || t.subcategory) && (
-                      <div className="flex items-center gap-1 pt-0.5">
-                        {t.category && <Badge variant="secondary" className="text-xs">{t.category}</Badge>}
-                        {t.subcategory && <Badge variant="outline" className="text-xs">{t.subcategory}</Badge>}
+            <div className="space-y-2">
+              {childTxs.map((t, i) => {
+                const amt = Math.abs(
+                  t.is_shared && t.split_share_amount != null ? t.split_share_amount : t.amount
+                );
+                return (
+                  <div
+                    key={t.id}
+                    className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 border border-border/40"
+                  >
+                    <div
+                      className="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5"
+                      style={{ backgroundColor: getCategoryColor(t.category || "", i) }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-foreground">
+                        {t.description}
                       </div>
-                    )}
-                    {t.notes && <div className="text-xs text-muted-foreground italic">{t.notes}</div>}
+                      {(t.category || t.subcategory) && (
+                        <div className="flex items-center gap-1 mt-1">
+                          {t.category && (
+                            <Badge variant="secondary" className="text-xs">
+                              {t.category}
+                            </Badge>
+                          )}
+                          {t.subcategory && (
+                            <Badge variant="outline" className="text-xs">
+                              {t.subcategory}
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                      {t.notes && (
+                        <div className="text-xs text-muted-foreground italic mt-1">
+                          {t.notes}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-sm font-mono font-semibold text-foreground/80 flex-shrink-0">
+                      {formatCurrency(amt)}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}
 
-        <div className={cn("p-3 rounded-lg border flex items-center gap-2 text-xs",
-          isValid
-            ? "bg-emerald-300/10 border-emerald-300/20 text-emerald-300"
-            : "bg-[#F44D4D]/10 border-[#F44D4D]/20 text-[#F44D4D]"
-        )}>
-          {isValid
-            ? <><Check className="h-3.5 w-3.5 shrink-0" /> Amounts match: {formatCurrency(childrenTotal)} = {formatCurrency(parentComparableAmount)}</>
-            : <><AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Mismatch: parts ({formatCurrency(childrenTotal)}) ≠ original ({formatCurrency(parentComparableAmount)})</>
-          }
+        {/* Balance indicator */}
+        <div className="flex items-center justify-center gap-1.5 text-xs">
+          {isBalanced ? (
+            <>
+              <Check className="h-3.5 w-3.5 text-emerald-400" />
+              <span className="text-emerald-400">
+                Amounts match · {formatCurrency(childrenTotal)}
+              </span>
+            </>
+          ) : (
+            <>
+              <AlertTriangle className="h-3.5 w-3.5 text-[#F44D4D]" />
+              <span className="text-[#F44D4D]">
+                Mismatch: parts ({formatCurrency(childrenTotal)}) ≠ original (
+                {formatCurrency(parentComparableAmount)})
+              </span>
+            </>
+          )}
         </div>
-
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="outline" className="w-full border-destructive/50 text-destructive hover:bg-destructive/10">
-              <Trash2 className="h-4 w-4 mr-2" />
-              Remove Split &amp; Restore Original
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogTitle>Remove split?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will remove all split parts and restore the original transaction. This cannot be undone.
-            </AlertDialogDescription>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleUngroup} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                Remove Split
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </div>
     );
   };
@@ -481,29 +528,83 @@ export function RelatedTransactionsDrawer({
   const { icon, title } = modeConfig[mode];
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-md bg-card border-border max-h-[85vh] flex flex-col gap-0 p-0">
-        <DialogHeader className="px-5 pt-5 pb-4 border-b border-border shrink-0">
-          <DialogTitle className="flex items-center gap-2 text-sm font-medium">
-            <span className="text-muted-foreground">{icon}</span>
-            {title}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          {mode === "refund"
-            ? renderRefundMode()
-            : mode === "split"
-              ? renderSplitMode()
-              : mode === "groupedExpense"
-                ? renderGroupedExpenseMode()
-                : renderTransferMode()}
-        </div>
-        <div className="px-5 pb-5 pt-3 border-t border-border shrink-0">
-          <Button variant="outline" onClick={onClose} className="w-full">
-            Close
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <Modal open={isOpen} onClose={onClose} size="sm">
+      <Modal.Header
+        icon={icon}
+        title={title}
+        onClose={onClose}
+        variant="share"
+      />
+      <Modal.Body className="scrollbar-none">
+        {mode === "refund"
+          ? renderRefundMode()
+          : mode === "split"
+            ? renderSplitMode()
+            : mode === "groupedExpense"
+              ? renderGroupedExpenseMode()
+              : renderTransferMode()}
+      </Modal.Body>
+      <Modal.Footer>
+        {mode === "groupedExpense" && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="outline"
+                className="mr-auto border-destructive/50 text-destructive hover:bg-destructive/10"
+              >
+                <Unlink className="h-4 w-4 mr-2" />
+                Ungroup
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogTitle>Ungroup transactions?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will remove the group link between these transactions. They will remain in your records but will no longer be grouped together.
+              </AlertDialogDescription>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleUngroup}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Ungroup
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+        {mode === "split" && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="outline"
+                className="mr-auto border-destructive/50 text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Remove Split
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogTitle>Remove split?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will remove all split parts and restore the original transaction. This cannot be undone.
+              </AlertDialogDescription>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleUngroup}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Remove Split
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+        <Button variant="outline" onClick={onClose}>
+          Close
+        </Button>
+      </Modal.Footer>
+    </Modal>
   );
 }

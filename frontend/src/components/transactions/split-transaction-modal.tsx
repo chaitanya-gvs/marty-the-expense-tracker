@@ -2,25 +2,28 @@
 
 import React, { useState, useEffect } from "react";
 import { Modal } from "@/components/ui/modal";
-import {
-  FieldRow,
-  MoneyInput,
-  SummaryStat,
-  RemainingBar,
-  KeepOriginalToggle,
-} from "@/components/ui/modal/primitives";
+import { MoneyInput, KeepOriginalToggle } from "@/components/ui/modal/primitives";
 import { CategorySelector } from "@/components/transactions/category-selector";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useSplitTransaction } from "@/hooks/use-transactions";
 import { useCategories } from "@/hooks/use-categories";
 import { Transaction } from "@/lib/types";
 import { toast } from "sonner";
-import { Plus, Trash2, ChevronDown, ChevronRight, Rows3 } from "lucide-react";
-import { formatCurrency } from "@/lib/format-utils";
-import { motion, AnimatePresence } from "framer-motion";
+import { Plus, Trash2, Split, Check } from "lucide-react";
+import { formatCurrency, formatDate } from "@/lib/format-utils";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+
+// Fallback palette when a category has no color
+export const PART_COLORS = [
+  "#6366f1",
+  "#14b8a6",
+  "#f59e0b",
+  "#f43f5e",
+  "#a78bfa",
+  "#84cc16",
+];
 
 interface SplitTransactionModalProps {
   transaction: Transaction;
@@ -34,8 +37,45 @@ interface SplitPart {
   amount: number;
   category: string;
   subcategory: string;
-  notes: string;
-  isExpanded: boolean;
+}
+
+interface BarSegment {
+  id: string;
+  amount: number;
+  color: string;
+  label: string;
+}
+
+// Live proportional allocation bar — driven by pre-computed segments
+function AllocationBar({
+  segments,
+  total,
+}: {
+  segments: BarSegment[];
+  total: number;
+}) {
+  const allocated = segments.reduce((sum, s) => sum + s.amount, 0);
+  const overAllocated = allocated > total + 0.01;
+  const totalForBar = overAllocated ? allocated : total;
+
+  return (
+    <div className="relative h-2 rounded-full overflow-hidden bg-muted/40">
+      <div className="absolute inset-0 flex">
+        {segments.map((seg) => {
+          const pct = totalForBar > 0 ? (seg.amount / totalForBar) * 100 : 0;
+          return (
+            <motion.div
+              key={seg.id}
+              className="h-full flex-shrink-0"
+              style={{ backgroundColor: overAllocated ? "#f43f5e" : seg.color }}
+              animate={{ width: `${pct}%` }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export function SplitTransactionModal({
@@ -43,15 +83,13 @@ export function SplitTransactionModal({
   isOpen,
   onClose,
 }: SplitTransactionModalProps) {
-  const [parts, setParts] = useState<SplitPart[]>([
+  const makeDefaultParts = (): SplitPart[] => [
     {
       id: "1",
       description: "",
       amount: 0,
       category: transaction.category,
       subcategory: transaction.subcategory || "",
-      notes: "",
-      isExpanded: true,
     },
     {
       id: "2",
@@ -59,57 +97,55 @@ export function SplitTransactionModal({
       amount: 0,
       category: transaction.category,
       subcategory: transaction.subcategory || "",
-      notes: "",
-      isExpanded: true,
     },
-  ]);
+  ];
+
+  const [parts, setParts] = useState<SplitPart[]>(makeDefaultParts);
   const [keepOriginal, setKeepOriginal] = useState(true);
 
   const splitTransaction = useSplitTransaction();
   const { data: categories = [] } = useCategories();
 
-  // For shared transactions, use split_share_amount (user's share) instead of full amount
-  // This matches the backend validation logic
+  // For shared transactions, split against the user's share, not the full amount
   const isShared = transaction.is_shared;
   const splitShareAmount = transaction.split_share_amount;
-  const originalAmount = isShared && splitShareAmount !== undefined 
-    ? Math.abs(splitShareAmount) 
-    : Math.abs(transaction.amount);
-  const totalAmount = isShared && splitShareAmount !== undefined && splitShareAmount !== transaction.amount
-    ? Math.abs(transaction.amount)
-    : null;
-  
-  const totalParts = parts.reduce((sum, part) => sum + (part.amount || 0), 0);
-  const remaining = originalAmount - totalParts;
-  const isValid =
-    Math.abs(remaining) < 0.01 &&
-    parts.every((p) => p.description && p.amount > 0);
+  const originalAmount =
+    isShared && splitShareAmount !== undefined
+      ? Math.abs(splitShareAmount)
+      : Math.abs(transaction.amount);
+  const totalAmount =
+    isShared && splitShareAmount !== undefined && splitShareAmount !== transaction.amount
+      ? Math.abs(transaction.amount)
+      : null;
 
-  // Reset parts when transaction changes
+  const totalParts = parts.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const remaining = originalAmount - totalParts;
+  const isComplete = Math.abs(remaining) < 0.01;
+  const isOverAllocated = remaining < -0.01;
+  const isValid = isComplete && parts.every((p) => p.description && p.amount > 0);
+
+  // Resolve category color; fall back to indexed palette
+  const getPartColor = (categoryName: string, fallbackIndex: number): string => {
+    const cat = categories.find(
+      (c: { name: string; color?: string }) => c.name === categoryName
+    );
+    return cat?.color || PART_COLORS[fallbackIndex % PART_COLORS.length];
+  };
+
+  // Pre-computed segments used by both the bar and the legend
+  const barSegments: BarSegment[] = parts.map((part, i) => ({
+    id: part.id,
+    amount: part.amount || 0,
+    color: getPartColor(part.category, i),
+    label: part.description || `Part ${i + 1}`,
+  }));
+
   useEffect(() => {
     if (isOpen) {
-      setParts([
-        {
-          id: "1",
-          description: "",
-          amount: 0,
-          category: transaction.category,
-          subcategory: transaction.subcategory || "",
-          notes: "",
-          isExpanded: true,
-        },
-        {
-          id: "2",
-          description: "",
-          amount: 0,
-          category: transaction.category,
-          subcategory: transaction.subcategory || "",
-          notes: "",
-          isExpanded: true,
-        },
-      ]);
+      setParts(makeDefaultParts());
       setKeepOriginal(true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, transaction]);
 
   const addPart = () => {
@@ -122,8 +158,6 @@ export function SplitTransactionModal({
         amount: 0,
         category: transaction.category,
         subcategory: transaction.subcategory || "",
-        notes: "",
-        isExpanded: true,
       },
     ]);
   };
@@ -137,35 +171,22 @@ export function SplitTransactionModal({
   const updatePart = (
     id: string,
     field: keyof SplitPart,
-    value: string | number | boolean
+    value: string | number
   ) => {
     setParts(parts.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
   };
 
-  const togglePartExpand = (id: string) => {
-    setParts(
-      parts.map((p) =>
-        p.id === id ? { ...p, isExpanded: !p.isExpanded } : p
-      )
-    );
-  };
-
   const autoDistribute = () => {
-    const amountPerPart = originalAmount / parts.length;
-    setParts(
-      parts.map((p) => ({ ...p, amount: Number(amountPerPart.toFixed(2)) }))
-    );
+    const base = Number((originalAmount / parts.length).toFixed(2));
+    const last = Number((originalAmount - base * (parts.length - 1)).toFixed(2));
+    setParts(parts.map((p, i) => ({ ...p, amount: i === parts.length - 1 ? last : base })));
   };
 
   const handleSplit = async () => {
     if (!isValid) {
-      const amountLabel = isShared ? "your share" : "the original transaction amount";
-      toast.error(
-        `Please ensure all parts have descriptions and amounts sum to ${amountLabel}`
-      );
+      toast.error("Please fill in all descriptions and make sure amounts add up correctly.");
       return;
     }
-
     try {
       await splitTransaction.mutateAsync({
         transactionId: transaction.id,
@@ -174,12 +195,10 @@ export function SplitTransactionModal({
           amount: p.amount,
           category: p.category,
           subcategory: p.subcategory || undefined,
-          notes: p.notes || undefined,
           tags: transaction.tags,
         })),
         deleteOriginal: !keepOriginal,
       });
-
       toast.success(`Transaction split into ${parts.length} parts`);
       onClose();
     } catch {
@@ -187,269 +206,181 @@ export function SplitTransactionModal({
     }
   };
 
-  const getCategoryForPart = (categoryName: string) => {
-    return categories.find((cat: { name: string }) => cat.name === categoryName);
-  };
+  const accountDisplay = transaction.account
+    ? transaction.account.split(" ").slice(0, -2).join(" ") || transaction.account
+    : null;
 
   return (
     <Modal open={isOpen} onClose={onClose} size="lg">
       <Modal.Header
-        icon={<Rows3 className="h-4 w-4" />}
+        icon={<Split className="h-4 w-4" />}
         title="Split Transaction"
-        subtitle={
-          isShared && totalAmount
-            ? `Split into parts. Your share: ${formatCurrency(originalAmount)} (Total: ${formatCurrency(totalAmount)})`
-            : `Split into parts. Original amount: ${formatCurrency(originalAmount)}`
-        }
+        subtitle={[transaction.description, formatDate(transaction.date), accountDisplay]
+          .filter(Boolean)
+          .join(" · ")}
         onClose={onClose}
         variant="split"
       />
 
-      <Modal.Body>
-        {/* Transaction Summary */}
-        <div className="rounded-lg bg-muted/40 border border-border/50 p-4 mb-4">
-          <div className="grid grid-cols-2 gap-4 text-sm">
+      <Modal.Body className="scrollbar-none">
+        {/* ── Amount + Allocation block ──────────────────────────────── */}
+        <div className="mb-6 p-4 rounded-xl bg-muted/30 border border-border/40">
+          {/* Totals row */}
+          <div className="flex items-start justify-between mb-3">
             <div>
-              <span className="text-[var(--modal-muted)] text-xs uppercase tracking-wider">
-                Date
-              </span>
-              <p className="text-[var(--modal-text)] mt-1">{transaction.date}</p>
-            </div>
-            <div>
-              <span className="text-[var(--modal-muted)] text-xs uppercase tracking-wider">
-                Account
-              </span>
-              <p className="text-[var(--modal-text)] mt-1 truncate">
-                {transaction.account}
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                {isShared ? "Your Share" : "Splitting"}
               </p>
-            </div>
-            <div className="col-span-2">
-              <span className="text-[var(--modal-muted)] text-xs uppercase tracking-wider">
-                Description
-              </span>
-              <p className="text-[var(--modal-text)] mt-1">
-                {transaction.description}
+              <p className="text-xl font-bold font-mono tabular-nums text-foreground">
+                {formatCurrency(originalAmount)}
               </p>
+              {isShared && totalAmount && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Total: {formatCurrency(totalAmount)}
+                </p>
+              )}
             </div>
+
+            <div className="text-right">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                Remaining
+              </p>
+              <div
+                className={cn(
+                  "text-xl font-bold font-mono tabular-nums transition-colors",
+                  isComplete
+                    ? "text-emerald-400"
+                    : isOverAllocated
+                      ? "text-[#f43f5e]"
+                      : "text-foreground"
+                )}
+              >
+                {isComplete ? (
+                  <span className="flex items-center gap-1.5 justify-end">
+                    <Check className="h-4 w-4" />
+                    Done
+                  </span>
+                ) : (
+                  formatCurrency(Math.abs(remaining))
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Bar */}
+          <AllocationBar segments={barSegments} total={originalAmount} />
+
+          {/* Legend */}
+          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2.5">
+            {barSegments.map((seg) => (
+              <div key={seg.id} className="flex items-center gap-1.5 text-xs">
+                <div
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: seg.color }}
+                />
+                <span className="text-muted-foreground truncate max-w-[72px]">
+                  {seg.label}
+                </span>
+                <span className="font-mono text-foreground/60 tabular-nums">
+                  {formatCurrency(seg.amount)}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Parts Header with Auto Distribute */}
+        {/* ── Parts header ───────────────────────────────────────────── */}
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-[var(--modal-text)]">
-            Split Parts
-          </h3>
-          <Button
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Parts ({parts.length})
+          </p>
+          <motion.button
             type="button"
-            variant="secondary"
-            size="sm"
+            whileTap={{ scale: 0.97 }}
             onClick={autoDistribute}
-            className="rounded-lg bg-muted hover:bg-muted/70 text-foreground px-3 py-1 text-xs"
+            className="rounded-lg bg-muted hover:bg-muted/70 text-foreground px-3 py-1 text-xs font-medium transition-colors"
           >
             Auto Distribute
-          </Button>
+          </motion.button>
         </div>
 
-        {/* Parts List */}
-        <div className="space-y-3 mb-4">
-          <AnimatePresence initial={false}>
-            {parts.map((part, index) => {
-              const category = getCategoryForPart(part.category);
-              return (
-                <motion.div
-                  key={part.id}
-                  layout
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="rounded-lg bg-muted/40 border border-border/50 overflow-hidden"
-                >
-                  {/* Collapsed Summary */}
-                  <button
-                    type="button"
-                    onClick={() => togglePartExpand(part.id)}
-                    className="w-full flex items-center justify-between p-3 hover:bg-muted/60 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[var(--modal-accent)]/20 text-[var(--modal-accent)] text-xs font-semibold flex-shrink-0">
-                        {index + 1}
-                      </div>
-                      <div className="flex-1 min-w-0 text-left">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-[var(--modal-text)] font-medium truncate">
-                            {part.description || "Untitled"}
-                          </span>
-                          {category && (
-                            <span
-                              className="text-xs px-2 py-0.5 rounded-full border"
-                              style={{
-                                borderColor: category.color || "#6366f1",
-                                backgroundColor: `${category.color || "#6366f1"}20`,
-                                color: category.color || "#6366f1",
-                              }}
-                            >
-                              {category.name}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-[var(--modal-muted)] mt-0.5">
-                          {formatCurrency(part.amount)}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {parts.length > 2 && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removePart(part.id);
-                          }}
-                          className="p-1.5 rounded-full hover:bg-[var(--modal-danger)]/20 text-[var(--modal-muted)] hover:text-[var(--modal-danger)] transition-colors"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
-                      {part.isExpanded ? (
-                        <ChevronDown className="h-4 w-4 text-[var(--modal-muted)]" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4 text-[var(--modal-muted)]" />
-                      )}
-                    </div>
-                  </button>
+        {/* ── Part rows ──────────────────────────────────────────────── */}
+        <div className="space-y-4 mb-6">
+          {parts.map((part, index) => {
+            const dotColor = getPartColor(part.category, index);
+            return (
+              <div
+                key={part.id}
+                className="space-y-2 pb-4 border-b border-border/30 last:border-0 last:pb-0"
+              >
+                {/* Row 1: dot · description · amount · [trash] */}
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: dotColor }}
+                  />
+                  <Input
+                    value={part.description}
+                    onChange={(e) => updatePart(part.id, "description", e.target.value)}
+                    placeholder={`Part ${index + 1} description`}
+                    className="flex-1 h-9 bg-muted/50 border-border/50 text-sm"
+                  />
+                  <div className="w-28 flex-shrink-0">
+                    <MoneyInput
+                      value={part.amount || ""}
+                      onValueChange={(val) => updatePart(part.id, "amount", val)}
+                      className="h-9"
+                    />
+                  </div>
+                  {parts.length > 2 && (
+                    <button
+                      type="button"
+                      onClick={() => removePart(part.id)}
+                      className="flex-shrink-0 p-1.5 rounded text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
 
-                  {/* Expanded Content */}
-                  <AnimatePresence>
-                    {part.isExpanded && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="border-t border-border/50"
-                      >
-                        <div className="p-4 space-y-4">
-                          <FieldRow label="Description" required>
-                            <Input
-                              value={part.description}
-                              onChange={(e) =>
-                                updatePart(part.id, "description", e.target.value)
-                              }
-                              placeholder="e.g., Internet charges"
-                              className="h-10 bg-muted/60 border-border rounded-lg text-foreground"
-                            />
-                          </FieldRow>
+                {/* Row 2: category */}
+                <div className="pl-[18px]">
+                  <CategorySelector
+                    value={part.category}
+                    onValueChange={(val) => updatePart(part.id, "category", val)}
+                  />
+                </div>
+              </div>
+            );
+          })}
 
-                          <FieldRow label="Amount" required>
-                            <MoneyInput
-                              value={part.amount || ""}
-                              onValueChange={(val) =>
-                                updatePart(part.id, "amount", val)
-                              }
-                            />
-                          </FieldRow>
-
-                          <div className="space-y-1.5">
-                            <Label className="text-xs text-muted-foreground">Category</Label>
-                            <CategorySelector
-                              value={part.category}
-                              onValueChange={(val) =>
-                                updatePart(part.id, "category", val)
-                              }
-                            />
-                          </div>
-
-                          <FieldRow label="Notes" hint="Optional additional notes">
-                            <Input
-                              value={part.notes}
-                              onChange={(e) =>
-                                updatePart(part.id, "notes", e.target.value)
-                              }
-                              placeholder="Additional notes"
-                              className="h-10 bg-muted/60 border-border rounded-lg text-foreground"
-                            />
-                          </FieldRow>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-
-          {/* Add Part Button */}
-          <Button
+          {/* Add part */}
+          <button
             type="button"
-            variant="outline"
             onClick={addPart}
-            className="w-full rounded-lg border-border bg-muted/40 hover:bg-muted/60 py-2"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground/40 hover:text-muted-foreground transition-colors pl-[18px]"
           >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Another Part
-          </Button>
+            <Plus className="h-3 w-3" />
+            Add part
+          </button>
         </div>
 
-        {/* Summary Stats */}
-        <div className="rounded-lg bg-muted/40 border border-border/50 p-4 space-y-1 mb-4">
-          <SummaryStat
-            label={isShared ? "Your Share" : "Original Amount"}
-            value={formatCurrency(originalAmount)}
-          />
-          {isShared && totalAmount && (
-            <SummaryStat
-              label="Total Amount"
-              value={formatCurrency(totalAmount)}
-            />
-          )}
-          <SummaryStat
-            label="Total Parts"
-            value={formatCurrency(totalParts)}
-            valueColor={Math.abs(remaining) < 0.01 ? "success" : "default"}
-          />
-          <SummaryStat
-            label="Remaining"
-            value={formatCurrency(remaining)}
-            valueColor={Math.abs(remaining) < 0.01 ? "success" : "danger"}
-          />
-        </div>
-
-        {/* Progress Bar */}
-        <RemainingBar remaining={remaining} total={originalAmount} className="mb-4" />
-
-        {/* Keep Original Toggle */}
+        {/* ── Keep original toggle ───────────────────────────────────── */}
         <KeepOriginalToggle value={keepOriginal} onChange={setKeepOriginal} />
       </Modal.Body>
 
       <Modal.Footer>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={onClose}
-          className="rounded-lg bg-muted hover:bg-muted/70 text-foreground px-4 py-2"
-        >
+        <Button type="button" variant="outline" onClick={onClose}>
           Cancel
         </Button>
         <Button
           type="button"
           onClick={handleSplit}
           disabled={!isValid || splitTransaction.isPending}
-          className={cn(
-            "rounded-lg px-4 py-2",
-            isValid
-              ? "bg-primary hover:bg-primary/90 text-primary-foreground"
-              : "bg-muted text-muted-foreground cursor-not-allowed"
-          )}
         >
-          {splitTransaction.isPending
-            ? "Splitting..."
-            : isValid
-              ? `Split into ${parts.length} Parts`
-              : "Distribute to Continue"}
+          {splitTransaction.isPending ? "Splitting…" : `Split into ${parts.length} Parts`}
         </Button>
       </Modal.Footer>
     </Modal>
   );
 }
-

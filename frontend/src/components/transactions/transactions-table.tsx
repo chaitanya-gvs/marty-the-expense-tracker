@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useTransactionKeyboardNav } from "@/hooks/use-transaction-keyboard-nav";
 import { buildTransactionColumns } from "./transaction-columns";
 import {
@@ -725,8 +726,15 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 Multi-Select
               </Button>
             )}
+            <AnimatePresence>
             {isMultiSelectMode && (
-              <>
+              <motion.div
+                className="flex items-center gap-2"
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -8 }}
+                transition={{ type: "spring", stiffness: 500, damping: 35 }}
+              >
                 <Badge variant="secondary" className="text-sm">
                   {selectionSummary.total} selected
                   {selectionSummary.total > 0 && (
@@ -788,8 +796,9 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 >
                   Done
                 </Button>
-              </>
+              </motion.div>
             )}
+            </AnimatePresence>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {isFetchingNextPage && (
@@ -798,15 +807,27 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                 Loading more...
               </div>
             )}
-            <span className="text-xs text-muted-foreground">
-              {allTransactions.length} loaded{data?.pages?.[0]?.pagination?.total ? ` of ${data.pages[0].pagination.total}` : ''}
-            </span>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              {data?.pages?.[0]?.pagination?.total ? (
+                <>
+                  <div className="w-16 h-1 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full bg-primary/50 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(100, (allTransactions.length / data.pages[0].pagination.total) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="tabular-nums font-mono">{allTransactions.length} / {data.pages[0].pagination.total}</span>
+                </>
+              ) : (
+                <span className="tabular-nums font-mono">{allTransactions.length}</span>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
       {isMultiSelectMode && selectedTransactionIds.size > 0 && (
-        <div className="flex items-center justify-between px-3 py-2 bg-primary/10 border-x border-t border-primary/20 rounded-t-lg text-xs font-medium text-primary -mb-px mx-0">
+        <div className="flex items-center justify-between px-3 py-2 bg-primary/8 border-x border-t border-primary/25 rounded-t-lg text-xs font-medium text-primary -mb-px mx-0 shadow-[0_-2px_0_0_var(--color-primary)]">
           <span>{selectedTransactionIds.size} transaction{selectedTransactionIds.size !== 1 ? "s" : ""} selected</span>
           <div className="flex items-center gap-1">
             <Button size="sm" variant="ghost" className="h-6 text-xs px-2 text-primary hover:bg-primary/10" onClick={() => setIsBulkEditModalOpen(true)}>Edit</Button>
@@ -819,7 +840,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         {/* Sticky Header */}
         <div
           ref={headerScrollRef}
-          className="flex-shrink-0 w-full overflow-x-auto bg-card border-b border-border z-50"
+          className="flex-shrink-0 w-full overflow-x-auto bg-card border-b border-border z-50 scrollbar-none"
           onScroll={handleHeaderScroll}
         >
           <table
@@ -844,7 +865,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   {headerGroup.headers.map((header) => (
                     <th
                       key={header.id}
-                      className="relative px-3 py-2 text-left font-medium text-xs text-muted-foreground bg-muted/40 h-10 align-middle uppercase tracking-wide whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]"
+                      className="relative px-3 py-2 text-left font-medium text-xs text-muted-foreground bg-muted/70 dark:bg-muted/60 h-10 align-middle uppercase tracking-wide whitespace-nowrap border-b-2 border-border [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]"
                       style={{
                         width: header.getSize(),
                         ...(header.column.columnDef.minSize != null && { minWidth: header.column.columnDef.minSize }),
@@ -881,7 +902,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             parentRef.current = node;
             tableContainerRef.current = node;
           }}
-          className="flex-1 overflow-auto relative w-full"
+          className="flex-1 overflow-auto relative w-full scrollbar-none"
           onScroll={handleBodyScroll}
         >
           <table
@@ -933,13 +954,13 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   return (
                     <React.Fragment key={row.id}>
                       {showDateHeader && (
-                        <tr className="border-b border-border bg-muted/20">
+                        <tr className="border-t border-b border-border bg-muted/30 dark:bg-muted/20">
                           <td colSpan={colCount} className="px-4 py-1.5">
                             <div className="flex items-center gap-3">
-                              <span className="text-xs font-medium text-muted-foreground">{dateLabel}</span>
+                              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">{dateLabel}</span>
                               <div className="flex-1 h-px bg-border" />
                               {dailyTotal > 0 && (
-                                <span className="text-xs font-mono text-muted-foreground">{formatCurrency(dailyTotal)}</span>
+                                <span className="text-xs font-mono text-muted-foreground/70 tabular-nums">· {formatCurrency(dailyTotal)}</span>
                               )}
                             </div>
                           </td>
@@ -949,12 +970,16 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                       className={cn(
                         "group border-b border-border/50 transition-colors duration-100 h-12",
                         selectedTransactionIds.has(row.original.id)
-                          ? "bg-primary/[0.07] hover:bg-primary/[0.10]"
-                          : "hover:bg-muted/30 cursor-default",
+                          ? "bg-primary/[0.10] hover:bg-primary/[0.14] border-l-2 border-l-primary/60"
+                          : "hover:bg-muted/50 dark:hover:bg-muted/40 cursor-default",
                         editingRow === row.original.id && "bg-primary/5",
                         highlightedTransactionIds.has(row.original.id) && "bg-primary/5 border-l-2 border-l-primary",
                         isFocusedRow && "bg-primary/10 border-l-2 border-l-primary"
                       )}
+                      style={{
+                        animation: "fadeSlideIn 0.25s ease-out both",
+                        animationDelay: `${Math.min(rowIndex, 20) * 25}ms`,
+                      }}
                     // onClick={() => handleRowClick(row.original)}
                     >
                       {row.getVisibleCells().map((cell) => {
@@ -1029,24 +1054,37 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
             </tbody>
           </table>
           {!isLoading && allTransactions.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center">
-                <ScanSearch className="h-6 w-6 text-muted-foreground/40" />
+            <motion.div
+              className="flex flex-col items-center justify-center py-20 text-center gap-3"
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30, delay: 0.15 }}
+            >
+              <div className="w-14 h-14 rounded-2xl bg-muted/60 border border-border flex items-center justify-center">
+                <ScanSearch className="h-7 w-7 text-muted-foreground/30" />
               </div>
               <p className="text-sm font-medium text-foreground/70">No transactions found</p>
               <p className="text-xs text-muted-foreground/60 max-w-[280px] leading-relaxed">
                 Try adjusting your filters or date range to see results.
               </p>
-            </div>
+            </motion.div>
           )}
         </div>
       </div>
 
       {!hasNextPage && allTransactions.length > 0 && (
-        <div className="p-3 border-t border-border text-center">
-          <div className="text-xs text-muted-foreground">
-            All {allTransactions.length} transactions loaded
+        <div className="p-3 border-t border-border flex items-center justify-center gap-3">
+          <div className="w-20 h-1 rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full bg-primary/50 rounded-full transition-all duration-500"
+              style={{ width: `${data?.pages[0]?.pagination?.total ? Math.min(100, (allTransactions.length / data.pages[0].pagination.total) * 100) : 100}%` }}
+            />
           </div>
+          <span className="text-xs tabular-nums font-mono text-muted-foreground">
+            {data?.pages[0]?.pagination?.total
+              ? `${allTransactions.length} / ${data.pages[0].pagination.total}`
+              : `${allTransactions.length}`}
+          </span>
         </div>
       )}
 

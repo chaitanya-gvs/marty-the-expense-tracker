@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export interface FieldRowProps {
   label: string;
@@ -275,12 +276,11 @@ export function KeepOriginalToggle({
         className
       )}
     >
-      <input
-        type="checkbox"
+      <Checkbox
         id="keep-original"
         checked={value}
-        onChange={(e) => onChange(e.target.checked)}
-        className="mt-1 h-4 w-4 rounded border-border bg-muted/60 text-primary focus:ring-2 focus:ring-ring focus:ring-offset-0"
+        onCheckedChange={(checked) => onChange(checked === true)}
+        className="mt-0.5"
       />
       <div className="flex-1">
         <label
@@ -292,7 +292,7 @@ export function KeepOriginalToggle({
         <p className="text-xs text-[var(--modal-muted)] mt-1">
           {value
             ? "Original will be marked as split. You can restore it by removing the split group."
-            : "⚠️ Original will be deleted. Only split parts will remain. You cannot restore the original later."}
+            : "Original will be deleted. Only split parts will remain. You cannot restore the original later."}
         </p>
       </div>
     </div>

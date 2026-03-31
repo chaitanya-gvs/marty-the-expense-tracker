@@ -25,6 +25,8 @@ import {
   FileText,
   Layers,
   ChevronDown,
+  TrendingDown,
+  TrendingUp,
 } from "lucide-react";
 import { Transaction, Tag, Category } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -387,9 +389,7 @@ export function buildTransactionColumns(
         }
 
         const description = getValue();
-        const fullText = row.original.notes
-          ? `${description} - ${row.original.notes}`
-          : description;
+        const fullText = description;
         const isGroupedExpense = row.original.is_grouped_expense;
         const isExpanded = row.original.transaction_group_id
           ? expandedGroupedExpenses.has(row.original.transaction_group_id)
@@ -426,15 +426,20 @@ export function buildTransactionColumns(
                   {isGroupedExpense && (
                     <Layers className="h-3 w-3 text-violet-300 flex-shrink-0" />
                   )}
+                  {row.original.source_file && (
+                    <button
+                      className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex-shrink-0 text-muted-foreground/50 hover:text-muted-foreground"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPdfViewerTransactionId(row.original.id);
+                        setIsPdfViewerOpen(true);
+                      }}
+                      title="View source PDF"
+                    >
+                      <FileText className="h-3 w-3" />
+                    </button>
+                  )}
                 </div>
-                {row.original.notes && (
-                  <div
-                    className="text-xs text-muted-foreground truncate"
-                    title={row.original.notes}
-                  >
-                    {row.original.notes}
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -502,13 +507,34 @@ export function buildTransactionColumns(
           <div className="flex flex-col items-end whitespace-nowrap">
             <div
               className={cn(
-                "font-mono font-semibold text-sm inline-flex items-center px-2.5 py-0.5 rounded-md tabular-nums",
+                "group/pill font-mono font-semibold text-sm inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-md tabular-nums cursor-pointer select-none transition-colors duration-150",
                 direction === "debit"
-                  ? "bg-[#F44D4D]/15 text-[#F44D4D]"
-                  : "bg-emerald-400/15 text-emerald-300"
+                  ? "bg-[#F44D4D]/10 text-[#F44D4D] hover:bg-[#F44D4D]/20"
+                  : "bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/20"
               )}
+              onClick={async (e) => {
+                e.stopPropagation();
+                const nextDirection = direction === "debit" ? "credit" : "debit";
+                try {
+                  await onUpdateTransaction({
+                    id: row.original.id,
+                    updates: { direction: nextDirection },
+                  });
+                  toast.success(`Marked as ${nextDirection === "credit" ? "credit (money in)" : "debit (money out)"}`);
+                } catch {
+                  toast.error("Failed to toggle transaction direction");
+                }
+              }}
+              title={`Click to mark as ${direction === "debit" ? "credit" : "debit"}`}
             >
-              {direction === "debit" ? "↓" : "↑"} {formatCurrency(displayAmount)}
+              <span className="group-hover/pill:hidden flex items-center">
+                {direction === "debit"
+                  ? <TrendingDown className="h-3 w-3 shrink-0" />
+                  : <TrendingUp className="h-3 w-3 shrink-0" />
+                }
+              </span>
+              <RefreshCcw className="h-3 w-3 shrink-0 hidden group-hover/pill:inline-block" />
+              {formatCurrency(displayAmount)}
             </div>
             {showTotal && (
               <div className="text-xs text-muted-foreground mt-1 text-right font-mono">
@@ -860,7 +886,7 @@ export function buildTransactionColumns(
                 )}
               </div>
             ) : (
-              <span className="text-xs text-muted-foreground hover:text-foreground whitespace-nowrap">
+              <span className="text-xs text-muted-foreground/40 hover:text-muted-foreground/70 whitespace-nowrap transition-colors">
                 Click to add tags
               </span>
             )}
@@ -909,220 +935,195 @@ export function buildTransactionColumns(
           focusedRowIndex === allTransactions.findIndex((t) => t.id === transaction.id);
         const isFocusedActionsColumn = isFocusedRow && focusedColumnId === "actions";
 
+        // Derive active states for each badge
+        const isSharedActive = !!transaction.is_shared;
+        const isGroupActive = !!(transaction.transaction_group_id && !transaction.is_split);
+        const isSplitActive = isSplitGroup;
+        const isEmailActive = !!(transaction.related_mails && transaction.related_mails.length > 0);
+        const isFlagActive = transaction.is_flagged === true;
+        const hasAnyActive = isSharedActive || isGroupActive || isSplitActive || isEmailActive || isFlagActive;
+
+        // Collapsible wrapper: active badges always shown; inactive buttons collapse to w-0
+        // and expand on row hover (group-hover). Keyboard focus also forces expansion.
+        // overflow-hidden is only applied to inactive wrappers (needed for width collapse);
+        // active wrappers are overflow-visible so the circular box-shadow glow isn't clipped.
+        const btnWrap = (isActive: boolean, focusVisible: boolean) =>
+          cn(
+            "transition-[width,opacity] duration-[180ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+            "flex items-center justify-center flex-shrink-0",
+            isActive || focusVisible
+              ? "w-[30px] opacity-100"
+              : "overflow-hidden w-0 opacity-0 group-hover:w-[30px] group-hover:opacity-100"
+          );
+
         return (
-          <div className="flex justify-center items-center gap-1">
-            {/* 1. Shared button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "h-7 w-7 p-0 rounded-full transition-all duration-200",
-                transaction.is_shared
-                  ? "bg-violet-400/15 text-violet-300 hover:bg-violet-400/20 shadow-[0_0_12px_rgba(196,181,253,0.2)]"
-                  : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                isFocusedActionsColumn && focusedActionButton === 0 && "ring-2 ring-blue-500 ring-inset"
-              )}
-              onClick={() => {
-                setSelectedTransactionForSplit(transaction);
-                setIsSplitEditorOpen(true);
-              }}
-              title={
-                transaction.is_shared
-                  ? "Shared expense (mark as personal)"
-                  : "Share expenses"
-              }
-            >
-              <Users className="h-3.5 w-3.5" />
-            </Button>
+          <div className="relative flex justify-center items-center">
+            {/* ••• idle hint — only when no active badges, fades out on hover */}
+            {!hasAnyActive && (
+              <div className="absolute flex items-center gap-[3px] pointer-events-none transition-opacity duration-150 group-hover:opacity-0">
+                <span className="w-[4px] h-[4px] rounded-full bg-white/[0.12]" />
+                <span className="w-[4px] h-[4px] rounded-full bg-white/[0.12]" />
+                <span className="w-[4px] h-[4px] rounded-full bg-white/[0.12]" />
+              </div>
+            )}
 
-            {/* 2. Group expense button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "h-7 w-7 p-0 rounded-full transition-all duration-200",
-                transaction.transaction_group_id && !transaction.is_split
-                  ? "bg-teal-400/15 text-teal-300 hover:bg-teal-400/20 shadow-[0_0_12px_rgba(45,212,191,0.2)]"
-                  : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                isFocusedActionsColumn && focusedActionButton === 1 && "ring-2 ring-blue-500 ring-inset"
-              )}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (transaction.transaction_group_id && !transaction.is_split) {
-                  setDrawerTransaction(transaction);
-                  setDrawerVariant("groupedExpense");
-                  setIsDrawerOpen(true);
-                } else {
-                  setGroupExpenseFromTransaction(transaction);
-                  setIsGroupExpenseSearchModalOpen(true);
-                }
-              }}
-              title={
-                transaction.transaction_group_id
-                  ? "View group in sidebar"
-                  : "Group this transaction with others (search to add more)"
-              }
-            >
-              <Layers className="h-3.5 w-3.5" />
-            </Button>
-
-            {/* 3. Split button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "h-7 w-7 p-0 rounded-full transition-all duration-200",
-                isSplitGroup
-                  ? "bg-sky-400/15 text-sky-300 hover:bg-sky-400/20 shadow-[0_0_12px_rgba(125,211,252,0.2)]"
-                  : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                isFocusedActionsColumn && focusedActionButton === 2 && "ring-2 ring-blue-500 ring-inset"
-              )}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (isSplitGroup) {
-                  handleSplitClick(e);
-                } else {
-                  setSelectedTransactionForSplitting(transaction);
-                  setIsSplitTransactionModalOpen(true);
-                }
-              }}
-              onMouseEnter={handleSplitGroupHover}
-              onMouseLeave={handleClearHighlight}
-              title={isSplitGroup ? "View split transaction group" : "Split transaction"}
-            >
-              <Split className="h-3.5 w-3.5" />
-            </Button>
-
-            {/* 4. Links button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "h-7 w-7 p-0 rounded-full transition-all duration-200",
-                transaction.related_mails && transaction.related_mails.length > 0
-                  ? "bg-amber-400/15 text-amber-300 hover:bg-amber-400/20 shadow-[0_0_12px_rgba(251,191,36,0.2)]"
-                  : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                isFocusedActionsColumn && focusedActionButton === 3 && "ring-2 ring-blue-500 ring-inset"
-              )}
-              onClick={(e) => {
-                e.stopPropagation();
-                setEmailLinksTransaction(transaction);
-                setIsEmailLinksDrawerOpen(true);
-              }}
-              title={
-                transaction.related_mails && transaction.related_mails.length > 0
-                  ? `${transaction.related_mails.length} email(s) linked`
-                  : "Link emails"
-              }
-            >
-              <Link2 className="h-3.5 w-3.5" />
-            </Button>
-
-            {/* 5. Warning/Flag button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "h-7 w-7 p-0 rounded-full transition-all duration-200",
-                transaction.is_flagged === true
-                  ? "bg-[#F44D4D]/15 text-[#F44D4D] hover:bg-[#F44D4D]/20 shadow-[0_0_12px_rgba(244,77,77,0.2)]"
-                  : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                isFocusedActionsColumn && focusedActionButton === 4 && "ring-2 ring-blue-500 ring-inset"
-              )}
-              onClick={async (e) => {
-                e.stopPropagation();
-                try {
-                  await onUpdateTransaction({
-                    id: transaction.id,
-                    updates: {
-                      is_flagged: !(transaction.is_flagged === true),
-                    },
-                  });
-                  toast.success(
-                    transaction.is_flagged === true
-                      ? "Warning removed"
-                      : "Transaction marked for review"
-                  );
-                } catch {
-                  toast.error("Failed to update warning status");
-                }
-              }}
-              title={transaction.is_flagged === true ? "Remove warning" : "Mark for review"}
-            >
-              <AlertCircle className="h-3.5 w-3.5" />
-            </Button>
-
-            {/* 6. Toggle direction button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "h-7 w-7 p-0 rounded-full transition-all duration-200 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                isFocusedActionsColumn && focusedActionButton === 5 && "ring-2 ring-blue-500 ring-inset"
-              )}
-              onClick={async (e) => {
-                e.stopPropagation();
-                const nextDirection = transaction.direction === "debit" ? "credit" : "debit";
-                try {
-                  await onUpdateTransaction({
-                    id: transaction.id,
-                    updates: {
-                      direction: nextDirection,
-                    },
-                  });
-                  toast.success(
-                    `Marked as ${nextDirection === "credit" ? "credit (money in)" : "debit (money out)"}`
-                  );
-                } catch {
-                  toast.error("Failed to toggle transaction direction");
-                }
-              }}
-              title={`Mark as ${transaction.direction === "debit" ? "credit" : "debit"}`}
-            >
-              <RefreshCcw className="h-3.5 w-3.5" />
-            </Button>
-
-            {/* 7. Delete button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "h-7 w-7 p-0 rounded-full transition-all duration-200 bg-muted/40 text-muted-foreground hover:bg-[#F44D4D]/15 hover:text-[#F44D4D]",
-                isFocusedActionsColumn && focusedActionButton === 6 && "ring-2 ring-blue-500 ring-inset"
-              )}
-              onClick={(e) => {
-                e.stopPropagation();
-                setTransactionToDelete(transaction);
-                setIsDeleteConfirmationOpen(true);
-              }}
-              title="Delete transaction"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-
-            {/* 8. PDF viewer button - only show if transaction has source_file */}
-            {transaction.source_file && (
+            {/* 1. Shared */}
+            <div className={btnWrap(isSharedActive, isFocusedActionsColumn && focusedActionButton === 0)}>
               <Button
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  "h-7 w-7 p-0 rounded-full transition-all duration-200 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                  isFocusedActionsColumn && focusedActionButton === 7 && "ring-2 ring-blue-500 ring-inset"
+                  "h-7 w-7 p-0 rounded-full transition-all duration-200",
+                  isSharedActive
+                    ? "bg-violet-400/15 text-violet-300 hover:bg-violet-400/20 shadow-[0_0_12px_rgba(196,181,253,0.2)]"
+                    : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  isFocusedActionsColumn && focusedActionButton === 0 && "ring-2 ring-blue-500 ring-inset"
+                )}
+                onClick={() => {
+                  setSelectedTransactionForSplit(transaction);
+                  setIsSplitEditorOpen(true);
+                }}
+                title={isSharedActive ? "Shared expense (mark as personal)" : "Share expenses"}
+              >
+                <Users className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+
+            {/* 2. Group expense */}
+            <div className={btnWrap(isGroupActive, isFocusedActionsColumn && focusedActionButton === 1)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-7 w-7 p-0 rounded-full transition-all duration-200",
+                  isGroupActive
+                    ? "bg-teal-400/15 text-teal-300 hover:bg-teal-400/20 shadow-[0_0_12px_rgba(45,212,191,0.2)]"
+                    : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  isFocusedActionsColumn && focusedActionButton === 1 && "ring-2 ring-blue-500 ring-inset"
                 )}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setPdfViewerTransactionId(transaction.id);
-                  setIsPdfViewerOpen(true);
+                  if (transaction.transaction_group_id && !transaction.is_split) {
+                    setDrawerTransaction(transaction);
+                    setDrawerVariant("groupedExpense");
+                    setIsDrawerOpen(true);
+                  } else {
+                    setGroupExpenseFromTransaction(transaction);
+                    setIsGroupExpenseSearchModalOpen(true);
+                  }
                 }}
-                title="View source PDF"
+                title={transaction.transaction_group_id ? "View group in sidebar" : "Group this transaction with others (search to add more)"}
               >
-                <FileText className="h-3.5 w-3.5" />
+                <Layers className="h-3.5 w-3.5" />
               </Button>
-            )}
+            </div>
+
+            {/* 3. Split */}
+            <div className={btnWrap(isSplitActive, isFocusedActionsColumn && focusedActionButton === 2)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-7 w-7 p-0 rounded-full transition-all duration-200",
+                  isSplitActive
+                    ? "bg-sky-400/15 text-sky-300 hover:bg-sky-400/20 shadow-[0_0_12px_rgba(125,211,252,0.2)]"
+                    : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  isFocusedActionsColumn && focusedActionButton === 2 && "ring-2 ring-blue-500 ring-inset"
+                )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isSplitGroup) {
+                    handleSplitClick(e);
+                  } else {
+                    setSelectedTransactionForSplitting(transaction);
+                    setIsSplitTransactionModalOpen(true);
+                  }
+                }}
+                onMouseEnter={handleSplitGroupHover}
+                onMouseLeave={handleClearHighlight}
+                title={isSplitActive ? "View split transaction group" : "Split transaction"}
+              >
+                <Split className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+
+            {/* 4. Email links */}
+            <div className={btnWrap(isEmailActive, isFocusedActionsColumn && focusedActionButton === 3)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-7 w-7 p-0 rounded-full transition-all duration-200",
+                  isEmailActive
+                    ? "bg-amber-400/15 text-amber-300 hover:bg-amber-400/20 shadow-[0_0_12px_rgba(251,191,36,0.2)]"
+                    : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  isFocusedActionsColumn && focusedActionButton === 3 && "ring-2 ring-blue-500 ring-inset"
+                )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEmailLinksTransaction(transaction);
+                  setIsEmailLinksDrawerOpen(true);
+                }}
+                title={isEmailActive ? `${transaction.related_mails!.length} email(s) linked` : "Link emails"}
+              >
+                <Link2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+
+            {/* 5. Flag */}
+            <div className={btnWrap(isFlagActive, isFocusedActionsColumn && focusedActionButton === 4)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-7 w-7 p-0 rounded-full transition-all duration-200",
+                  isFlagActive
+                    ? "bg-[#F44D4D]/15 text-[#F44D4D] hover:bg-[#F44D4D]/20 shadow-[0_0_12px_rgba(244,77,77,0.2)]"
+                    : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  isFocusedActionsColumn && focusedActionButton === 4 && "ring-2 ring-blue-500 ring-inset"
+                )}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  try {
+                    await onUpdateTransaction({
+                      id: transaction.id,
+                      updates: { is_flagged: !isFlagActive },
+                    });
+                    toast.success(isFlagActive ? "Warning removed" : "Transaction marked for review");
+                  } catch {
+                    toast.error("Failed to update warning status");
+                  }
+                }}
+                title={isFlagActive ? "Remove warning" : "Mark for review"}
+              >
+                <AlertCircle className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+
+            {/* 6. Delete — always inactive (hover-reveal only) */}
+            <div className={btnWrap(false, isFocusedActionsColumn && focusedActionButton === 5)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-7 w-7 p-0 rounded-full transition-all duration-200 bg-muted/40 text-muted-foreground hover:bg-[#F44D4D]/15 hover:text-[#F44D4D]",
+                  isFocusedActionsColumn && focusedActionButton === 5 && "ring-2 ring-blue-500 ring-inset"
+                )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setTransactionToDelete(transaction);
+                  setIsDeleteConfirmationOpen(true);
+                }}
+                title="Delete transaction"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+
           </div>
         );
       },
-      size: 250,
+      size: 160,
     }),
   ] as ColumnDef<Transaction>[];
 }

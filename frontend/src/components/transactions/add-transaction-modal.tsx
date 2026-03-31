@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { Modal } from "@/components/ui/modal";
+import { FieldRow } from "@/components/ui/modal/primitives";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldAutocomplete } from "./field-autocomplete";
@@ -19,14 +21,6 @@ interface AddTransactionModalProps {
   onClose: () => void;
 }
 
-function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
-  return (
-    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
-      {children}
-      {required && <span className="text-destructive/80 ml-0.5">*</span>}
-    </p>
-  );
-}
 
 export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProps) {
   const [date, setDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
@@ -107,8 +101,7 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
             <div className="grid grid-cols-[auto_1fr_160px] gap-3 items-end">
 
               {/* Date */}
-              <div>
-                <FieldLabel>Date</FieldLabel>
+              <FieldRow label="Date">
                 <Input
                   type="date"
                   value={date}
@@ -116,11 +109,10 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
                   className="w-auto text-sm"
                   required
                 />
-              </div>
+              </FieldRow>
 
               {/* Amount */}
-              <div>
-                <FieldLabel required>Amount</FieldLabel>
+              <FieldRow label="Amount" required>
                 <div className="relative">
                   <span className="pointer-events-none select-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-mono">
                     ₹
@@ -136,11 +128,10 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
                     required
                   />
                 </div>
-              </div>
+              </FieldRow>
 
               {/* Direction toggle */}
-              <div>
-                <FieldLabel>Direction</FieldLabel>
+              <FieldRow label="Direction">
                 <div className="relative flex h-9 rounded-md overflow-hidden border border-border bg-muted text-xs font-medium">
                   {/* sliding bg */}
                   <div
@@ -151,8 +142,9 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
                         : "left-1/2 bg-emerald-500/15"
                     )}
                   />
-                  <button
+                  <motion.button
                     type="button"
+                    whileTap={{ scale: 0.97 }}
                     onClick={() => setDirection("debit")}
                     className={cn(
                       "relative z-10 flex-1 flex items-center justify-center gap-1.5 transition-colors",
@@ -161,9 +153,10 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
                   >
                     <ArrowDownLeft className="h-3 w-3" />
                     Debit
-                  </button>
-                  <button
+                  </motion.button>
+                  <motion.button
                     type="button"
+                    whileTap={{ scale: 0.97 }}
                     onClick={() => setDirection("credit")}
                     className={cn(
                       "relative z-10 flex-1 flex items-center justify-center gap-1.5 transition-colors border-l border-border",
@@ -172,15 +165,14 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
                   >
                     <ArrowUpRight className="h-3 w-3" />
                     Credit
-                  </button>
+                  </motion.button>
                 </div>
-              </div>
+              </FieldRow>
             </div>
 
 
             {/* ── Row 2: Account ── */}
-            <div>
-              <FieldLabel required>Account</FieldLabel>
+            <FieldRow label="Account" required>
               <FieldAutocomplete
                 fieldName="account"
                 value={account}
@@ -188,11 +180,10 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
                 placeholder="Select or type account name…"
                 className="w-full"
               />
-            </div>
+            </FieldRow>
 
             {/* ── Row 3: Description ── */}
-            <div>
-              <FieldLabel required>Description</FieldLabel>
+            <FieldRow label="Description" required>
               <Input
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -200,27 +191,25 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
                 className="text-sm"
                 required
               />
-            </div>
+            </FieldRow>
 
             {/* ── Row 4: Category + Tags ── */}
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <FieldLabel>Category</FieldLabel>
+              <FieldRow label="Category">
                 <CategorySelector
                   value={category}
                   onValueChange={setCategory}
                   placeholder="Select category…"
                   transactionDirection={direction}
                 />
-              </div>
-              <div>
-                <FieldLabel>Tags</FieldLabel>
+              </FieldRow>
+              <FieldRow label="Tags">
                 <MultiTagSelector
                   selectedTags={tags}
                   onTagsChange={setTags}
                   placeholder="Select or add tags…"
                 />
-              </div>
+              </FieldRow>
             </div>
 
           </div>

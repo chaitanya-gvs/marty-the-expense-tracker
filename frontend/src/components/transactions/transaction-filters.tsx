@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -556,7 +557,7 @@ export function TransactionFilters({
               <button
                 key={badge.key}
                 onClick={() => expandAndFocusControl(badge.key)}
-                className="rounded-full bg-primary/15 text-primary/80 border border-primary/30 px-2 py-0.5 text-xs flex items-center gap-1 hover:bg-primary/25 transition-colors"
+                className="rounded-full bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 text-[11px] font-medium flex items-center gap-1 hover:bg-primary/20 hover:border-primary/40 transition-all duration-150"
               >
                 {badge.label}
                 <X
@@ -589,17 +590,20 @@ export function TransactionFilters({
       </div>
 
       {/* Expanded Panel (Animated) */}
-      <div
-        id="transaction-filter-panel"
-        role="region"
-        aria-label="Filter options"
-        ref={panelRef}
-        data-open={expanded}
-        className={cn(
-          "transition-all duration-200 ease-out overflow-hidden",
-          expanded ? "max-h-[600px] opacity-100" : "max-h-0 opacity-0"
-        )}
-      >
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            id="transaction-filter-panel"
+            role="region"
+            aria-label="Filter options"
+            ref={panelRef}
+            key="filter-panel"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 400, damping: 40, mass: 0.8 }}
+            style={{ overflow: "hidden" }}
+          >
         <div className="bg-card p-4 border-t border-border">
 
           {/* Filter Grid */}
@@ -1324,7 +1328,9 @@ export function TransactionFilters({
           </div>
 
         </div>
-      </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

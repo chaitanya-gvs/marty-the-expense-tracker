@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Split, ArrowLeftRight } from "lucide-react";
 import { Transaction } from "@/lib/types";
 import { GroupTransferModal } from "./group-transfer-modal";
 
@@ -102,7 +103,7 @@ export function LinksColumn({
             onMouseLeave={handleMouseLeave}
             title="View split transaction group"
           >
-            <span className="text-base">⚡</span>
+            <Split className="h-4 w-4" />
           </Button>
         </div>
       )}
@@ -124,7 +125,7 @@ export function LinksColumn({
             onMouseLeave={handleMouseLeave}
             title={isTransferGroup ? "View transfer group" : "Group as transfer"}
           >
-            <span className="text-base">⇄</span>
+            <ArrowLeftRight className="h-4 w-4" />
           </Button>
         </div>
       )}
