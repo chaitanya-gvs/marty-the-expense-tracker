@@ -1,17 +1,13 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import { Modal } from "@/components/ui/modal";
+import { FieldRow } from "@/components/ui/modal/primitives";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -19,14 +15,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useUpdateTransaction, useTransaction } from "@/hooks/use-transactions";
 import { useCategories } from "@/hooks/use-categories";
 import { useTags } from "@/hooks/use-tags";
 import { Transaction, Tag } from "@/lib/types";
-import { format } from "date-fns";
-import { X, Save, Loader2 } from "lucide-react";
+import { Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
 import { CategorySelector } from "./category-selector";
@@ -56,7 +49,6 @@ export function TransactionEditModal({
   const transaction = transactionData?.data;
   const allTags = tagsData || [];
 
-  // Initialize form data when transaction loads
   useEffect(() => {
     if (transaction) {
       setFormData({
@@ -74,7 +66,6 @@ export function TransactionEditModal({
         is_transfer: transaction.is_transfer,
       });
 
-      // Convert string tags to Tag objects
       if (transaction.tags && transaction.tags.length > 0 && allTags.length > 0) {
         const tagObjects = transaction.tags
           .map(tagName => allTags.find(tag => tag.name === tagName))
@@ -90,28 +81,16 @@ export function TransactionEditModal({
     field: keyof Transaction,
     value: string | number | boolean | string[]
   ) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
-  const handleTagsChange = (tags: Tag[]) => {
-    setSelectedTags(tags);
+    setFormData(prev => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     try {
       await updateTransaction.mutateAsync({
         id: transactionId,
-        updates: {
-          ...formData,
-          tags: selectedTags.map(tag => tag.name),
-        },
+        updates: { ...formData, tags: selectedTags.map(tag => tag.name) },
       });
-
       toast.success("Transaction updated successfully");
       onClose();
     } catch {
@@ -119,306 +98,240 @@ export function TransactionEditModal({
     }
   };
 
-
   if (transactionLoading) {
     return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-2xl">
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin" />
-            <span className="ml-2">Loading transaction...</span>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <Modal open={isOpen} onClose={onClose} size="lg">
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <span className="ml-3 text-sm text-muted-foreground">Loading transaction…</span>
+        </div>
+      </Modal>
     );
   }
 
   if (!transaction) {
     return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-2xl">
-          <div className="text-center py-8">
-            <p className="text-gray-500">Transaction not found</p>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <Modal open={isOpen} onClose={onClose} size="lg">
+        <div className="text-center py-16">
+          <p className="text-muted-foreground">Transaction not found</p>
+        </div>
+      </Modal>
     );
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Edit Transaction</DialogTitle>
-        </DialogHeader>
+    <Modal open={isOpen} onClose={onClose} size="lg">
+      <Modal.Header
+        icon={<Save className="h-4 w-4" />}
+        title="Edit Transaction"
+        subtitle={transaction.description}
+        onClose={onClose}
+        variant="split"
+      />
 
-        <form onSubmit={handleSubmit} className="space-y-6 p-1">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Basic Information */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-semibold">Basic Information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 pt-0">
-                <div>
-                  <Label htmlFor="date">Date <span className="text-destructive/70">*</span></Label>
-                  <Input
-                    id="date"
-                    type="date"
-                    value={formData.date || ""}
-                    onChange={(e) => handleInputChange("date", e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="description">Description <span className="text-destructive/70">*</span></Label>
-                  <FieldAutocomplete
-                    fieldName="description"
-                    value={formData.description || ""}
-                    onValueChange={(val) => handleInputChange("description", val)}
-                    placeholder="Transaction description"
-                    onSave={async (val) => {
-                      // Predict category on simple save (Enter or Selection)
-                      if (val && !formData.category) {
-                        try {
-                          const prediction = await apiClient.predictCategory(val);
-                          if (prediction.data) {
-                            handleInputChange("category", prediction.data.name);
-                            toast.info(`Auto-categorized as ${prediction.data.name}`);
-                          }
-                        } catch {
-                          // Prediction failure is non-critical
-                        }
-                      }
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="account">Account</Label>
-                  <FieldAutocomplete
-                    fieldName="account"
-                    value={formData.account || ""}
-                    onValueChange={(val) => handleInputChange("account", val)}
-                    placeholder="Account name"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="amount">Amount <span className="text-destructive/70">*</span></Label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    step="0.01"
-                    value={formData.amount || ""}
-                    onChange={(e) => handleInputChange("amount", parseFloat(e.target.value))}
-                    placeholder="0.00"
-                    required
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Category & Direction */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-semibold">Category & Direction</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 pt-0">
-                <div>
-                  <Label htmlFor="direction">Direction</Label>
-                  <Select
-                    value={formData.direction || ""}
-                    onValueChange={(value) => handleInputChange("direction", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select direction" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="debit">Debit (Money Out)</SelectItem>
-                      <SelectItem value="credit">Credit (Money In)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="category">Category</Label>
-                  <CategorySelector
-                    value={formData.category || ""}
-                    onValueChange={(value) => handleInputChange("category", value)}
-                    placeholder="Select category"
-                    className="w-full"
-                    transactionDirection={formData.direction}
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="split_share_amount">Split Share Amount</Label>
-                  <Input
-                    id="split_share_amount"
-                    type="number"
-                    step="0.01"
-                    value={formData.split_share_amount || ""}
-                    onChange={(e) => handleInputChange("split_share_amount", parseFloat(e.target.value))}
-                    placeholder="Your share of the transaction"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Tags */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">Tags <span className="ml-1 text-xs font-normal text-muted-foreground/50">(optional)</span></CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 pt-0">
-              <MultiTagSelector
-                selectedTags={selectedTags}
-                onTagsChange={handleTagsChange}
-                placeholder="Select or create tags..."
+      <form onSubmit={handleSubmit}>
+        <Modal.Body className="space-y-4">
+          {/* Row 1: Date + Amount */}
+          <div className="grid grid-cols-2 gap-3">
+            <FieldRow label="Date" required>
+              <Input
+                type="date"
+                value={formData.date || ""}
+                onChange={(e) => handleInputChange("date", e.target.value)}
+                required
               />
-            </CardContent>
-          </Card>
-
-          {/* Notes & Flags */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">Notes & Flags <span className="ml-1 text-xs font-normal text-muted-foreground/50">(optional)</span></CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 pt-0">
-              <div>
-                <Label htmlFor="notes">Notes</Label>
-                <Textarea
-                  id="notes"
-                  value={formData.notes || ""}
-                  onChange={(e) => handleInputChange("notes", e.target.value)}
-                  placeholder="Additional notes about this transaction"
-                  rows={3}
+            </FieldRow>
+            <FieldRow label="Amount" required>
+              <div className="relative">
+                <span className="pointer-events-none select-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-mono">₹</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={formData.amount || ""}
+                  onChange={(e) => handleInputChange("amount", parseFloat(e.target.value))}
+                  placeholder="0.00"
+                  className="pl-7 font-mono tabular-nums"
+                  required
                 />
               </div>
+            </FieldRow>
+          </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center space-x-3">
-                  <input
-                    type="checkbox"
-                    id="is_shared"
-                    checked={formData.is_shared || false}
-                    onChange={(e) => handleInputChange("is_shared", e.target.checked)}
-                    className="rounded h-4 w-4"
-                  />
-                  <Label htmlFor="is_shared" className="text-sm">Shared Transaction</Label>
-                </div>
+          {/* Description */}
+          <FieldRow label="Description" required>
+            <FieldAutocomplete
+              fieldName="description"
+              value={formData.description || ""}
+              onValueChange={(val) => handleInputChange("description", val)}
+              placeholder="Transaction description"
+              onSave={async (val) => {
+                if (val && !formData.category) {
+                  try {
+                    const prediction = await apiClient.predictCategory(val);
+                    if (prediction.data) {
+                      handleInputChange("category", prediction.data.name);
+                      toast.info(`Auto-categorized as ${prediction.data.name}`);
+                    }
+                  } catch { /* non-critical */ }
+                }
+              }}
+            />
+          </FieldRow>
 
-                <div className="flex items-center space-x-3">
-                  <input
-                    type="checkbox"
-                    id="is_refund"
-                    checked={formData.is_refund || false}
-                    onChange={(e) => handleInputChange("is_refund", e.target.checked)}
-                    className="rounded h-4 w-4"
-                  />
-                  <Label htmlFor="is_refund" className="text-sm">Refund</Label>
-                </div>
+          {/* Account */}
+          <FieldRow label="Account">
+            <FieldAutocomplete
+              fieldName="account"
+              value={formData.account || ""}
+              onValueChange={(val) => handleInputChange("account", val)}
+              placeholder="Account name"
+            />
+          </FieldRow>
 
-                <div className="flex items-center space-x-3">
-                  <input
-                    type="checkbox"
-                    id="is_transfer"
-                    checked={formData.is_transfer || false}
-                    onChange={(e) => handleInputChange("is_transfer", e.target.checked)}
-                    className="rounded h-4 w-4"
-                  />
-                  <Label htmlFor="is_transfer" className="text-sm">Transfer</Label>
-                </div>
+          {/* Row 2: Direction + Category */}
+          <div className="grid grid-cols-2 gap-3">
+            <FieldRow label="Direction">
+              <Select
+                value={formData.direction || ""}
+                onValueChange={(value) => handleInputChange("direction", value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select direction" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="debit">Debit (Money Out)</SelectItem>
+                  <SelectItem value="credit">Credit (Money In)</SelectItem>
+                </SelectContent>
+              </Select>
+            </FieldRow>
+            <FieldRow label="Split Share Amount">
+              <div className="relative">
+                <span className="pointer-events-none select-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-mono">₹</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={formData.split_share_amount || ""}
+                  onChange={(e) => handleInputChange("split_share_amount", parseFloat(e.target.value))}
+                  placeholder="Your share"
+                  className="pl-7 font-mono tabular-nums"
+                />
               </div>
-            </CardContent>
-          </Card>
+            </FieldRow>
+          </div>
 
-          {/* Refunds & Adjustments */}
+          {/* Category */}
+          <FieldRow label="Category">
+            <CategorySelector
+              value={formData.category || ""}
+              onValueChange={(value) => handleInputChange("category", value)}
+              placeholder="Select category"
+              className="w-full"
+              transactionDirection={formData.direction}
+            />
+          </FieldRow>
+
+          {/* Tags */}
+          <FieldRow label="Tags">
+            <MultiTagSelector
+              selectedTags={selectedTags}
+              onTagsChange={setSelectedTags}
+              placeholder="Select or create tags…"
+            />
+          </FieldRow>
+
+          {/* Notes */}
+          <FieldRow label="Notes">
+            <Textarea
+              value={formData.notes || ""}
+              onChange={(e) => handleInputChange("notes", e.target.value)}
+              placeholder="Additional notes about this transaction"
+              rows={3}
+            />
+          </FieldRow>
+
+          {/* Flags */}
+          <div className="rounded-lg bg-muted/40 border border-border/50 p-3 space-y-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Flags</p>
+            {[
+              { id: "is_shared", label: "Shared Transaction" },
+              { id: "is_refund", label: "Refund" },
+              { id: "is_transfer", label: "Transfer" },
+            ].map(({ id, label }) => (
+              <div key={id} className="flex items-center gap-2.5">
+                <Checkbox
+                  id={id}
+                  checked={(formData[id as keyof Transaction] as boolean) || false}
+                  onCheckedChange={(checked) => handleInputChange(id as keyof Transaction, checked === true)}
+                />
+                <Label htmlFor={id} className="text-sm cursor-pointer">{label}</Label>
+              </div>
+            ))}
+          </div>
+
           {/* Transfer Group */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">Transfer Group <span className="ml-1 text-xs font-normal text-muted-foreground/50">(optional)</span></CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 pt-0">
-              <TransferGroupSection
-                transaction={transaction}
-                allTransactions={[]} // This would need to be passed from parent
-                onGroupTransfer={async (transactionIds: string[]) => {
-                  try {
-                    await apiClient.groupTransfer(transactionIds);
-                    toast.success(`Grouped ${transactionIds.length} transactions as a transfer`);
-                  } catch {
-                    toast.error("Failed to group transfer");
-                  }
-                }}
-                onUngroupTransfer={async (transactionId: string) => {
-                  try {
-                    await updateTransaction.mutateAsync({
-                      id: transactionId,
-                      updates: { transaction_group_id: undefined },
-                    });
-                    toast.success("Transfer ungrouped successfully");
-                  } catch {
-                    toast.error("Failed to ungroup transfer");
-                  }
-                }}
-                onAddToTransferGroup={async (transactionIds: string[]) => {
-                  try {
-                    const targetGroupId = transaction.transaction_group_id;
-                    const updatePromises = transactionIds.map((id: string) =>
-                      updateTransaction.mutateAsync({
-                        id,
-                        updates: { transaction_group_id: targetGroupId },
-                      })
-                    );
-                    await Promise.all(updatePromises);
-                    toast.success(`Added ${transactionIds.length} transactions to transfer group`);
-                  } catch {
-                    toast.error("Failed to add to transfer group");
-                  }
-                }}
-                onRemoveFromTransferGroup={async (transactionId: string) => {
-                  try {
-                    await updateTransaction.mutateAsync({
-                      id: transactionId,
-                      updates: { transaction_group_id: undefined },
-                    });
-                    toast.success("Transaction removed from transfer group");
-                  } catch {
-                    toast.error("Failed to remove from transfer group");
-                  }
-                }}
-              />
-            </CardContent>
-          </Card>
+          <div className="rounded-lg bg-muted/40 border border-border/50 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Transfer Group</p>
+            <TransferGroupSection
+              transaction={transaction}
+              allTransactions={[]}
+              onGroupTransfer={async (transactionIds: string[]) => {
+                try {
+                  await apiClient.groupTransfer(transactionIds);
+                  toast.success(`Grouped ${transactionIds.length} transactions as a transfer`);
+                } catch {
+                  toast.error("Failed to group transfer");
+                }
+              }}
+              onUngroupTransfer={async (transactionId: string) => {
+                try {
+                  await updateTransaction.mutateAsync({ id: transactionId, updates: { transaction_group_id: undefined } });
+                  toast.success("Transfer ungrouped successfully");
+                } catch {
+                  toast.error("Failed to ungroup transfer");
+                }
+              }}
+              onAddToTransferGroup={async (transactionIds: string[]) => {
+                try {
+                  const targetGroupId = transaction.transaction_group_id;
+                  await Promise.all(transactionIds.map((id: string) =>
+                    updateTransaction.mutateAsync({ id, updates: { transaction_group_id: targetGroupId } })
+                  ));
+                  toast.success(`Added ${transactionIds.length} transactions to transfer group`);
+                } catch {
+                  toast.error("Failed to add to transfer group");
+                }
+              }}
+              onRemoveFromTransferGroup={async (transactionId: string) => {
+                try {
+                  await updateTransaction.mutateAsync({ id: transactionId, updates: { transaction_group_id: undefined } });
+                  toast.success("Transaction removed from transfer group");
+                } catch {
+                  toast.error("Failed to remove from transfer group");
+                }
+              }}
+            />
+          </div>
+        </Modal.Body>
 
-          <DialogFooter className="flex justify-end gap-3 pt-4">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={updateTransaction.isPending}
-              className="min-w-[120px]"
-            >
-              {updateTransaction.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Changes
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        <Modal.Footer>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={updateTransaction.isPending} className="min-w-[120px]">
+            {updateTransaction.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving…
+              </>
+            ) : (
+              <>
+                <Save className="mr-2 h-4 w-4" />
+                Save Changes
+              </>
+            )}
+          </Button>
+        </Modal.Footer>
+      </form>
+    </Modal>
   );
 }

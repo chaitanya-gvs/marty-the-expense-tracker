@@ -174,7 +174,7 @@ export function GroupExpenseSearchModal({
     <Modal open={isOpen} onClose={onClose} size="lg">
       <Modal.Header
         icon={<Layers className="h-4 w-4" />}
-        title="Group expense"
+        title="Group Expense"
         subtitle={
           isViewExistingGroup
             ? "These transactions are grouped together. You can ungroup them or add more below."
@@ -189,8 +189,8 @@ export function GroupExpenseSearchModal({
       <Modal.Body className="space-y-4">
         {isViewExistingGroup && (
           <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">Transactions in this group:</p>
-            <div className="space-y-2 max-h-[240px] overflow-y-auto pr-1 rounded-lg border border-border bg-muted/30 p-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Transactions in This Group</p>
+            <div className="space-y-2 max-h-[240px] overflow-y-auto scrollbar-none pr-1 rounded-lg border border-border bg-muted/30 p-2">
               {loadingGroupMembers ? (
                 <div className="flex items-center justify-center py-6">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -204,13 +204,15 @@ export function GroupExpenseSearchModal({
                     <div className="min-w-0">
                       <p className="font-medium text-sm truncate">{t.description}</p>
                       <p className="text-xs text-muted-foreground">
-                        {formatDate(t.date)}
-                        {t.account && ` · ${t.account.split(" ").slice(0, -2).join(" ") || t.account}`}
+                        {[
+                          formatDate(t.date),
+                          t.account?.split(" ").slice(0, -2).join(" ") || (t.account || null),
+                        ].filter(Boolean).join(" · ")}
                       </p>
                     </div>
                     <Badge variant={t.direction === "debit" ? "destructive" : "default"} className="shrink-0 text-xs">
                       {t.direction === "credit" ? "+" : "−"}
-                      {formatCurrency(Math.abs(t.amount))}
+                      {formatCurrency(Math.abs(t.is_shared && t.split_share_amount !== undefined ? t.split_share_amount : t.amount))}
                     </Badge>
                   </div>
                 ))
@@ -221,18 +223,20 @@ export function GroupExpenseSearchModal({
 
         {initialTransaction && !isViewExistingGroup && (
           <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-            <p className="text-xs font-medium text-muted-foreground mb-2">Included in group:</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Included in Group</p>
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="font-medium text-sm truncate">{initialTransaction.description}</p>
                 <p className="text-xs text-muted-foreground">
-                  {formatDate(initialTransaction.date)}
-                  {initialTransaction.account && ` · ${initialTransaction.account.split(" ").slice(0, -2).join(" ") || initialTransaction.account}`}
+                  {[
+                    formatDate(initialTransaction.date),
+                    initialTransaction.account?.split(" ").slice(0, -2).join(" ") || (initialTransaction.account || null),
+                  ].filter(Boolean).join(" · ")}
                 </p>
               </div>
               <Badge variant={initialTransaction.direction === "debit" ? "destructive" : "default"} className="shrink-0 text-xs">
                 {initialTransaction.direction === "credit" ? "+" : "−"}
-                {formatCurrency(Math.abs(initialTransaction.amount))}
+                {formatCurrency(Math.abs(initialTransaction.is_shared && initialTransaction.split_share_amount !== undefined ? initialTransaction.split_share_amount : initialTransaction.amount))}
               </Badge>
             </div>
           </div>
@@ -273,10 +277,10 @@ export function GroupExpenseSearchModal({
         )}
 
         {debouncedQuery && !isLoading && results.length > 0 && (
-          <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+          <div className="space-y-2 max-h-[280px] overflow-y-auto scrollbar-none pr-1">
             <div className="flex items-center justify-between sticky top-0 bg-background py-1">
-              <span className="text-xs font-medium text-muted-foreground">
-                {initialTransaction && !isViewExistingGroup ? 1 + selectedIds.size : isViewExistingGroup ? effectiveGroupMembers.length + selectedIds.size : selectedIds.size} in group
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {initialTransaction && !isViewExistingGroup ? 1 + selectedIds.size : isViewExistingGroup ? effectiveGroupMembers.length + selectedIds.size : selectedIds.size} In Group
               </span>
             </div>
             {results.map((t) => (
@@ -296,13 +300,16 @@ export function GroupExpenseSearchModal({
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-sm truncate">{t.description}</div>
                   <div className="text-xs text-muted-foreground">
-                    {formatDate(t.date)} · {t.account.split(" ").slice(0, -2).join(" ")}
-                    {t.category && ` · ${t.category}`}
+                    {[
+                      formatDate(t.date),
+                      t.account?.split(" ").slice(0, -2).join(" ") || null,
+                      t.category || null,
+                    ].filter(Boolean).join(" · ")}
                   </div>
                 </div>
                 <Badge variant={t.direction === "debit" ? "destructive" : "default"} className="shrink-0 text-xs">
                   {t.direction === "credit" ? "+" : "−"}
-                  {formatCurrency(Math.abs(t.amount))}
+                  {formatCurrency(Math.abs(t.is_shared && t.split_share_amount !== undefined ? t.split_share_amount : t.amount))}
                 </Badge>
               </label>
             ))}

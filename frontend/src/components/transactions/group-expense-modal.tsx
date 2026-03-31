@@ -2,15 +2,13 @@
 
 import React, { useState, useEffect } from "react";
 import { Modal } from "@/components/ui/modal";
-import { ResultItem } from "@/components/ui/modal/primitives";
+import { FieldRow, ResultItem } from "@/components/ui/modal/primitives";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
 import { Transaction } from "@/lib/types";
 import { apiClient } from "@/lib/api/client";
 import { toast } from "sonner";
-import { Loader2, Layers } from "lucide-react";
+import { Loader2, Layers, TrendingUp, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FieldAutocomplete } from "./field-autocomplete";
 import { CategoryAutocomplete } from "./category-autocomplete";
@@ -106,14 +104,11 @@ export function GroupExpenseModal({
 
       <Modal.Body className="space-y-6">
         {/* Net Amount Summary */}
-        <div className="rounded-xl bg-[var(--modal-accent)]/10 border border-[var(--modal-accent)]/30 p-4">
-          <div className="text-[10px] uppercase tracking-wider text-[var(--modal-accent)] mb-2 font-semibold">
-            Net Amount Calculation
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-muted-foreground">Credits (positive):</span>
-              <span className="text-emerald-500 font-medium">
+        <div className="rounded-xl bg-muted/40 border border-border/60 p-4">
+          <div className="grid grid-cols-3 divide-x divide-border/60">
+            <div className="pr-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Credits</p>
+              <p className="font-mono text-sm font-semibold text-emerald-500 tabular-nums">
                 +{formatCurrency(selectedTransactions
                   .filter(t => t.direction === "credit")
                   .reduce((sum, t) => {
@@ -121,41 +116,43 @@ export function GroupExpenseModal({
                     return sum + (t.is_shared && t.split_share_amount !== undefined ? t.split_share_amount : amount);
                   }, 0)
                 )}
-              </span>
+              </p>
             </div>
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-muted-foreground">Debits (negative):</span>
-              <span className="text-destructive font-medium">
-                -{formatCurrency(selectedTransactions
+            <div className="px-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Debits</p>
+              <p className="font-mono text-sm font-semibold text-destructive tabular-nums">
+                −{formatCurrency(selectedTransactions
                   .filter(t => t.direction === "debit")
                   .reduce((sum, t) => {
                     const amount = t.net_amount ?? t.amount;
                     return sum + (t.is_shared && t.split_share_amount !== undefined ? t.split_share_amount : amount);
                   }, 0)
                 )}
-              </span>
+              </p>
             </div>
-            <div className="pt-2 border-t border-[var(--modal-accent)]/20">
-              <div className="flex justify-between items-center">
-                <span className="font-semibold">Net Amount:</span>
-                <span className={cn(
-                  "text-lg font-bold",
-                  netAmount >= 0 ? "text-emerald-500" : "text-destructive"
-                )}>
-                  {netAmount >= 0 ? "+" : ""}
-                  {formatCurrency(Math.abs(netAmount))}
+            <div className="pl-4 text-right">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Net Amount</p>
+              <p className={cn(
+                "font-mono text-base font-bold tabular-nums tracking-tight",
+                netAmount >= 0 ? "text-emerald-500" : "text-destructive"
+              )}>
+                {netAmount >= 0 ? "+" : "−"}{formatCurrency(Math.abs(netAmount))}
+              </p>
+              <div className="flex items-center justify-end gap-1 mt-0.5">
+                {netAmount >= 0
+                  ? <TrendingUp className="h-3 w-3 text-emerald-500" />
+                  : <TrendingDown className="h-3 w-3 text-destructive" />
+                }
+                <span className="text-[10px] text-muted-foreground">
+                  {netAmount >= 0 ? "Credit" : "Debit"}
                 </span>
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                Direction: {netAmount >= 0 ? "Credit ↑" : "Debit ↓"}
               </div>
             </div>
           </div>
         </div>
 
         {/* Description Input */}
-        <div className="space-y-2">
-          <Label htmlFor="description">Description</Label>
+        <FieldRow label="Description">
           <FieldAutocomplete
             fieldName="description"
             value={description}
@@ -163,11 +160,10 @@ export function GroupExpenseModal({
             placeholder="Enter a description for the grouped expense"
             onSave={async (val) => setDescription(val ?? "")}
           />
-        </div>
+        </FieldRow>
 
         {/* Category Input (optional) */}
-        <div className="space-y-2">
-          <Label htmlFor="category">Category (optional)</Label>
+        <FieldRow label="Category (optional)">
           <CategoryAutocomplete
             value={category}
             onValueChange={setCategory}
@@ -182,14 +178,14 @@ export function GroupExpenseModal({
               Will use: {selectedTransactions[0].category}
             </p>
           )}
-        </div>
+        </FieldRow>
 
         {/* Transactions to be Grouped */}
         <div className="space-y-2">
-          <div className="text-sm font-medium text-foreground/80">
-            Transactions to group ({selectedTransactions.length}):
-          </div>
-          <div className="max-h-[300px] overflow-y-auto space-y-2 pr-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Transactions to group ({selectedTransactions.length})
+          </p>
+          <div className="max-h-[300px] overflow-y-auto scrollbar-none space-y-2 pr-2">
             {selectedTransactions.map((tx) => {
               const effectiveAmount = tx.is_shared && tx.split_share_amount !== undefined 
                 ? tx.split_share_amount 
@@ -200,27 +196,21 @@ export function GroupExpenseModal({
                   <div className="flex items-center justify-between w-full">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
+                        {tx.direction === "debit"
+                          ? <TrendingDown className="h-3 w-3 flex-shrink-0 text-destructive" />
+                          : <TrendingUp className="h-3 w-3 flex-shrink-0 text-emerald-500" />
+                        }
                         <span className="text-sm font-medium truncate">
                           {tx.description}
                         </span>
-                        <Badge 
-                          variant={tx.direction === "debit" ? "destructive" : "default"}
-                          className="text-[10px] px-1.5 py-0 h-4 flex-shrink-0"
-                        >
-                          {tx.direction}
-                        </Badge>
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>{formatDate(tx.date)}</span>
-                        <span>•</span>
-                        <span>{tx.account.split(" ").slice(0, -2).join(" ")}</span>
-                        {tx.category && (
-                          <>
-                            <span>•</span>
-                            <span>{tx.category}</span>
-                          </>
-                        )}
-                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {[
+                          formatDate(tx.date),
+                          tx.account?.split(" ").slice(0, -2).join(" ") || null,
+                          tx.category || null,
+                        ].filter(Boolean).join(" · ")}
+                      </p>
                     </div>
                     <div className="text-right ml-4 flex-shrink-0">
                       <div className={cn(
@@ -248,14 +238,10 @@ export function GroupExpenseModal({
           </div>
         </div>
 
-        {/* Info Note */}
-        <div className="rounded-lg bg-primary/10 border border-primary/20 p-3">
-          <p className="text-xs text-primary">
-            <strong>Note:</strong> The grouped expense will hide these individual transactions 
-            and show only the collapsed transaction with the net amount. You can expand to view 
-            details later, and the collapsed transaction can be split/shared like any other transaction.
-          </p>
-        </div>
+        {/* Subtle hint */}
+        <p className="text-center text-[11px] text-muted-foreground/60">
+          Individual transactions will be hidden. You can expand or ungroup at any time.
+        </p>
       </Modal.Body>
 
       <Modal.Footer>

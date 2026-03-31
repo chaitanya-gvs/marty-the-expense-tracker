@@ -25,6 +25,8 @@ import {
   FileText,
   Layers,
   ChevronDown,
+  TrendingDown,
+  TrendingUp,
 } from "lucide-react";
 import { Transaction, Tag, Category } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -387,9 +389,7 @@ export function buildTransactionColumns(
         }
 
         const description = getValue();
-        const fullText = row.original.notes
-          ? `${description} - ${row.original.notes}`
-          : description;
+        const fullText = description;
         const isGroupedExpense = row.original.is_grouped_expense;
         const isExpanded = row.original.transaction_group_id
           ? expandedGroupedExpenses.has(row.original.transaction_group_id)
@@ -427,14 +427,6 @@ export function buildTransactionColumns(
                     <Layers className="h-3 w-3 text-violet-300 flex-shrink-0" />
                   )}
                 </div>
-                {row.original.notes && (
-                  <div
-                    className="text-xs text-muted-foreground truncate"
-                    title={row.original.notes}
-                  >
-                    {row.original.notes}
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -502,13 +494,17 @@ export function buildTransactionColumns(
           <div className="flex flex-col items-end whitespace-nowrap">
             <div
               className={cn(
-                "font-mono font-semibold text-sm inline-flex items-center px-2.5 py-0.5 rounded-md tabular-nums",
+                "font-mono font-semibold text-sm inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-md tabular-nums",
                 direction === "debit"
-                  ? "bg-[#F44D4D]/15 text-[#F44D4D]"
-                  : "bg-emerald-400/15 text-emerald-300"
+                  ? "bg-[#F44D4D]/10 text-[#F44D4D]"
+                  : "bg-emerald-400/10 text-emerald-300"
               )}
             >
-              {direction === "debit" ? "↓" : "↑"} {formatCurrency(displayAmount)}
+              {direction === "debit"
+                ? <TrendingDown className="h-3 w-3 shrink-0" />
+                : <TrendingUp className="h-3 w-3 shrink-0" />
+              }
+              {formatCurrency(displayAmount)}
             </div>
             {showTotal && (
               <div className="text-xs text-muted-foreground mt-1 text-right font-mono">
@@ -860,7 +856,7 @@ export function buildTransactionColumns(
                 )}
               </div>
             ) : (
-              <span className="text-xs text-muted-foreground hover:text-foreground whitespace-nowrap">
+              <span className="text-xs text-muted-foreground/40 hover:text-muted-foreground/70 whitespace-nowrap transition-colors">
                 Click to add tags
               </span>
             )}
@@ -919,8 +915,8 @@ export function buildTransactionColumns(
                 "h-7 w-7 p-0 rounded-full transition-all duration-200",
                 transaction.is_shared
                   ? "bg-violet-400/15 text-violet-300 hover:bg-violet-400/20 shadow-[0_0_12px_rgba(196,181,253,0.2)]"
-                  : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                isFocusedActionsColumn && focusedActionButton === 0 && "ring-2 ring-blue-500 ring-inset"
+                  : "opacity-0 group-hover:opacity-100 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                isFocusedActionsColumn && focusedActionButton === 0 && "ring-2 ring-blue-500 ring-inset opacity-100"
               )}
               onClick={() => {
                 setSelectedTransactionForSplit(transaction);
@@ -943,8 +939,8 @@ export function buildTransactionColumns(
                 "h-7 w-7 p-0 rounded-full transition-all duration-200",
                 transaction.transaction_group_id && !transaction.is_split
                   ? "bg-teal-400/15 text-teal-300 hover:bg-teal-400/20 shadow-[0_0_12px_rgba(45,212,191,0.2)]"
-                  : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                isFocusedActionsColumn && focusedActionButton === 1 && "ring-2 ring-blue-500 ring-inset"
+                  : "opacity-0 group-hover:opacity-100 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                isFocusedActionsColumn && focusedActionButton === 1 && "ring-2 ring-blue-500 ring-inset opacity-100"
               )}
               onClick={(e) => {
                 e.stopPropagation();
@@ -974,8 +970,8 @@ export function buildTransactionColumns(
                 "h-7 w-7 p-0 rounded-full transition-all duration-200",
                 isSplitGroup
                   ? "bg-sky-400/15 text-sky-300 hover:bg-sky-400/20 shadow-[0_0_12px_rgba(125,211,252,0.2)]"
-                  : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                isFocusedActionsColumn && focusedActionButton === 2 && "ring-2 ring-blue-500 ring-inset"
+                  : "opacity-0 group-hover:opacity-100 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                isFocusedActionsColumn && focusedActionButton === 2 && "ring-2 ring-blue-500 ring-inset opacity-100"
               )}
               onClick={(e) => {
                 e.stopPropagation();
@@ -1001,8 +997,8 @@ export function buildTransactionColumns(
                 "h-7 w-7 p-0 rounded-full transition-all duration-200",
                 transaction.related_mails && transaction.related_mails.length > 0
                   ? "bg-amber-400/15 text-amber-300 hover:bg-amber-400/20 shadow-[0_0_12px_rgba(251,191,36,0.2)]"
-                  : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                isFocusedActionsColumn && focusedActionButton === 3 && "ring-2 ring-blue-500 ring-inset"
+                  : "opacity-0 group-hover:opacity-100 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                isFocusedActionsColumn && focusedActionButton === 3 && "ring-2 ring-blue-500 ring-inset opacity-100"
               )}
               onClick={(e) => {
                 e.stopPropagation();
@@ -1026,8 +1022,8 @@ export function buildTransactionColumns(
                 "h-7 w-7 p-0 rounded-full transition-all duration-200",
                 transaction.is_flagged === true
                   ? "bg-[#F44D4D]/15 text-[#F44D4D] hover:bg-[#F44D4D]/20 shadow-[0_0_12px_rgba(244,77,77,0.2)]"
-                  : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                isFocusedActionsColumn && focusedActionButton === 4 && "ring-2 ring-blue-500 ring-inset"
+                  : "opacity-0 group-hover:opacity-100 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                isFocusedActionsColumn && focusedActionButton === 4 && "ring-2 ring-blue-500 ring-inset opacity-100"
               )}
               onClick={async (e) => {
                 e.stopPropagation();
@@ -1057,8 +1053,8 @@ export function buildTransactionColumns(
               variant="ghost"
               size="sm"
               className={cn(
-                "h-7 w-7 p-0 rounded-full transition-all duration-200 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                isFocusedActionsColumn && focusedActionButton === 5 && "ring-2 ring-blue-500 ring-inset"
+                "h-7 w-7 p-0 rounded-full transition-all duration-200 opacity-0 group-hover:opacity-100 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                isFocusedActionsColumn && focusedActionButton === 5 && "ring-2 ring-blue-500 ring-inset opacity-100"
               )}
               onClick={async (e) => {
                 e.stopPropagation();
@@ -1087,8 +1083,8 @@ export function buildTransactionColumns(
               variant="ghost"
               size="sm"
               className={cn(
-                "h-7 w-7 p-0 rounded-full transition-all duration-200 bg-muted/40 text-muted-foreground hover:bg-[#F44D4D]/15 hover:text-[#F44D4D]",
-                isFocusedActionsColumn && focusedActionButton === 6 && "ring-2 ring-blue-500 ring-inset"
+                "h-7 w-7 p-0 rounded-full transition-all duration-200 opacity-0 group-hover:opacity-100 bg-muted/40 text-muted-foreground hover:bg-[#F44D4D]/15 hover:text-[#F44D4D]",
+                isFocusedActionsColumn && focusedActionButton === 6 && "ring-2 ring-blue-500 ring-inset opacity-100"
               )}
               onClick={(e) => {
                 e.stopPropagation();
@@ -1106,8 +1102,8 @@ export function buildTransactionColumns(
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  "h-7 w-7 p-0 rounded-full transition-all duration-200 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                  isFocusedActionsColumn && focusedActionButton === 7 && "ring-2 ring-blue-500 ring-inset"
+                  "h-7 w-7 p-0 rounded-full transition-all duration-200 opacity-0 group-hover:opacity-100 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  isFocusedActionsColumn && focusedActionButton === 7 && "ring-2 ring-blue-500 ring-inset opacity-100"
                 )}
                 onClick={(e) => {
                   e.stopPropagation();

@@ -1,6 +1,22 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { motion, useSpring, useMotionValueEvent } from "framer-motion";
+
+// 21st.dev animated number ticker — spring-physics count-up from 0
+function AnimatedStat({ value, format }: { value: number; format: (n: number) => string }) {
+  const spring = useSpring(0, { stiffness: 80, damping: 20 });
+  const [display, setDisplay] = useState(format(0));
+  useEffect(() => { if (value) spring.set(value); }, [value, spring]);
+  useMotionValueEvent(spring, "change", (v) => setDisplay(format(v)));
+  return <>{display}</>;
+}
+
+const _containerVariants = { hidden: {}, visible: { transition: { staggerChildren: 0.04 } } };
+const _itemVariants = {
+  hidden: { opacity: 0, y: 8 },
+  visible: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 400, damping: 35 } },
+};
 import { TransactionFilters } from "@/components/transactions/transaction-filters";
 import { TransactionsTable } from "@/components/transactions/transactions-table";
 import { AddTransactionModal } from "@/components/transactions/add-transaction-modal";
@@ -130,20 +146,20 @@ export function TransactionsPage() {
   if (error) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-semibold text-foreground">Transactions</h1>
+        <h1 className="text-3xl font-bold text-foreground tracking-tight">Transactions</h1>
         <p className="text-sm text-destructive">Error loading transactions: {error.message || 'Unknown error'}</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-5">
+    <motion.div className="space-y-5" variants={_containerVariants} initial="hidden" animate="visible">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <motion.div variants={_itemVariants} className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground tracking-tight">Transactions</h1>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">Transactions</h1>
           {filters.date_range?.start && (
-            <p className="text-xs text-muted-foreground/60 -mt-1">
+            <p className="text-xs text-muted-foreground/70 -mt-1">
               {filters.date_range.start} → {filters.date_range.end ?? "today"}
             </p>
           )}
@@ -160,62 +176,75 @@ export function TransactionsPage() {
           </Button>
           <Button
             size="sm"
-            className="gap-1.5 text-xs h-8 bg-primary hover:bg-primary/90 text-primary-foreground border border-transparent"
+            className="gap-1.5 text-xs h-8 bg-primary hover:bg-primary/90 text-primary-foreground border border-transparent shadow-[0_0_12px_color-mix(in_oklch,var(--color-primary)_35%,transparent)] hover:shadow-[0_0_20px_color-mix(in_oklch,var(--color-primary)_50%,transparent)] transition-shadow duration-200"
             onClick={() => setIsAddModalOpen(true)}
           >
             <Plus className="h-3.5 w-3.5" />
             Add
           </Button>
         </div>
-      </div>
+      </motion.div>
 
       {/* Stats Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 rounded-lg border border-border overflow-hidden bg-border gap-px">
-        <div className="bg-card px-4 py-4 min-w-0 overflow-hidden">
-          <p className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1.5 whitespace-nowrap">
-            <TrendingDown className="h-3.5 w-3.5 shrink-0 text-destructive/50" />
+      <motion.div variants={_itemVariants} className="grid grid-cols-2 sm:grid-cols-4 rounded-lg border border-border overflow-hidden bg-border gap-px shadow-[0_1px_8px_oklch(0%_0_0_/_0.08)] dark:shadow-[0_1px_16px_oklch(0%_0_0_/_0.4)]">
+        <div
+          className="bg-card px-4 py-4 min-w-0 overflow-hidden transition-colors duration-150 hover:bg-muted/60 cursor-default group relative before:absolute before:inset-0 before:pointer-events-none before:opacity-0 hover:before:opacity-100 before:transition-opacity before:duration-300 before:bg-[radial-gradient(circle_at_var(--mouse-x,50%)_var(--mouse-y,50%),oklch(from_var(--color-primary)_l_c_h_/_0.07),transparent_70%)]"
+          onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); e.currentTarget.style.setProperty("--mouse-x", `${((e.clientX - r.left) / r.width) * 100}%`); e.currentTarget.style.setProperty("--mouse-y", `${((e.clientY - r.top) / r.height) * 100}%`); }}
+        >
+          <p className="text-[11px] font-medium text-muted-foreground/70 mb-2 flex items-center gap-1.5 whitespace-nowrap tracking-wide uppercase">
+            <TrendingDown className="h-3.5 w-3.5 shrink-0 text-destructive/40 group-hover:text-destructive/80 transition-colors" />
             Total Spent
           </p>
-          <p className="font-mono text-base font-semibold text-foreground tabular-nums truncate">
-            {formatCurrency(totalDebits)}
+          <p className="font-mono text-xl font-semibold text-foreground tabular-nums truncate tracking-tight">
+            <AnimatedStat value={totalDebits} format={formatCurrency} />
           </p>
         </div>
-        <div className="bg-card px-4 py-4 min-w-0 overflow-hidden">
-          <p className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1.5 whitespace-nowrap">
-            <TrendingUp className="h-3.5 w-3.5 shrink-0 text-emerald-500/60" />
+        <div
+          className="bg-card px-4 py-4 min-w-0 overflow-hidden transition-colors duration-150 hover:bg-muted/60 cursor-default group relative before:absolute before:inset-0 before:pointer-events-none before:opacity-0 hover:before:opacity-100 before:transition-opacity before:duration-300 before:bg-[radial-gradient(circle_at_var(--mouse-x,50%)_var(--mouse-y,50%),oklch(from_var(--color-primary)_l_c_h_/_0.07),transparent_70%)]"
+          onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); e.currentTarget.style.setProperty("--mouse-x", `${((e.clientX - r.left) / r.width) * 100}%`); e.currentTarget.style.setProperty("--mouse-y", `${((e.clientY - r.top) / r.height) * 100}%`); }}
+        >
+          <p className="text-[11px] font-medium text-muted-foreground/70 mb-2 flex items-center gap-1.5 whitespace-nowrap tracking-wide uppercase">
+            <TrendingUp className="h-3.5 w-3.5 shrink-0 text-emerald-500/50 group-hover:text-emerald-500/90 transition-colors" />
             Total In
           </p>
-          <p className="font-mono text-base font-semibold text-foreground tabular-nums truncate">
-            {formatCurrency(totalCredits)}
+          <p className="font-mono text-xl font-semibold text-emerald-500 tabular-nums truncate tracking-tight">
+            <AnimatedStat value={totalCredits} format={formatCurrency} />
           </p>
         </div>
-        <div className="bg-card px-4 py-4 min-w-0 overflow-hidden">
-          <p className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1.5 whitespace-nowrap">
-            <ArrowRightLeft className="h-3.5 w-3.5 shrink-0" />
+        <div
+          className="bg-card px-4 py-4 min-w-0 overflow-hidden transition-colors duration-150 hover:bg-muted/60 cursor-default group relative before:absolute before:inset-0 before:pointer-events-none before:opacity-0 hover:before:opacity-100 before:transition-opacity before:duration-300 before:bg-[radial-gradient(circle_at_var(--mouse-x,50%)_var(--mouse-y,50%),oklch(from_var(--color-primary)_l_c_h_/_0.07),transparent_70%)]"
+          onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); e.currentTarget.style.setProperty("--mouse-x", `${((e.clientX - r.left) / r.width) * 100}%`); e.currentTarget.style.setProperty("--mouse-y", `${((e.clientY - r.top) / r.height) * 100}%`); }}
+        >
+          <p className="text-[11px] font-medium text-muted-foreground/70 mb-2 flex items-center gap-1.5 whitespace-nowrap tracking-wide uppercase">
+            <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground/80 transition-colors" />
             Net
           </p>
-          <p className={`font-mono text-base font-semibold tabular-nums truncate ${net >= 0 ? "text-emerald-500" : "text-destructive"}`}>
-            {net >= 0 ? "+" : "−"}{formatCurrency(Math.abs(net))}
+          <p className={`font-mono text-xl font-semibold tabular-nums truncate tracking-tight ${net >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+            {net >= 0 ? "+" : "−"}<AnimatedStat value={Math.abs(net)} format={formatCurrency} />
           </p>
         </div>
-        <div className="bg-card px-4 py-4 min-w-0 overflow-hidden">
-          <p className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1.5 whitespace-nowrap">
-            <Hash className="h-3.5 w-3.5 shrink-0" />
+        <div
+          className="bg-card px-4 py-4 min-w-0 overflow-hidden transition-colors duration-150 hover:bg-muted/60 cursor-default group relative before:absolute before:inset-0 before:pointer-events-none before:opacity-0 hover:before:opacity-100 before:transition-opacity before:duration-300 before:bg-[radial-gradient(circle_at_var(--mouse-x,50%)_var(--mouse-y,50%),oklch(from_var(--color-primary)_l_c_h_/_0.07),transparent_70%)]"
+          onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); e.currentTarget.style.setProperty("--mouse-x", `${((e.clientX - r.left) / r.width) * 100}%`); e.currentTarget.style.setProperty("--mouse-y", `${((e.clientY - r.top) / r.height) * 100}%`); }}
+        >
+          <p className="text-[11px] font-medium text-muted-foreground/70 mb-2 flex items-center gap-1.5 whitespace-nowrap tracking-wide uppercase">
+            <Hash className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground/80 transition-colors" />
             Transactions
           </p>
-          <p className="font-mono text-base font-semibold text-foreground tabular-nums">
-            {count}
+          <p className="font-mono text-xl font-semibold text-foreground tabular-nums tracking-tight">
+            <AnimatedStat value={count} format={(n) => String(Math.round(n))} />
           </p>
         </div>
-      </div>
-
+      </motion.div>
 
       {/* Filters and Table */}
-      <TransactionFilters
-        filters={filters}
-        onFiltersChange={handleFiltersChange}
-        onClearFilters={handleClearFilters}
-      />
+      <motion.div variants={_itemVariants}>
+        <TransactionFilters
+          filters={filters}
+          onFiltersChange={handleFiltersChange}
+          onClearFilters={handleClearFilters}
+        />
+      </motion.div>
       <TransactionsTable filters={filters} sort={sort} />
 
       <AddTransactionModal
@@ -223,6 +252,6 @@ export function TransactionsPage() {
         onClose={() => setIsAddModalOpen(false)}
       />
       <WorkflowSheet open={isWorkflowOpen} onOpenChange={setIsWorkflowOpen} />
-    </div>
+    </motion.div>
   );
 }
