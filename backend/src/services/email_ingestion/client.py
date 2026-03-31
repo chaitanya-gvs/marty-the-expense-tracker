@@ -949,7 +949,8 @@ class EmailClient:
         end_date: Optional[str] = None,
         custom_search_term: Optional[str] = None,
         search_amount: Optional[float] = None,
-        also_search_amount_minus_one: bool = False
+        also_search_amount_minus_one: bool = False,
+        amount_tolerance: Optional[int] = None,
     ) -> List[dict[str, Any]]:
         """
         Search Gmail for emails related to a transaction.
@@ -964,7 +965,12 @@ class EmailClient:
             custom_search_term: Custom search term (e.g., 'Uber', 'Swiggy')
             search_amount: Optional override for search amount
             also_search_amount_minus_one: Also search for amount-1 (for UPI rounding)
-        
+            amount_tolerance: If set, search for integer amounts in range
+                [amount - tolerance, amount] instead of a single amount.
+                E.g. tolerance=5 on ₹198 → searches "193 OR 194 OR 195 OR 196 OR 197 OR 198".
+                Note: does not help for sub-rupee decimal fares (e.g. ₹197.72);
+                use keyword search (custom_search_term) for those cases.
+
         Returns:
             List of email metadata dictionaries
         """
@@ -1002,25 +1008,30 @@ class EmailClient:
             if include_amount_filter:
                 # Use search_amount if provided, otherwise use transaction_amount
                 amount_to_search = search_amount if search_amount is not None else abs(transaction_amount)
-                
-                # Format amount for search (handle both decimal and integer amounts)
+
+                # Format the base amount string
                 if amount_to_search == int(amount_to_search):
                     amount_str = str(int(amount_to_search))
                 else:
                     amount_str = str(amount_to_search)
-                
+
                 # Build amount search query
-                if also_search_amount_minus_one:
-                    # Search for either amount or amount-1
+                if amount_tolerance and amount_tolerance > 0:
+                    # Range query: search for all integer amounts from (amount - tolerance) to amount
+                    base = int(amount_to_search)
+                    lower = max(0, base - amount_tolerance)
+                    range_terms = " OR ".join(f'"{v}"' for v in range(lower, base + 1))
+                    query_parts.append(f"({range_terms})")
+                elif also_search_amount_minus_one:
+                    # Search for either amount or amount-1 (legacy UPI rounding helper)
                     amount_minus_one = amount_to_search - 1
                     if amount_minus_one == int(amount_minus_one):
                         amount_minus_one_str = str(int(amount_minus_one))
                     else:
                         amount_minus_one_str = str(amount_minus_one)
-                    # Use OR to search for either amount
                     query_parts.append(f'("{amount_str}" OR "{amount_minus_one_str}")')
                 else:
-                    # Search for amount only
+                    # Exact amount only
                     query_parts.append(f'"{amount_str}"')
             
             # Build final query
