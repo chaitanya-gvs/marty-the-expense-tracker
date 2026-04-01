@@ -27,14 +27,14 @@ import { Plus, Upload, X, TrendingDown, TrendingUp, ArrowRightLeft, Hash } from 
 import { WorkflowSheet } from "@/components/workflow/workflow-sheet";
 import { formatCurrency } from "@/lib/format-utils";
 
-// Get default date range (This Month)
+// Get default date range (Last Month)
 function getDefaultDateRange() {
   const today = new Date();
-  const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-  return {
-    start: thisMonthStart.toISOString().split("T")[0],
-    end: today.toISOString().split("T")[0]
-  };
+  const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return { start: fmt(lastMonthStart), end: fmt(lastMonthEnd) };
 }
 
 // Load filters from localStorage or use defaults
