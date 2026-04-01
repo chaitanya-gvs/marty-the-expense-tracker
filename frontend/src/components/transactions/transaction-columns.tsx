@@ -15,7 +15,7 @@ import {
   Building2,
   FolderOpen,
   IndianRupee,
-  Link2,
+  Mail,
   CheckSquare,
   Square,
   Split,
@@ -1066,7 +1066,7 @@ export function buildTransactionColumns(
                 }}
                 title={isEmailActive ? `${transaction.related_mails!.length} email(s) linked` : "Link emails"}
               >
-                <Link2 className="h-3.5 w-3.5" />
+                <Mail className="h-3.5 w-3.5" />
               </Button>
             </div>
 
