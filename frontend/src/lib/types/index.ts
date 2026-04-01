@@ -306,6 +306,7 @@ export interface EmailSearchFilters {
   custom_search_term?: string;
   search_amount?: number; // Optional override for search amount (e.g., rounded amount for UPI)
   also_search_amount_minus_one?: boolean; // Also search for amount-1 (for UPI rounding scenarios)
+  amount_tolerance?: number; // Search integer amounts in range [amount - tolerance, amount]
 }
 
 export interface ExpenseAnalyticsItem {

@@ -601,6 +601,9 @@ class ApiClient {
     if (filters.also_search_amount_minus_one !== undefined) {
       params.append('also_search_amount_minus_one', filters.also_search_amount_minus_one.toString());
     }
+    if (filters.amount_tolerance !== undefined) {
+      params.append('amount_tolerance', filters.amount_tolerance.toString());
+    }
 
     return this.request<EmailMetadata[]>(
       `/transactions/${transactionId}/emails/search?${params.toString()}`

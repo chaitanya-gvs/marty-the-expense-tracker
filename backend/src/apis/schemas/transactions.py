@@ -341,6 +341,7 @@ class EmailSearchFilters(BaseModel):
     include_amount_filter: bool = Field(True, description="Whether to filter by amount")
     start_date: Optional[str] = Field(None, description="Custom start date (YYYY-MM-DD)")
     end_date: Optional[str] = Field(None, description="Custom end date (YYYY-MM-DD)")
+    amount_tolerance: Optional[int] = Field(None, ge=0, le=20, description="Search for amounts in range [amount - tolerance, amount] (integer steps)")
 
 
 class EmailLinkRequest(BaseModel):
