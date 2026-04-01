@@ -1094,9 +1094,11 @@ class StatementWorkflow:
                                f"{db_result.get('updated_count', 0)} updated, "
                                f"{db_result.get('skipped_count', 0)} skipped, "
                                f"{db_result.get('error_count', 0)} errors")
-                    # Mark all processed statements as db_inserted in the log
+                    # Mark statements as db_inserted only if standardization actually produced data.
+                    # Extraction-skipped statements (already done) and failed extractions (no CSV)
+                    # must not be stamped db_inserted — they need to remain retryable.
                     for stmt in workflow_results.get("processed_statements", []):
-                        if not stmt.get("extraction_skipped"):
+                        if not stmt.get("extraction_skipped") and stmt.get("standardization_success"):
                             stmt_log_key = stmt["filename"].replace("_locked.pdf", "")
                             try:
                                 await StatementLogOperations.update_status(
