@@ -65,8 +65,14 @@ export function EmailLinksDrawer({
       };
 
       if (isUPI) {
+        // UPI: Search for Uber trip emails by keyword + same-day date only.
+        // Amount filter is intentionally disabled: Uber emails show the exact decimal fare
+        // (e.g. ₹197.72) while the bank debit is the ceiling (₹198). Gmail quoted-exact
+        // search cannot match a decimal by its integer prefix, so keyword + date is more
+        // reliable and sufficiently precise (one Uber trip per day is the common case).
         filters.custom_search_term = "uber";
-        filters.also_search_amount_minus_one = true;
+        filters.include_amount_filter = false;
+        filters.date_offset_days = 0; // Same calendar day only — tighter window without amount filter
       }
 
       const response = await apiClient.searchTransactionEmails(transaction.id, filters);
