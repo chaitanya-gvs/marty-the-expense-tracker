@@ -4,6 +4,7 @@ import asyncio
 import base64
 import email
 import json
+import math
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -958,6 +959,7 @@ class EmailClient:
         search_amount: Optional[float] = None,
         also_search_amount_minus_one: bool = False,
         amount_tolerance: Optional[int] = None,
+        verify_body_amount: bool = False,
     ) -> List[dict[str, Any]]:
         """
         Search Gmail for emails related to a transaction.
@@ -977,6 +979,10 @@ class EmailClient:
                 E.g. tolerance=5 on ₹198 → searches "193 OR 194 OR 195 OR 196 OR 197 OR 198".
                 Note: does not help for sub-rupee decimal fares (e.g. ₹197.72);
                 use keyword search (custom_search_term) for those cases.
+            verify_body_amount: When True, fetches each candidate email's body and
+                applies ceil(fare)-1 ≤ abs(transaction_amount) ≤ ceil(fare)+5.
+                Fail-open: emails whose body yields no amount are kept.
+                Only meaningful when include_amount_filter=False.
 
         Returns:
             List of email metadata dictionaries
@@ -997,7 +1003,9 @@ class EmailClient:
             else:
                 # Use offset from transaction date
                 start = trans_date - timedelta(days=date_offset_days)
-                end = trans_date + timedelta(days=date_offset_days)
+                # When offset=0, end==start produces an impossible Gmail range (after:X before:X).
+                # Use at least +1 day so offset=0 covers just that calendar day.
+                end = trans_date + timedelta(days=max(date_offset_days, 1))
             
             # Format dates for Gmail query (YYYY/MM/DD)
             start_str = start.strftime("%Y/%m/%d")
@@ -1086,8 +1094,53 @@ class EmailClient:
                     logger.warning(f"Failed to get details for message {msg.get('id')}: {e}")
                     continue
             
+            # Post-search body-amount verification
+            if verify_body_amount:
+                abs_amount = abs(transaction_amount)
+                verified = []
+                for email_meta in email_results:
+                    try:
+                        full_email = self.get_email_content(email_meta["id"])
+                        fare_str = (full_email.get("uber_trip_info") or {}).get("amount")
+                        fare = float(fare_str) if fare_str is not None else None
+                        if fare is None:
+                            # Fail open: no amount found in body — keep the email
+                            logger.debug(
+                                "verify_body_amount: no fare found in email %s — keeping (fail-open)",
+                                email_meta["id"],
+                            )
+                            verified.append(email_meta)
+                            continue
+                        ceil_fare = math.ceil(fare)
+                        if (ceil_fare - 1) <= abs_amount <= (ceil_fare + 5):
+                            logger.debug(
+                                "verify_body_amount: PASS email=%s fare=%.2f ceil=%d bank=%.2f",
+                                email_meta["id"], fare, ceil_fare, abs_amount,
+                            )
+                            verified.append(email_meta)
+                        else:
+                            logger.debug(
+                                "verify_body_amount: SKIP email=%s fare=%.2f ceil=%d "
+                                "bank=%.2f window=[%d,%d]",
+                                email_meta["id"], fare, ceil_fare, abs_amount,
+                                ceil_fare - 1, ceil_fare + 5,
+                            )
+                    except Exception:
+                        # Fail open: body fetch failed — keep the email
+                        logger.warning(
+                            "verify_body_amount: failed to check email=%s — keeping",
+                            email_meta["id"], exc_info=True,
+                        )
+                        verified.append(email_meta)
+                original_count = len(email_results)
+                email_results = verified
+                logger.info(
+                    "verify_body_amount: %d/%d passed (bank=%.2f)",
+                    len(email_results), original_count, abs_amount,
+                )
+
             return email_results
-            
+
         except Exception as e:
             logger.error("Error searching emails for transaction", exc_info=True)
             raise
