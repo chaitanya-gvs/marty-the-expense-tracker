@@ -12,6 +12,7 @@ from typing import Any, List, Optional
 from google.auth.exceptions import RefreshError
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from src.services.database_manager.operations import AccountOperations
 from src.services.email_ingestion.token_manager import TokenManager
@@ -201,6 +202,12 @@ class EmailClient:
                 result["merchant_info"] = merchant_info
             
             return result
+        except HttpError as e:
+            if e.resp.status == 404:
+                # Expected: message not in this account — caller will try the other account
+                raise
+            logger.error(f"Error getting email content for {message_id}", exc_info=True)
+            raise
         except Exception as e:
             logger.error(f"Error getting email content for {message_id}", exc_info=True)
             raise
