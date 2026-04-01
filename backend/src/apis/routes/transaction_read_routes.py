@@ -880,6 +880,7 @@ async def search_transaction_emails(
     search_amount: Optional[float] = Query(None, description="Optional override for search amount (e.g., rounded amount for UPI)"),
     also_search_amount_minus_one: bool = Query(False, description="Also search for amount-1 (for UPI rounding scenarios)"),
     amount_tolerance: Optional[int] = Query(None, ge=0, le=20, description="Search for amounts in range [amount - tolerance, amount] (integer steps)"),
+    verify_body_amount: bool = Query(False, description="Fetch each candidate email body and verify fare amount vs bank debit. Only meaningful when include_amount_filter=False."),
 ):
     """Search Gmail for emails related to a transaction across both accounts."""
     logger.info("Searching emails for transaction id=%s", transaction_id)
@@ -910,6 +911,7 @@ async def search_transaction_emails(
                 search_amount=search_amount,
                 also_search_amount_minus_one=also_search_amount_minus_one,
                 amount_tolerance=amount_tolerance,
+                verify_body_amount=verify_body_amount,
             )
             all_emails.extend(primary_emails)
             logger.info("Found %d emails in primary account", len(primary_emails))
@@ -934,6 +936,7 @@ async def search_transaction_emails(
                     search_amount=search_amount,
                     also_search_amount_minus_one=also_search_amount_minus_one,
                     amount_tolerance=amount_tolerance,
+                    verify_body_amount=verify_body_amount,
                 )
                 all_emails.extend(secondary_emails)
                 logger.info("Found %d emails in secondary account", len(secondary_emails))

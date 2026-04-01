@@ -56,8 +56,8 @@ export function EmailLinksDrawer({
     setHasSearched(true);
 
     try {
-      const description = transaction.description?.toLowerCase() || "";
-      const isUPI = description.includes("upi");
+      const rawDescription = (transaction.original_description || transaction.description)?.toLowerCase() || "";
+      const isUPI = rawDescription.includes("upi");
 
       const filters: EmailSearchFilters = {
         date_offset_days: 1,
@@ -72,7 +72,8 @@ export function EmailLinksDrawer({
         // reliable and sufficiently precise (one Uber trip per day is the common case).
         filters.custom_search_term = "uber";
         filters.include_amount_filter = false;
-        filters.date_offset_days = 0; // Same calendar day only — tighter window without amount filter
+        filters.date_offset_days = 0; // Same calendar day only; backend treats offset=0 as [date, date+1)
+        filters.verify_body_amount = true; // Post-filter: keep only emails where ceil(fare) ∈ [bank-1, bank+5]
       }
 
       const response = await apiClient.searchTransactionEmails(transaction.id, filters);

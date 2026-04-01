@@ -3,6 +3,7 @@ export interface Transaction {
   date: string;
   account: string;
   description: string;
+  original_description?: string; // Raw bank narration, before any user edits
   category: string;
   subcategory?: string;
   direction: "debit" | "credit";
@@ -307,6 +308,7 @@ export interface EmailSearchFilters {
   search_amount?: number; // Optional override for search amount (e.g., rounded amount for UPI)
   also_search_amount_minus_one?: boolean; // Also search for amount-1 (for UPI rounding scenarios)
   amount_tolerance?: number; // Search integer amounts in range [amount - tolerance, amount]
+  verify_body_amount?: boolean; // Fetch each candidate email body and verify ceil(fare) window against bank debit
 }
 
 export interface ExpenseAnalyticsItem {

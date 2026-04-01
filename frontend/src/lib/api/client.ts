@@ -604,6 +604,9 @@ class ApiClient {
     if (filters.amount_tolerance !== undefined) {
       params.append('amount_tolerance', filters.amount_tolerance.toString());
     }
+    if (filters.verify_body_amount !== undefined) {
+      params.append('verify_body_amount', filters.verify_body_amount.toString());
+    }
 
     return this.request<EmailMetadata[]>(
       `/transactions/${transactionId}/emails/search?${params.toString()}`

@@ -51,6 +51,7 @@ class TransactionOperations:
     @staticmethod
     def _process_transaction_description(transaction_dict: Dict[str, Any]) -> Dict[str, Any]:
         """Process transaction to use user_description if available, otherwise use original description"""
+        transaction_dict['original_description'] = transaction_dict.get('description', '')
         if transaction_dict.get('user_description'):
             transaction_dict['description'] = transaction_dict['user_description']
         return transaction_dict
