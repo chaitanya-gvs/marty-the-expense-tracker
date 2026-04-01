@@ -1029,7 +1029,7 @@ class StatementWorkflow:
                                             await AccountOperations.update_last_processed_at(str(account["id"]))
                                             logger.info(
                                                 f"Updated account {account.get('nickname', statement_data['sender_email'])}: "
-                                                f"last_statement_date={last_day_iso}"
+                                                f"last_statement_date={last_day_date.isoformat()}"
                                             )
                                         else:
                                             logger.warning(f"Could not find account for sender {statement_data['sender_email']} — skipping date update", extra=self._log_extra())
