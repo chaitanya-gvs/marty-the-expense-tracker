@@ -20,7 +20,7 @@ import {
   Square,
   Split,
   RefreshCcw,
-  AlertCircle,
+  AlertTriangle,
   Trash2,
   FileText,
   Layers,
@@ -426,7 +426,7 @@ export function buildTransactionColumns(
                   {isGroupedExpense && (
                     <Layers className="h-3 w-3 text-violet-300 flex-shrink-0" />
                   )}
-                  {row.original.source_file && (
+                  {row.original.source_file && !row.original.account?.toLowerCase().includes("splitwise") && (
                     <button
                       className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex-shrink-0 text-muted-foreground/50 hover:text-muted-foreground"
                       onClick={(e) => {
@@ -1096,7 +1096,7 @@ export function buildTransactionColumns(
                 }}
                 title={isFlagActive ? "Remove warning" : "Mark for review"}
               >
-                <AlertCircle className="h-3.5 w-3.5" />
+                <AlertTriangle className="h-3.5 w-3.5" />
               </Button>
             </div>
 
