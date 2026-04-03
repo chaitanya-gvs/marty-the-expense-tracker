@@ -21,4 +21,7 @@ node_modules/
 .claude/
 .playwright-mcp/
 .superpowers/
+
+# IDE / editor directories
+.cursor/
 .env
