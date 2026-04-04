@@ -1703,7 +1703,7 @@ class TransactionOperations:
             "split_breakdown": split_breakdown,
             "paid_by": paid_by,  # Who actually paid for this transaction
             "account": transaction.get('account', ''),
-            "sub_category": transaction.get('sub_category') or transaction.get('category') or None,
+            "sub_category": None,
             "tags": [],
             "description": transaction.get('description', ''),
             "notes": None,
