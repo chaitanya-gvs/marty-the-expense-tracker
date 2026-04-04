@@ -2,6 +2,7 @@
 Smoke test for the statement extraction + standardization pipeline.
 
 Mirrors every stage of the actual statement workflow in explicit steps:
+  Step 0: Download unlocked PDF from GCS
   Step 1: PDFPageFilter     — strip non-transaction pages
   Step 2: LandingAI parse() — filtered PDF → markdown + typed chunks
   Step 3: Chunk filter      — keep only chunkTable/table chunks
@@ -10,24 +11,30 @@ Mirrors every stage of the actual statement workflow in explicit steps:
   Step 6: Save temp CSV     — local only, no GCS upload
   Step 7: Standardizer      — CSV → normalised transaction dicts
 
-Skipped (no side-effects on a test run):
-  - PDF unlocking  (pass an already-unlocked PDF)
+Skipped (no side-effects):
+  - PDF unlocking  (uses already-unlocked PDF from GCS)
   - GCS upload
   - Database insert
 
 Usage (run from backend/ on the instance):
-    PDF_PATH=/tmp/axis_atlas_20260301.pdf \\
-    ACCOUNT_NICKNAME="Axis Atlas Credit Card" \\
     poetry run python scripts/smoke_test_extraction.py
+
+To test a different statement, change GCS_PDF_PATH and ACCOUNT_NICKNAME below.
 """
 
-import os
 import sys
 import tempfile
 from pathlib import Path
 
 # Project root on path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# ---------------------------------------------------------------------------
+# Configuration — update these to point at a different statement
+# ---------------------------------------------------------------------------
+GCS_PDF_PATH = "2026-03/unlocked_statements/axis_atlas_20260402.pdf"
+ACCOUNT_NICKNAME = "Axis Atlas Credit Card"
+# ---------------------------------------------------------------------------
 
 PASS = "\033[92mPASS\033[0m"
 FAIL = "\033[91mFAIL\033[0m"
@@ -48,54 +55,54 @@ def info(msg: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Resolve inputs
+# Step 0: imports + download unlocked PDF from GCS
 # ---------------------------------------------------------------------------
-pdf_path_str = os.environ.get("PDF_PATH", "")
-account_nickname = os.environ.get("ACCOUNT_NICKNAME", "")
-
-if not pdf_path_str or not account_nickname:
-    print(
-        "\nUsage:\n"
-        "  PDF_PATH=/path/to/unlocked.pdf \\\n"
-        "  ACCOUNT_NICKNAME='Axis Atlas Credit Card' \\\n"
-        "  poetry run python scripts/smoke_test_extraction.py\n"
-    )
-    sys.exit(1)
-
-pdf_path = Path(pdf_path_str)
-
-
-# ---------------------------------------------------------------------------
-# Step 0: imports + environment check
-# ---------------------------------------------------------------------------
-print("\n=== Step 0: Environment ===")
+print("\n=== Step 0: Download unlocked PDF from GCS ===")
 
 try:
+    import os
     from landingai_ade import LandingAIADE
     from landingai_ade.lib import pydantic_to_json_schema
     from src.services.statement_processor.document_extractor import DocumentExtractor
     from src.services.statement_processor.pdf_page_filter import PDFPageFilter
     from src.services.orchestrator.transaction_standardizer import TransactionStandardizer
+    from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
     from src.utils.filename_utils import nickname_to_filename_prefix
     check("Imports OK", True)
 except Exception as e:
     check("Imports OK", False, str(e))
     sys.exit(1)
 
-if not check("PDF exists", pdf_path.exists(), str(pdf_path)):
-    sys.exit(1)
-
 api_key = os.environ.get("VISION_AGENT_API_KEY", "")
 if not check("VISION_AGENT_API_KEY set", bool(api_key)):
     sys.exit(1)
 
-# Build a partial extractor (schema helpers only — no full __init__ side-effects needed)
+info(f"Downloading: {GCS_PDF_PATH}")
+tmp_dir = Path(tempfile.mkdtemp())
+pdf_filename = Path(GCS_PDF_PATH).name
+pdf_path = tmp_dir / pdf_filename
+
+try:
+    gcs = GoogleCloudStorageService()
+    result = gcs.download_file(GCS_PDF_PATH, str(pdf_path))
+    check("GCS download succeeded", result.get("success") is True, result.get("error", ""))
+except Exception as e:
+    check("GCS download succeeded", False, str(e))
+    sys.exit(1)
+
+check("PDF exists locally", pdf_path.exists(), str(pdf_path))
+info(f"Local path: {pdf_path}  ({pdf_path.stat().st_size / 1024:.1f} KB)")
+
+
+# ---------------------------------------------------------------------------
+# Shared setup: extractor + schema
+# ---------------------------------------------------------------------------
 extractor = DocumentExtractor.__new__(DocumentExtractor)
 extractor.api_key = api_key
 extractor.client = LandingAIADE(apikey=api_key)
 
-schema = extractor._get_schema_from_filename(pdf_path.name, account_nickname)
-if not check("Schema resolved", schema is not None, f"nickname='{account_nickname}'"):
+schema = extractor._get_schema_from_filename(pdf_path.name, ACCOUNT_NICKNAME)
+if not check("Schema resolved", schema is not None, f"nickname='{ACCOUNT_NICKNAME}'"):
     sys.exit(1)
 info(f"Schema: {schema.__name__}")
 
@@ -105,7 +112,7 @@ info(f"Schema: {schema.__name__}")
 # ---------------------------------------------------------------------------
 print("\n=== Step 1: Page filter ===")
 
-schema_key = extractor._get_schema_key(account_nickname)
+schema_key = extractor._get_schema_key(ACCOUNT_NICKNAME)
 page_filter = PDFPageFilter()
 
 try:
@@ -116,7 +123,7 @@ except Exception as e:
     sys.exit(1)
 
 if parse_path != pdf_path:
-    info(f"Filtered PDF written to: {parse_path}")
+    info(f"Filtered PDF: {parse_path}")
     info(f"Pages kept: {[p + 1 for p in kept_pages]}")
 else:
     info("No filtering applied (all pages kept or no filter defined for this schema)")
@@ -136,13 +143,12 @@ except Exception as e:
     check("parse() completed", False, str(e))
     sys.exit(1)
 finally:
-    # Clean up filtered PDF if a temp file was created
     if parse_path != pdf_path and parse_path.exists():
         parse_path.unlink()
         info(f"Cleaned up filtered PDF: {parse_path.name}")
 
 chunks = getattr(parse_response, "chunks", None) or []
-info(f"Total chunks returned: {len(chunks)}")
+info(f"Total chunks: {len(chunks)}")
 chunk_type_counts: dict[str, int] = {}
 for c in chunks:
     t = getattr(c, "type", "unknown")
@@ -161,7 +167,7 @@ table_chunks = [c for c in chunks if getattr(c, "type", "") in TABLE_CHUNK_TYPES
 
 if check("Table chunks found", len(table_chunks) > 0, f"{len(table_chunks)} chunk(s)"):
     extract_input = "\n\n".join(c.markdown for c in table_chunks)
-    info(f"Table markdown: {len(extract_input)} chars (down from {len(parse_response.markdown)} full-doc chars)")
+    info(f"Table markdown: {len(extract_input)} chars  (full doc: {len(parse_response.markdown)} chars)")
 else:
     info("Falling back to full markdown")
     extract_input = parse_response.markdown
@@ -213,8 +219,7 @@ print()
 # ---------------------------------------------------------------------------
 print("\n=== Step 6: Save temp CSV ===")
 
-tmp_dir = Path(tempfile.mkdtemp())
-prefix = nickname_to_filename_prefix(account_nickname)
+prefix = nickname_to_filename_prefix(ACCOUNT_NICKNAME)
 csv_name = f"{prefix}_smoke.csv"
 csv_path = tmp_dir / csv_name
 df.to_csv(csv_path, index=False, encoding="utf-8")
