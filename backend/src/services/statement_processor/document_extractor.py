@@ -149,109 +149,51 @@ class DocumentExtractor:
             return "sbi_savings"
         return None
 
-    def _parse_markdown_table_to_dataframe(self, markdown_table: str) -> pd.DataFrame:
+    def _parse_table_to_dataframe(self, table_markdown: str) -> pd.DataFrame:
         """
-        Parse a markdown pipe table (e.g. | Date | Desc | Amount |) into a DataFrame.
-        Used as fallback when LandingAI returns markdown format instead of HTML.
-        """
-        import re
-        lines = [line.strip() for line in markdown_table.strip().splitlines() if line.strip()]
-        # Drop separator rows like |---|---|---|
-        data_lines = [l for l in lines if not re.match(r'^\|[\s\|\-:]+\|$', l)]
-        rows = []
-        for line in data_lines:
-            cells = [c.strip() for c in line.split('|')]
-            cells = [c for c in cells if c != '']
-            if cells:
-                rows.append(cells)
-        if len(rows) < 2:
-            return pd.DataFrame()
-        headers = rows[0]
-        data = rows[1:]
-        # Pad/truncate rows to header length
-        data = [r[:len(headers)] + [''] * max(0, len(headers) - len(r)) for r in data]
-        return pd.DataFrame(data, columns=headers)
+        Parse a markdown pipe table returned by LandingAI into a pandas DataFrame.
 
-    def _parse_html_table_to_dataframe(self, html_table: str) -> pd.DataFrame:
-        """
-        Parse HTML table string (or markdown pipe table fallback) and convert to pandas DataFrame.
+        LandingAI ADE always outputs markdown — HTML is not an output format.
+        Each row is a pipe-delimited line; separator lines (|---|---|) are dropped.
 
         Args:
-            html_table: HTML table string from agentic-doc extraction, or markdown pipe table
+            table_markdown: Markdown pipe-table string from LandingAI extraction
 
         Returns:
-            Pandas DataFrame with parsed transaction data
+            Pandas DataFrame with parsed transaction data, or empty DataFrame on failure
         """
+        import re
         try:
-            from io import StringIO
+            lines = [line.strip() for line in table_markdown.strip().splitlines() if line.strip()]
+            # Drop alignment/separator rows: lines made entirely of |, -, :, spaces
+            data_lines = [l for l in lines if not re.match(r'^\|[\s|\-:]+\|$', l)]
 
-            # Use pandas to read HTML tables - wrap in StringIO to avoid deprecation warning
-            tables = pd.read_html(StringIO(html_table), flavor="lxml")
-            
-            if not tables:
-                logger.warning("No tables found in HTML")
+            rows = []
+            for line in data_lines:
+                cells = [c.strip() for c in line.split('|')]
+                # Remove leading/trailing empty strings produced by surrounding pipes
+                cells = [c for c in cells if c != '']
+                if cells:
+                    rows.append(cells)
+
+            if len(rows) < 2:
+                logger.warning(f"Markdown table has fewer than 2 rows after parsing ({len(rows)} rows found)")
                 return pd.DataFrame()
-            
-            # Combine all tables if multiple exist
-            if len(tables) > 1:
-                logger.info(f"Found {len(tables)} tables, combining them")
-                combined_df = pd.concat(tables, ignore_index=True)
-            else:
-                combined_df = tables[0]
-            
-            # Clean up the DataFrame
-            combined_df = combined_df.dropna(how='all')  # Remove completely empty rows
-            
-            # Check if first row looks like a header (contains common header words)
-            # If columns are numbered (0, 1, 2, etc.), the header might be in the first data row
-            first_row_values = combined_df.iloc[0].astype(str).str.lower().tolist() if len(combined_df) > 0 else []
-            header_keywords = ['date', 'serno', 'transaction', 'details', 'reward', 'points', 'amount', '₹', 'inr']
-            first_row_is_header = any(keyword in ' '.join(first_row_values) for keyword in header_keywords)
-            
-            # If first row appears to be a header and columns are numbered, use first row as header
-            if first_row_is_header and all(str(col).isdigit() for col in combined_df.columns):
-                logger.info("Detected header row in first data row, promoting to column names")
-                # Use first row as column names
-                combined_df.columns = combined_df.iloc[0]
-                # Drop the first row (now that it's the header)
-                combined_df = combined_df.iloc[1:].reset_index(drop=True)
-            
-            # Remove rows that are just card info or headers
-            if len(combined_df) > 0:
-                # Check if first column contains header-like text
-                first_col = combined_df.iloc[:, 0].astype(str)
-                mask = ~first_col.str.contains('Card No:|Name:|Date|SerNo', case=False, na=False, regex=True)
-                # Only apply mask if it doesn't remove all rows
-                if mask.sum() > 0:
-                    combined_df = combined_df[mask].reset_index(drop=True)
-            
-            logger.info(f"Successfully parsed HTML table: {len(combined_df)} rows, {len(combined_df.columns)} columns")
-            if len(combined_df.columns) > 0:
-                logger.info(f"Column names: {list(combined_df.columns)}")
-            return combined_df
-            
-        except ValueError as e:
-            # pd.read_html raises ValueError when no <table> tags are found.
-            # LandingAI sometimes returns markdown pipe tables instead of HTML —
-            # detect and fall back to the markdown parser.
-            if '|' in html_table and 'No tables found' in str(e):
-                logger.warning(
-                    "pd.read_html found no HTML tables; attempting markdown pipe-table fallback"
-                )
-                try:
-                    df = self._parse_markdown_table_to_dataframe(html_table)
-                    if not df.empty:
-                        logger.info(
-                            f"Markdown fallback parsed {len(df)} rows, columns: {list(df.columns)}"
-                        )
-                        return df
-                    logger.warning("Markdown fallback produced empty DataFrame")
-                except Exception:
-                    logger.warning("Markdown pipe-table fallback failed", exc_info=True)
-            logger.error("Error parsing table (HTML + markdown fallback both failed)", exc_info=True)
-            return pd.DataFrame()
-        except Exception as e:
-            logger.error("Error parsing HTML table", exc_info=True)
+
+            headers = rows[0]
+            data = rows[1:]
+            # Normalise row width to header length (pad short rows, truncate long rows)
+            data = [r[:len(headers)] + [''] * max(0, len(headers) - len(r)) for r in data]
+
+            df = pd.DataFrame(data, columns=headers)
+            # Drop entirely empty rows
+            df = df[~(df == '').all(axis=1)].reset_index(drop=True)
+
+            logger.info(f"Parsed markdown table: {len(df)} rows, columns: {list(df.columns)}")
+            return df
+
+        except Exception:
+            logger.error("Error parsing markdown table", exc_info=True)
             return pd.DataFrame()
     
     def extract_from_pdf(self, pdf_path: str, account_nickname: str = None, save_results: bool = True, email_date: str = None) -> Dict[str, Any]:
@@ -323,17 +265,35 @@ class DocumentExtractor:
             if parse_path != pdf_path:
                 filtered_path = parse_path  # track so we can clean up after parse
 
-            # Step 1: Parse PDF → markdown
+            # Step 1: Parse PDF → markdown + typed chunks
             parse_response = self.client.parse(document=parse_path, model="dpt-2-latest")
 
             if not parse_response or not getattr(parse_response, 'markdown', None):
                 raise Exception("LandingAI ADE parse returned no markdown content")
 
-            # Step 2: Extract structured data from markdown using the schema
+            # Step 2: Narrow input to table chunks only so the extractor sees less noise.
+            # LandingAI chunk types for tables: "chunkTable" and "table".
+            TABLE_CHUNK_TYPES = {"chunkTable", "table"}
+            chunks = getattr(parse_response, 'chunks', None) or []
+            table_chunks = [c for c in chunks if getattr(c, 'type', '') in TABLE_CHUNK_TYPES]
+            if table_chunks:
+                extract_input = "\n\n".join(c.markdown for c in table_chunks)
+                logger.info(
+                    f"Filtered to {len(table_chunks)} table chunk(s) for extraction "
+                    f"({len(extract_input)} chars, down from {len(parse_response.markdown)} chars)"
+                )
+            else:
+                extract_input = parse_response.markdown
+                logger.info(
+                    f"No table chunks found in parse response — falling back to full markdown "
+                    f"({len(extract_input)} chars)"
+                )
+
+            # Step 3: Extract structured data from table markdown using the schema
             schema_json = pydantic_to_json_schema(extraction_schema)
             extract_response = self.client.extract(
                 schema=schema_json,
-                markdown=parse_response.markdown,
+                markdown=extract_input,
                 model="extract-latest",
             )
 
@@ -393,7 +353,7 @@ class DocumentExtractor:
             
             # Parse HTML table and save as CSV only
             if extraction_result.get("table_data"):
-                df = self._parse_html_table_to_dataframe(extraction_result["table_data"])
+                df = self._parse_table_to_dataframe(extraction_result["table_data"])
                 if not df.empty:
                     # Save as CSV only
                     csv_filename = f"{base_filename}.csv"
