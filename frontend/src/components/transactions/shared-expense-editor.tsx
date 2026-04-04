@@ -68,7 +68,7 @@ function ParticipantAvatar({ name, size = "sm" }: { name: string; size?: "sm" | 
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function SplitEditor({ transaction, isOpen, isLoading = false, onClose, onSave, onClearSplit }: SplitEditorProps) {
+export function SharedExpenseEditor({ transaction, isOpen, isLoading = false, onClose, onSave, onClearSplit }: SplitEditorProps) {
   const [mode, setMode] = useState<"equal" | "custom">("equal");
   const [includeMe, setIncludeMe] = useState(true);
   const [entries, setEntries] = useState<SplitEntry[]>([]);

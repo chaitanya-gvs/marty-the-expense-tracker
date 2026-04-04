@@ -37,7 +37,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { TransactionEditModal } from "./transaction-edit-modal";
-import { SplitEditor } from "./split-editor";
+import { SharedExpenseEditor } from "./shared-expense-editor";
 import { BulkEditModal } from "./bulk-edit-modal";
 import { RelatedTransactionsDrawer } from "./related-transactions-drawer";
 import { SplitTransactionModal } from "./split-transaction-modal";
@@ -1102,7 +1102,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
       {/* Split Editor Modal */}
       {selectedTransactionForSplit && (
-        <SplitEditor
+        <SharedExpenseEditor
           transaction={selectedTransactionForSplit}
           isOpen={isSplitEditorOpen}
           isLoading={updateTransactionSplit.isPending || clearTransactionSplit.isPending}
