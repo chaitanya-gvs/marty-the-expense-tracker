@@ -149,19 +149,42 @@ class DocumentExtractor:
             return "sbi_savings"
         return None
 
+    def _parse_markdown_table_to_dataframe(self, markdown_table: str) -> pd.DataFrame:
+        """
+        Parse a markdown pipe table (e.g. | Date | Desc | Amount |) into a DataFrame.
+        Used as fallback when LandingAI returns markdown format instead of HTML.
+        """
+        import re
+        lines = [line.strip() for line in markdown_table.strip().splitlines() if line.strip()]
+        # Drop separator rows like |---|---|---|
+        data_lines = [l for l in lines if not re.match(r'^\|[\s\|\-:]+\|$', l)]
+        rows = []
+        for line in data_lines:
+            cells = [c.strip() for c in line.split('|')]
+            cells = [c for c in cells if c != '']
+            if cells:
+                rows.append(cells)
+        if len(rows) < 2:
+            return pd.DataFrame()
+        headers = rows[0]
+        data = rows[1:]
+        # Pad/truncate rows to header length
+        data = [r[:len(headers)] + [''] * max(0, len(headers) - len(r)) for r in data]
+        return pd.DataFrame(data, columns=headers)
+
     def _parse_html_table_to_dataframe(self, html_table: str) -> pd.DataFrame:
         """
-        Parse HTML table string and convert to pandas DataFrame
-        
+        Parse HTML table string (or markdown pipe table fallback) and convert to pandas DataFrame.
+
         Args:
-            html_table: HTML table string from agentic-doc extraction
-            
+            html_table: HTML table string from agentic-doc extraction, or markdown pipe table
+
         Returns:
             Pandas DataFrame with parsed transaction data
         """
         try:
             from io import StringIO
-            
+
             # Use pandas to read HTML tables - wrap in StringIO to avoid deprecation warning
             tables = pd.read_html(StringIO(html_table), flavor="lxml")
             
@@ -207,6 +230,26 @@ class DocumentExtractor:
                 logger.info(f"Column names: {list(combined_df.columns)}")
             return combined_df
             
+        except ValueError as e:
+            # pd.read_html raises ValueError when no <table> tags are found.
+            # LandingAI sometimes returns markdown pipe tables instead of HTML —
+            # detect and fall back to the markdown parser.
+            if '|' in html_table and 'No tables found' in str(e):
+                logger.warning(
+                    "pd.read_html found no HTML tables; attempting markdown pipe-table fallback"
+                )
+                try:
+                    df = self._parse_markdown_table_to_dataframe(html_table)
+                    if not df.empty:
+                        logger.info(
+                            f"Markdown fallback parsed {len(df)} rows, columns: {list(df.columns)}"
+                        )
+                        return df
+                    logger.warning("Markdown fallback produced empty DataFrame")
+                except Exception:
+                    logger.warning("Markdown pipe-table fallback failed", exc_info=True)
+            logger.error("Error parsing table (HTML + markdown fallback both failed)", exc_info=True)
+            return pd.DataFrame()
         except Exception as e:
             logger.error("Error parsing HTML table", exc_info=True)
             return pd.DataFrame()
