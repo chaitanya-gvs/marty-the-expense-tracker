@@ -37,7 +37,7 @@ async def get_db_session():
 # ============================================================================
 
 
-@router.get("/", response_model=ParticipantListResponse)
+@router.get("", response_model=ParticipantListResponse)
 async def list_participants(
     search: Optional[str] = Query(None, description="Search by name"),
     limit: Optional[int] = Query(None, ge=1, le=500, description="Maximum number of results"),
@@ -123,7 +123,7 @@ async def get_participant(participant_id: UUID):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/", response_model=ParticipantResponse, status_code=201)
+@router.post("", response_model=ParticipantResponse, status_code=201)
 async def create_participant(participant: ParticipantCreate):
     """
     Create a new participant.
