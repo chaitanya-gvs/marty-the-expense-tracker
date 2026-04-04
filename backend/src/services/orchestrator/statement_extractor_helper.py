@@ -193,18 +193,6 @@ class StatementExtractorHelper:
                     },
                 )
 
-            # Clean up local CSV file after successful cloud upload
-            if extraction_result.get("success") and extraction_result.get("csv_file"):
-                try:
-                    csv_file_path = Path(extraction_result["csv_file"])
-                    if csv_file_path.exists():
-                        csv_file_path.unlink()
-                        logger.info(
-                            f"Cleaned up local CSV file: {csv_file_path.name}",
-                            extra=self.log_extra(),
-                        )
-                except Exception as e:
-                    logger.warning(f"Failed to clean up local CSV file: {e}", extra=self.log_extra())
 
             if extraction_result.get("success"):
                 logger.info(f"Extracted data from: {normalized_filename}", extra=self.log_extra())
