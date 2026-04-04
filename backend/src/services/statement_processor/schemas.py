@@ -47,35 +47,35 @@ class PageFilterConfig:
 
 class AxisAtlasCreditCard(BaseModel):
     """Pydantic model for extracting transaction tables from Axis Bank statements"""
-    table: str = Field(description="The transaction table in markdown/html format called Transaction Details")
+    table: str = Field(description="The transaction table in markdown format called Transaction Details")
 
 
 class SwiggyHDFCCreditCard(BaseModel):
     """Pydantic model for extracting transaction tables from HDFC Bank statements"""
-    table: str = Field(description="The transaction table in markdown/html format called Domestic Transactions")
+    table: str = Field(description="The transaction table in markdown format called Domestic Transactions")
 
 
 class AmazonPayICICICreditCard(BaseModel):
     """Pydantic model for extracting transaction tables from ICICI Bank statements"""
-    table: str = Field(description="The transaction table in markdown/html format called Transaction Details")
+    table: str = Field(description="The transaction table in markdown format called Transaction Details")
 
 
 class CashbackSBICreditCard(BaseModel):
     """Pydantic model for extracting transaction tables from State Bank of India statements"""
-    table: str = Field(description="The transaction table in markdown/html format called Transaction Details")
+    table: str = Field(description="The transaction table in markdown format called Transaction Details")
 
 
 class SBISavingsAccount(BaseModel):
     """Pydantic model for extracting transaction tables from SBI Savings Account statements"""
-    table: str = Field(description="The transaction table in markdown/html format titled 'TRANSACTION OVERVIEW' with columns: Date, Transaction Reference, Ref.No./Chq.No., Credit, Debit, and Balance. Include all transaction rows.")
+    table: str = Field(description="The transaction table in markdown format titled 'TRANSACTION OVERVIEW' with columns: Date, Transaction Reference, Ref.No./Chq.No., Credit, Debit, and Balance. Include all transaction rows.")
 
 class YesBankSavingsAccount(BaseModel):
     """Pydantic model for extracting transaction tables from Yes Bank statements"""
-    table: str = Field(description="The transaction table in markdown/html format called Statement Of Transactions")
+    table: str = Field(description="The transaction table in markdown format called Statement Of Transactions")
 
 class AxisBankSavingsAccount(BaseModel):
     """Pydantic model for extracting transaction tables from Axis Bank statements"""
-    table: str = Field(description="The transaction table in markdown/html format for a table with the heading 'Statement for Account No. 92501XXXXX12081...' and containing account statement with columns: Date, Transaction Details, Chq No., Withdrawal, Deposits, Balance")
+    table: str = Field(description="The transaction table in markdown format for a table with the heading 'Statement for Account No. 92501XXXXX12081...' and containing account statement with columns: Date, Transaction Details, Chq No., Withdrawal, Deposits, Balance")
 
 # Registry of all available bank statement models
 BANK_STATEMENT_MODELS: Dict[str, Type[BaseModel]] = {
