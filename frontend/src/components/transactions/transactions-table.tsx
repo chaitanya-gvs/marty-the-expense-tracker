@@ -212,6 +212,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number | null>(null);
 
   const queryClient = useQueryClient();
   const updateTransactionSplit = useUpdateTransactionSplit();
@@ -468,9 +469,14 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   }, []);
 
   const handleBodyScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    if (headerScrollRef.current) {
-      headerScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
-    }
+    const scrollLeft = e.currentTarget.scrollLeft;
+    // Throttle header sync to one write per animation frame
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      if (headerScrollRef.current) {
+        headerScrollRef.current.scrollLeft = scrollLeft;
+      }
+    });
     fetchMoreOnBottomReached(e.currentTarget);
   }, [fetchMoreOnBottomReached]);
 
