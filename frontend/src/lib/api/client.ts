@@ -7,13 +7,18 @@ import type {
   WorkflowPeriodCheck,
 } from "@/lib/api/types/workflow";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+// Use relative /api path on localhost so requests go through the Next.js proxy,
+// avoiding cross-origin cookie issues. On production, use the env var directly.
+function getApiBaseUrl(): string {
+  if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+    return "/api";
+  }
+  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+}
 
 class ApiClient {
-  private baseUrl: string;
-
-  constructor(baseUrl: string = API_BASE_URL) {
-    this.baseUrl = baseUrl;
+  get baseUrl(): string {
+    return getApiBaseUrl();
   }
 
   private async request<T>(
@@ -136,7 +141,7 @@ class ApiClient {
       params.append("limit", String(pagination.limit));
     }
 
-    return this.request<Transaction[]>(`/transactions/?${params.toString()}`);
+    return this.request<Transaction[]>(`/transactions?${params.toString()}`);
   }
 
   async getTransaction(id: string): Promise<ApiResponse<Transaction>> {
@@ -168,7 +173,7 @@ class ApiClient {
   async createTransaction(
     transaction: Omit<Transaction, "id" | "created_at" | "updated_at" | "status">
   ): Promise<ApiResponse<Transaction>> {
-    return this.request<Transaction>("/transactions/", {
+    return this.request<Transaction>("/transactions", {
       method: "POST",
       body: JSON.stringify(transaction),
     });
@@ -373,11 +378,11 @@ class ApiClient {
 
   // Tags (now under transactions)
   async getTags(): Promise<ApiResponse<Tag[]>> {
-    return this.request<Tag[]>("/transactions/tags/");
+    return this.request<Tag[]>("/transactions/tags");
   }
 
   async createTag(tag: Omit<Tag, "id" | "usage_count">): Promise<ApiResponse<Tag>> {
-    return this.request<Tag>("/transactions/tags/", {
+    return this.request<Tag>("/transactions/tags", {
       method: "POST",
       body: JSON.stringify(tag),
     });
@@ -421,7 +426,7 @@ class ApiClient {
       params.append("transaction_type", transactionType);
     }
     const queryString = params.toString();
-    const url = `/transactions/categories/${queryString ? `?${queryString}` : ""}`;
+    const url = `/transactions/categories${queryString ? `?${queryString}` : ""}`;
     return this.request<Category[]>(url);
   }
 
@@ -450,7 +455,7 @@ class ApiClient {
     sort_order?: number;
     transaction_type?: "debit" | "credit" | null;
   }): Promise<ApiResponse<{ id: string }>> {
-    return this.request<{ id: string }>("/transactions/categories/", {
+    return this.request<{ id: string }>("/transactions/categories", {
       method: "POST",
       body: JSON.stringify(categoryData),
     });
