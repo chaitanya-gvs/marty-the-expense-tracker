@@ -242,27 +242,31 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     return data?.pages.flatMap(page => page.data) || [];
   }, [data]);
 
-  // Filter out parent transactions in split groups (is_split=false but has transaction_group_id with split children)
-  // These are the original transactions that were split - we only want to show the split parts
-  // Transfer groups should NOT be excluded (they all have is_split=false but no split children)
-  const allTransactions = useMemo(() => {
-    return allTransactionsUnfiltered.filter(t => {
-      // Only exclude if this is a split parent (has transaction_group_id, is_split=false, AND has split children)
-      if (t.transaction_group_id && t.is_split === false) {
-        // Check if there are any split children in the same group
-        const hasSplitChildren = allTransactionsUnfiltered.some(
-          other => other.transaction_group_id === t.transaction_group_id &&
-            other.id !== t.id &&
-            other.is_split === true
-        );
-        // Only exclude if it's a split parent (has split children)
-        if (hasSplitChildren) {
-          return false;
-        }
+  // Pre-compute set of split-parent IDs in O(n) instead of O(n²) filter.
+  // Transfer groups should NOT be excluded (they all have is_split=false but no split children).
+  const splitParentIds = useMemo(() => {
+    // Collect all group IDs that have at least one split child (is_split=true)
+    const groupIdsWithSplitChildren = new Set<string>();
+    for (const t of allTransactionsUnfiltered) {
+      if (t.transaction_group_id && t.is_split === true) {
+        groupIdsWithSplitChildren.add(t.transaction_group_id);
       }
-      return true;
-    });
+    }
+    // Collect IDs of the non-split parent rows in those groups
+    const ids = new Set<string>();
+    for (const t of allTransactionsUnfiltered) {
+      if (t.transaction_group_id && t.is_split === false && groupIdsWithSplitChildren.has(t.transaction_group_id)) {
+        ids.add(t.id);
+      }
+    }
+    return ids;
   }, [allTransactionsUnfiltered]);
+
+  // Filter out parent transactions in split groups - we only want to show the split parts
+  const allTransactions = useMemo(() => {
+    if (splitParentIds.size === 0) return allTransactionsUnfiltered;
+    return allTransactionsUnfiltered.filter(t => !splitParentIds.has(t.id));
+  }, [allTransactionsUnfiltered, splitParentIds]);
 
   // Selection helpers
   const selectedTransactions = useMemo(() => {
