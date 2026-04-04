@@ -268,6 +268,25 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     return allTransactionsUnfiltered.filter(t => !splitParentIds.has(t.id));
   }, [allTransactionsUnfiltered, splitParentIds]);
 
+  // Stable refs so column callbacks always read latest values without
+  // triggering a columns useMemo rebuild on every data update.
+  const allTransactionsRef = useRef(allTransactions);
+  const allTransactionsUnfilteredRef = useRef(allTransactionsUnfiltered);
+  const allTagsRef = useRef(allTags);
+  const allCategoriesRef = useRef(allCategories);
+  const onUpdateTransactionRef = useRef((params: { id: string; updates: Partial<Transaction> }) =>
+    updateTransaction.mutateAsync(params)
+  );
+
+  useEffect(() => { allTransactionsRef.current = allTransactions; }, [allTransactions]);
+  useEffect(() => { allTransactionsUnfilteredRef.current = allTransactionsUnfiltered; }, [allTransactionsUnfiltered]);
+  useEffect(() => { allTagsRef.current = allTags; }, [allTags]);
+  useEffect(() => { allCategoriesRef.current = allCategories; }, [allCategories]);
+  useEffect(() => {
+    onUpdateTransactionRef.current = (params: { id: string; updates: Partial<Transaction> }) =>
+      updateTransaction.mutateAsync(params);
+  }, [updateTransaction]);
+
   // Selection helpers
   const selectedTransactions = useMemo(() => {
     return allTransactions.filter(t => selectedTransactionIds.has(t.id));
@@ -570,10 +589,10 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         focusedRowIndex,
         focusedColumnId,
         focusedActionButton,
-        allTags,
-        allCategories,
-        allTransactions,
-        allTransactionsUnfiltered,
+        allTagsRef,
+        allCategoriesRef,
+        allTransactionsRef,
+        allTransactionsUnfilteredRef,
         expandedGroupedExpenses,
         editableColumns,
         getNextEditableColumn,
@@ -582,7 +601,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         handleHighlightTransactions,
         handleClearHighlight,
         toggleGroupExpense,
-        onUpdateTransaction: (params) => updateTransaction.mutateAsync(params),
+        onUpdateTransactionRef,
         setEditingRow,
         setEditingField,
         setEditingTagsForTransaction,
@@ -609,8 +628,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     [
       editingRow,
       editingField,
-      allTags,
-      allCategories,
       editingTagsForTransaction,
       editingCategoryForTransaction,
       isMultiSelectMode,
@@ -621,8 +638,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       focusedRowIndex,
       focusedColumnId,
       focusedActionButton,
-      allTransactions,
-      allTransactionsUnfiltered,
       expandedGroupedExpenses,
       editableColumns,
       getNextEditableColumn,
@@ -631,7 +646,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       handleHighlightTransactions,
       handleClearHighlight,
       toggleGroupExpense,
-      updateTransaction,
       setEditingRow,
       setEditingField,
       setEditingTagsForTransaction,
