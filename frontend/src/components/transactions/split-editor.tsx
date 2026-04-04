@@ -7,14 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Modal } from "@/components/ui/modal";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
+import { CommandInput } from "@/components/ui/command";
 import { motion, AnimatePresence } from "framer-motion";
 import { UserPlus, Calculator, Users, Check, CheckCircle2, Trash2 } from "lucide-react";
 import { Transaction, SplitBreakdown, SplitEntry } from "@/lib/types";
@@ -86,12 +79,9 @@ export function SplitEditor({ transaction, isOpen, isLoading = false, onClose, o
 
   const { participants: allParticipants } = useParticipants();
 
-  // Participants available to add (not yet in entries)
-  const availableParticipants = allParticipants.filter(
-    p => !entries.some(e => e.participant === p.name)
-  );
-  const filteredParticipants = availableParticipants.filter(p =>
-    p.name.toLowerCase().includes(search.toLowerCase())
+  // All non-"me" participants, filtered by search
+  const filteredParticipants = allParticipants.filter(
+    p => p.name !== "me" && p.name.toLowerCase().includes(search.toLowerCase())
   );
 
   useEffect(() => {
@@ -415,7 +405,7 @@ export function SplitEditor({ transaction, isOpen, isLoading = false, onClose, o
             </AnimatePresence>
           </div>
 
-          {/* Add participant — clean popover trigger, no chip clutter */}
+          {/* Add participant — multi-select popover */}
           <Popover open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) setSearch(""); }}>
             <PopoverTrigger asChild>
               <button
@@ -426,37 +416,74 @@ export function SplitEditor({ transaction, isOpen, isLoading = false, onClose, o
                 Add participant…
               </button>
             </PopoverTrigger>
-            <PopoverContent className="p-0 w-64" align="start" side="bottom">
-              <Command>
+            <PopoverContent
+              className="p-0 w-[var(--radix-popover-trigger-width)]"
+              align="start"
+              side="bottom"
+              onInteractOutside={(e) => {
+                const target = e.target as HTMLElement;
+                if (target.closest('[role="dialog"]')) {
+                  e.preventDefault();
+                }
+              }}
+            >
+              <div className="flex items-center border-b px-3">
                 <CommandInput
                   placeholder="Search participants…"
                   value={search}
                   onValueChange={setSearch}
+                  className="border-0 focus-visible:ring-0 h-10 text-sm bg-transparent pl-0"
                 />
-                <CommandList>
-                  <CommandEmpty className="py-4 text-xs text-center text-muted-foreground">
-                    No participants found
-                  </CommandEmpty>
-                  <CommandGroup>
-                    {filteredParticipants.map(p => (
-                      <CommandItem
+              </div>
+              <div className="max-h-[220px] overflow-y-auto p-1">
+                {filteredParticipants.length === 0 ? (
+                  <p className="py-4 text-xs text-center text-muted-foreground">No participants found</p>
+                ) : (
+                  filteredParticipants.map(p => {
+                    const isAdded = entries.some(e => e.participant === p.name);
+                    return (
+                      <div
                         key={p.id}
-                        value={p.name}
-                        onSelect={() => {
-                          addParticipants([p.name]);
-                          setSelectedParticipants(prev => [...prev, p.name]);
-                          setAddOpen(false);
-                          setSearch("");
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          if (isAdded) {
+                            const idx = entries.findIndex(entry => entry.participant === p.name);
+                            if (idx !== -1) removeParticipant(idx);
+                            setSelectedParticipants(prev => prev.filter(sp => sp !== p.name));
+                          } else {
+                            setEntries(prev => [...prev, { participant: p.name, amount: mode === "custom" ? 0 : null }]);
+                            setSelectedParticipants(prev => [...prev, p.name]);
+                          }
                         }}
-                        className="flex items-center gap-2 cursor-pointer"
+                        className="flex items-center gap-2.5 px-2 py-1.5 rounded-sm cursor-pointer hover:bg-accent hover:text-accent-foreground select-none"
                       >
+                        <div className={cn(
+                          "flex h-4 w-4 items-center justify-center rounded-sm border flex-shrink-0",
+                          isAdded ? "bg-primary border-primary" : "border-muted-foreground/40"
+                        )}>
+                          {isAdded && <Check className="h-3 w-3 text-primary-foreground" />}
+                        </div>
                         <ParticipantAvatar name={p.name} size="sm" />
-                        <span className="text-sm">{toTitleCase(p.name)}</span>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
+                        <span className="text-sm truncate">{toTitleCase(p.name)}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              {entries.filter(e => e.participant !== "me").length > 0 && (
+                <div className="border-t p-2 flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">
+                    {entries.filter(e => e.participant !== "me").length} selected
+                  </span>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => { e.preventDefault(); setAddOpen(false); setSearch(""); }}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Done
+                  </button>
+                </div>
+              )}
             </PopoverContent>
           </Popover>
         </div>
