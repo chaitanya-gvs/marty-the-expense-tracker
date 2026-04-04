@@ -675,6 +675,21 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
   const { rows } = table.getRowModel();
 
+  // Pre-compute daily debit totals: O(n) one pass, used O(1) per date header
+  const dailyDebitTotals = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const r of rows) {
+      if (r.original.direction !== "debit") continue;
+      const date = (r.original.date ?? "").split("T")[0];
+      if (!date) continue;
+      const amount = r.original.is_shared && r.original.split_share_amount
+        ? r.original.split_share_amount
+        : r.original.amount ?? 0;
+      map.set(date, (map.get(date) ?? 0) + amount);
+    }
+    return map;
+  }, [rows]);
+
   const parentRef = React.useRef<HTMLDivElement>(null);
 
   if (isLoading) {
@@ -944,12 +959,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   const showDateHeader = rowDate !== lastDate;
                   if (showDateHeader) lastDate = rowDate;
 
-                  // Daily debit total for the date group
-                  const dailyTotal = showDateHeader
-                    ? rows
-                        .filter(r => (r.original.date || "").split("T")[0] === rowDate && r.original.direction === "debit")
-                        .reduce((sum, r) => sum + (r.original.is_shared && r.original.split_share_amount ? r.original.split_share_amount : r.original.amount || 0), 0)
-                    : 0;
+                  // Daily debit total — O(1) lookup into pre-computed map
+                  const dailyTotal = showDateHeader ? (dailyDebitTotals.get(rowDate) ?? 0) : 0;
 
                   const dateLabel = rowDate
                     ? new Date(rowDate + "T12:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
