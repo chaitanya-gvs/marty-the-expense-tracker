@@ -11,7 +11,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 60 * 1000, // 1 minute
+            staleTime: 60 * 1000,      // 1 min — serve cache, revalidate in bg
+            gcTime: 30 * 60 * 1000,    // 30 min — keep cache alive across navigation
             retry: 1,
           },
         },
