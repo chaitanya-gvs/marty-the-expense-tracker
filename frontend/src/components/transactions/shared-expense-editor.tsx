@@ -7,7 +7,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Modal } from "@/components/ui/modal";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CommandInput } from "@/components/ui/command";
 import { motion, AnimatePresence } from "framer-motion";
 import { UserPlus, Calculator, Users, Check, CheckCircle2, Trash2 } from "lucide-react";
 import { Transaction, SplitBreakdown, SplitEntry } from "@/lib/types";
@@ -428,11 +427,11 @@ export function SharedExpenseEditor({ transaction, isOpen, isLoading = false, on
               }}
             >
               <div className="flex items-center border-b px-3">
-                <CommandInput
+                <Input
                   placeholder="Search participants…"
                   value={search}
-                  onValueChange={setSearch}
-                  className="border-0 focus-visible:ring-0 h-10 text-sm bg-transparent pl-0"
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="border-0 focus-visible:ring-0 h-10 text-sm bg-transparent px-0 shadow-none"
                 />
               </div>
               <div className="max-h-[220px] overflow-y-auto p-1">
