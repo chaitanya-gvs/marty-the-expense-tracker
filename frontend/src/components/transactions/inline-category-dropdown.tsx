@@ -45,7 +45,7 @@ export function InlineCategoryDropdown({
   onTabNext,
   onTabPrevious,
 }: InlineCategoryDropdownProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -73,12 +73,6 @@ export function InlineCategoryDropdown({
       setSelectedCategory(category || null);
     }
   }, [currentCategory, allCategories]);
-
-
-  // Auto-open the popover when component mounts
-  useEffect(() => {
-    setOpen(true);
-  }, []);
 
   // Focus the search input when the popover opens
   useEffect(() => {
