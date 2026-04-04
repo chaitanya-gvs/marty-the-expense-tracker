@@ -1,148 +1,175 @@
 """
-Smoke test for the LandingAI document extraction pipeline.
+Smoke test for the statement extraction + standardization pipeline.
 
-Tests two things:
-  1. (Offline) _parse_table_to_dataframe — no API key needed.
-     Covers a typical Axis Atlas-style markdown table, a table with a
-     separator row, and a ragged table where rows have different widths.
+Mirrors the exact workflow that runs during statement processing:
+  1. LandingAI parse()  — PDF → markdown + typed chunks
+  2. Chunk filter       — keep only chunkTable/table chunks
+  3. LandingAI extract() — table markdown → structured table_data string
+  4. Markdown parser    — table_data → DataFrame
+  5. Save temp CSV      — local only, no GCS upload
+  6. Standardizer       — CSV → normalised transaction dicts
 
-  2. (Live, optional) Full extract_from_pdf against a real PDF on the instance.
-     Only runs when PDF_PATH env var is set and VISION_AGENT_API_KEY is present.
+Skipped (no side-effects on a test run):
+  - PDF unlocking  (pass an already-unlocked PDF)
+  - GCS upload
+  - Database insert
 
-Usage:
-    # Offline only (fast, no API calls):
+Usage (run from backend/ on the instance):
+    PDF_PATH=/tmp/axis_atlas_20260301.pdf \\
+    ACCOUNT_NICKNAME="Axis Atlas Credit Card" \\
     poetry run python scripts/smoke_test_extraction.py
-
-    # Include live API extraction:
-    PDF_PATH=/path/to/statement.pdf poetry run python scripts/smoke_test_extraction.py
 """
 
+import asyncio
 import os
 import sys
+import tempfile
 from pathlib import Path
 
-# Make sure project root is on the path
+# Project root on path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-
-import pandas as pd
 
 PASS = "\033[92mPASS\033[0m"
 FAIL = "\033[91mFAIL\033[0m"
+INFO = "\033[94mINFO\033[0m"
 
 _results: list[tuple[str, bool, str]] = []
 
 
-def check(name: str, condition: bool, detail: str = "") -> None:
+def check(name: str, condition: bool, detail: str = "") -> bool:
     status = PASS if condition else FAIL
-    print(f"  [{status}] {name}" + (f" — {detail}" if detail else ""))
+    print(f"  [{status}] {name}" + (f"  ({detail})" if detail else ""))
     _results.append((name, condition, detail))
+    return condition
+
+
+def info(msg: str) -> None:
+    print(f"  [{INFO}] {msg}")
 
 
 # ---------------------------------------------------------------------------
-# 1. Import the extractor (no API call yet)
+# Resolve inputs
 # ---------------------------------------------------------------------------
-print("\n=== Import ===")
+pdf_path_str = os.environ.get("PDF_PATH", "")
+account_nickname = os.environ.get("ACCOUNT_NICKNAME", "")
+
+if not pdf_path_str or not account_nickname:
+    print(
+        "\nUsage:\n"
+        "  PDF_PATH=/path/to/unlocked.pdf \\\n"
+        "  ACCOUNT_NICKNAME='Axis Atlas Credit Card' \\\n"
+        "  poetry run python scripts/smoke_test_extraction.py\n"
+    )
+    sys.exit(1)
+
+pdf_path = Path(pdf_path_str)
+
+
+# ---------------------------------------------------------------------------
+# Step 0: imports + API key check
+# ---------------------------------------------------------------------------
+print("\n=== Step 0: Environment ===")
 try:
     from src.services.statement_processor.document_extractor import DocumentExtractor
-    extractor = DocumentExtractor.__new__(DocumentExtractor)  # skip __init__ (no API key needed)
-    check("DocumentExtractor importable", True)
+    from src.services.orchestrator.transaction_standardizer import TransactionStandardizer
+    check("Imports OK", True)
 except Exception as e:
-    check("DocumentExtractor importable", False, str(e))
+    check("Imports OK", False, str(e))
+    sys.exit(1)
+
+if not check("PDF exists", pdf_path.exists(), str(pdf_path)):
+    sys.exit(1)
+
+api_key = os.environ.get("VISION_AGENT_API_KEY") or ""
+if not check("VISION_AGENT_API_KEY set", bool(api_key)):
+    print("  Set VISION_AGENT_API_KEY in your environment and retry.")
     sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
-# 2. _parse_table_to_dataframe — offline unit checks
+# Step 1 + 2 + 3: parse → chunk filter → extract
 # ---------------------------------------------------------------------------
-print("\n=== _parse_table_to_dataframe (offline) ===")
+print("\n=== Step 1-3: LandingAI parse → chunk filter → extract ===")
 
-# 2a. Typical Axis Atlas credit card table
-AXIS_ATLAS = """\
-| Date | Transaction Details | Reward Points | Amount (₹) |
-|------|---------------------|---------------|------------|
-| 01 Mar 2026 | AMAZON PAY | 50 | 500.00 |
-| 05 Mar 2026 | UBER AUTO | 10 | 98.00 |
-| 10 Mar 2026 | SWIGGY ORDER | 25 | 245.50 |
-"""
+extractor = DocumentExtractor()
 
-df = extractor._parse_table_to_dataframe(AXIS_ATLAS)
-check("Axis Atlas: non-empty", not df.empty)
-check("Axis Atlas: 3 data rows", len(df) == 3, f"got {len(df)}")
-check("Axis Atlas: 4 columns", len(df.columns) == 4, f"got {list(df.columns)}")
-check("Axis Atlas: Date column present", "Date" in df.columns)
-check("Axis Atlas: Amount column present", any("Amount" in c for c in df.columns))
+try:
+    extraction = extractor._extract_with_agentic_doc(pdf_path, account_nickname)
+except Exception as e:
+    check("_extract_with_agentic_doc", False, str(e))
+    sys.exit(1)
 
-# 2b. Table with no surrounding pipes (some LandingAI variants omit leading |)
-NO_OUTER_PIPES = """\
-Date | Description | Debit | Credit
----- | ----------- | ----- | ------
-02 Mar 2026 | NEFT TRF | 1000.00 |
-08 Mar 2026 | SALARY | | 50000.00
-"""
+if not check("Extraction success", extraction.get("success") is True, extraction.get("error", "")):
+    sys.exit(1)
 
-df2 = extractor._parse_table_to_dataframe(NO_OUTER_PIPES)
-check("No-outer-pipes: non-empty", not df2.empty)
-check("No-outer-pipes: 2 data rows", len(df2) == 2, f"got {len(df2)}")
+table_data: str = extraction.get("table_data", "")
+check("table_data non-empty", bool(table_data), f"{len(table_data)} chars")
 
-# 2c. Ragged rows (columns count mismatch — should be padded)
-RAGGED = """\
-| Date | Details | Amount |
-|------|---------|--------|
-| 01 Jan | Opening Balance |
-| 15 Jan | ATM Withdrawal | 2000.00 |
-"""
-
-df3 = extractor._parse_table_to_dataframe(RAGGED)
-check("Ragged: non-empty", not df3.empty)
-check("Ragged: 2 data rows", len(df3) == 2, f"got {len(df3)}")
-check("Ragged: 3 columns", len(df3.columns) == 3, f"got {list(df3.columns)}")
-
-# 2d. Empty / garbage input should return empty DataFrame without raising
-df4 = extractor._parse_table_to_dataframe("no table here at all")
-check("Garbage input: returns empty DF", df4.empty)
-
-df5 = extractor._parse_table_to_dataframe("")
-check("Empty string: returns empty DF", df5.empty)
-
-# 2e. Single-column degenerate table (only header row) → empty
-ONLY_HEADER = "| Date |\n|------|\n"
-df6 = extractor._parse_table_to_dataframe(ONLY_HEADER)
-check("Header-only table: returns empty DF", df6.empty)
+schema_used = extraction.get("extraction_schema", "?")
+kept_pages = extraction.get("kept_pages")
+info(f"Schema: {schema_used}")
+info(f"Page filter kept: {[p for p in kept_pages] if kept_pages else 'all (fallback)'}")
+info(f"table_data preview: {table_data[:300].replace(chr(10), ' ')} ...")
 
 
 # ---------------------------------------------------------------------------
-# 3. Live API test (optional — requires PDF_PATH env var + API key)
+# Step 4: markdown → DataFrame
 # ---------------------------------------------------------------------------
-pdf_path = os.environ.get("PDF_PATH")
-if pdf_path:
-    print(f"\n=== Live extraction: {pdf_path} ===")
-    try:
-        # Full __init__ needed here to set up the API client
-        live_extractor = DocumentExtractor()
-        if not getattr(live_extractor, 'api_key', None):
-            check("API key present", False, "VISION_AGENT_API_KEY not set")
-        else:
-            check("API key present", True)
-            account_nickname = os.environ.get("ACCOUNT_NICKNAME", "Axis Atlas Credit Card")
-            result = live_extractor.extract_from_pdf(
-                pdf_path=pdf_path,
-                account_nickname=account_nickname,
-                save_results=False,
-            )
-            check("Extraction success flag", result.get("success") is True, result.get("error", ""))
-            if result.get("success"):
-                table_data = result.get("table_data", "")
-                check("table_data non-empty", bool(table_data), f"{len(table_data)} chars")
-                if table_data:
-                    df_live = live_extractor._parse_table_to_dataframe(table_data)
-                    check("Live DataFrame non-empty", not df_live.empty, f"{len(df_live)} rows")
-                    check("Live DataFrame has columns", len(df_live.columns) > 0, str(list(df_live.columns)))
-                    if not df_live.empty:
-                        print(f"\n  Preview (first 3 rows):\n{df_live.head(3).to_string(index=False)}\n")
-    except Exception as e:
-        check("Live extraction (no exception)", False, str(e))
-else:
-    print("\n=== Live extraction: SKIPPED (set PDF_PATH env var to enable) ===")
+print("\n=== Step 4: Markdown table → DataFrame ===")
+
+df = extractor._parse_table_to_dataframe(table_data)
+
+if not check("DataFrame non-empty", not df.empty, f"{len(df)} rows"):
+    print(f"\n  Raw table_data:\n{table_data}\n")
+    sys.exit(1)
+
+check("Has columns", len(df.columns) > 0, str(list(df.columns)))
+info(f"Columns: {list(df.columns)}")
+info(f"Row count: {len(df)}")
+print(f"\n  DataFrame preview (first 5 rows):\n")
+print(df.head(5).to_string(index=False))
+print()
+
+
+# ---------------------------------------------------------------------------
+# Step 5: save temp CSV (local only — no GCS)
+# ---------------------------------------------------------------------------
+print("\n=== Step 5: Save temp CSV ===")
+
+from src.utils.filename_utils import nickname_to_filename_prefix
+
+tmp_dir = Path(tempfile.mkdtemp())
+prefix = nickname_to_filename_prefix(account_nickname)
+csv_name = f"{prefix}_smoke.csv"
+csv_path = tmp_dir / csv_name
+df.to_csv(csv_path, index=False, encoding="utf-8")
+
+check("CSV written", csv_path.exists(), str(csv_path))
+info(f"CSV path: {csv_path}")
+
+
+# ---------------------------------------------------------------------------
+# Step 6: standardize (no DB needed — uses filename routing)
+# ---------------------------------------------------------------------------
+print("\n=== Step 6: Standardize transactions ===")
+
+standardizer = TransactionStandardizer()
+std_df = standardizer.process_csv_file(csv_path)
+
+if not check("Standardized DataFrame non-empty", not std_df.empty, f"{len(std_df)} rows"):
+    print("  process_csv_file returned empty — check account nickname routing in process_csv_file()")
+    sys.exit(1)
+
+check("Has 'amount' column", "amount" in std_df.columns, str(list(std_df.columns)))
+check("Has 'direction' column", "direction" in std_df.columns)
+check("Has 'date' column", "date" in std_df.columns)
+check("No 'unknown' direction", not (std_df.get("direction") == "unknown").any(),
+      f"{(std_df['direction'] == 'unknown').sum()} unknown rows" if "direction" in std_df.columns else "")
+
+info(f"Columns: {list(std_df.columns)}")
+print(f"\n  Standardized preview (first 5 rows):\n")
+print(std_df.head(5).to_string(index=False))
+print()
 
 
 # ---------------------------------------------------------------------------
@@ -159,4 +186,4 @@ if passed < total:
             print(f"    - {name}" + (f": {detail}" if detail else ""))
     sys.exit(1)
 else:
-    print("  All checks passed.")
+    print("  All checks passed — pipeline looks healthy.")
