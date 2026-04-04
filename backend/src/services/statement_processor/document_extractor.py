@@ -149,51 +149,86 @@ class DocumentExtractor:
             return "sbi_savings"
         return None
 
-    def _parse_table_to_dataframe(self, table_markdown: str) -> pd.DataFrame:
+    def _parse_table_to_dataframe(self, table_data: str) -> pd.DataFrame:
         """
-        Parse a markdown pipe table returned by LandingAI into a pandas DataFrame.
+        Parse a table returned by LandingAI extract() into a pandas DataFrame.
 
-        LandingAI ADE always outputs markdown — HTML is not an output format.
-        Each row is a pipe-delimited line; separator lines (|---|---|) are dropped.
+        LandingAI's extract model is non-deterministic about output format — it
+        returns HTML (<table>…</table>) on some runs and markdown pipe tables on
+        others.  This method detects which format was returned and delegates to
+        the appropriate parser, falling back to the other if the first attempt
+        produces an empty result.
 
         Args:
-            table_markdown: Markdown pipe-table string from LandingAI extraction
+            table_data: Table string from LandingAI extraction (HTML or markdown)
 
         Returns:
             Pandas DataFrame with parsed transaction data, or empty DataFrame on failure
         """
+        if not table_data:
+            return pd.DataFrame()
+
+        is_html = "<table" in table_data.lower()
+
+        if is_html:
+            logger.info("LandingAI returned HTML table — parsing with pd.read_html")
+            df = self._parse_html_table(table_data)
+            if df.empty:
+                logger.warning("HTML parse produced empty DataFrame, retrying as markdown")
+                df = self._parse_markdown_table(table_data)
+        else:
+            logger.info("LandingAI returned markdown table — parsing pipe-table format")
+            df = self._parse_markdown_table(table_data)
+            if df.empty:
+                logger.warning("Markdown parse produced empty DataFrame, retrying as HTML")
+                df = self._parse_html_table(table_data)
+
+        return df
+
+    def _parse_html_table(self, html: str) -> pd.DataFrame:
+        """Parse an HTML <table> string into a DataFrame using lxml."""
+        try:
+            from io import StringIO
+            tables = pd.read_html(StringIO(html), flavor="lxml")
+            if not tables:
+                return pd.DataFrame()
+            df = pd.concat(tables, ignore_index=True) if len(tables) > 1 else tables[0]
+            df = df.dropna(how="all")
+            # Promote first row to header if pandas assigned numeric column names
+            if len(df) > 0 and all(str(c).isdigit() for c in df.columns):
+                df.columns = df.iloc[0]
+                df = df.iloc[1:].reset_index(drop=True)
+            logger.info(f"Parsed HTML table: {len(df)} rows, columns: {list(df.columns)}")
+            return df
+        except Exception:
+            logger.warning("HTML table parse failed", exc_info=True)
+            return pd.DataFrame()
+
+    def _parse_markdown_table(self, markdown: str) -> pd.DataFrame:
+        """Parse a markdown pipe-table string into a DataFrame."""
         import re
         try:
-            lines = [line.strip() for line in table_markdown.strip().splitlines() if line.strip()]
-            # Drop alignment/separator rows: lines made entirely of |, -, :, spaces
+            lines = [l.strip() for l in markdown.strip().splitlines() if l.strip()]
+            # Drop separator rows (|---|---|)
             data_lines = [l for l in lines if not re.match(r'^\|[\s|\-:]+\|$', l)]
-
             rows = []
             for line in data_lines:
                 cells = [c.strip() for c in line.split('|')]
-                # Remove leading/trailing empty strings produced by surrounding pipes
                 cells = [c for c in cells if c != '']
                 if cells:
                     rows.append(cells)
-
             if len(rows) < 2:
-                logger.warning(f"Markdown table has fewer than 2 rows after parsing ({len(rows)} rows found)")
+                logger.warning(f"Markdown table has fewer than 2 rows ({len(rows)} found)")
                 return pd.DataFrame()
-
             headers = rows[0]
             data = rows[1:]
-            # Normalise row width to header length (pad short rows, truncate long rows)
             data = [r[:len(headers)] + [''] * max(0, len(headers) - len(r)) for r in data]
-
             df = pd.DataFrame(data, columns=headers)
-            # Drop entirely empty rows
             df = df[~(df == '').all(axis=1)].reset_index(drop=True)
-
             logger.info(f"Parsed markdown table: {len(df)} rows, columns: {list(df.columns)}")
             return df
-
         except Exception:
-            logger.error("Error parsing markdown table", exc_info=True)
+            logger.warning("Markdown table parse failed", exc_info=True)
             return pd.DataFrame()
     
     def extract_from_pdf(self, pdf_path: str, account_nickname: str = None, save_results: bool = True, email_date: str = None) -> Dict[str, Any]:
