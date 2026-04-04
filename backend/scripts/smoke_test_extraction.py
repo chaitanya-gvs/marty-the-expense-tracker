@@ -29,6 +29,11 @@ from pathlib import Path
 # Project root on path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Load .env before any service imports so GCS / API credentials are available
+from dotenv import load_dotenv
+_backend_root = Path(__file__).parent.parent
+load_dotenv(_backend_root / "configs" / "secrets" / ".env")
+
 # ---------------------------------------------------------------------------
 # Configuration — update these to point at a different statement
 # ---------------------------------------------------------------------------
