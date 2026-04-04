@@ -27,6 +27,7 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
+@router.get("", response_model=ApiResponse)
 @router.get("/", response_model=ApiResponse)
 async def get_transactions(
     date_range_start: Optional[DateType] = Query(None, description="Start date for filtering"),
@@ -636,7 +637,7 @@ async def get_suggestions_summary():
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/tags/", response_model=ApiResponse)
+@router.get("/tags", response_model=ApiResponse)
 async def get_tags():
     """Get all tags with usage counts."""
     logger.info("Fetching all tags")
@@ -691,7 +692,7 @@ async def get_tag(tag_id: str):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/categories/", response_model=ApiResponse)
+@router.get("/categories", response_model=ApiResponse)
 async def get_categories(
     transaction_type: Optional[str] = Query(None, description="Filter by transaction type: 'debit' or 'credit'"),
 ):

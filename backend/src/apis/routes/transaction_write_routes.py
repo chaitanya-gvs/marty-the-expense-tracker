@@ -39,6 +39,7 @@ _TAG_COLORS: List[str] = [
 ]
 
 
+@router.post("", response_model=ApiResponse, status_code=201)
 @router.post("/", response_model=ApiResponse, status_code=201)
 async def create_transaction(transaction_data: TransactionCreate):
     """Create a new transaction."""
@@ -461,7 +462,7 @@ async def unlink_email_from_transaction(transaction_id: str, message_id: str):
 # ============================================================================
 
 
-@router.post("/categories/", response_model=ApiResponse, status_code=201)
+@router.post("/categories", response_model=ApiResponse, status_code=201)
 async def create_category(category_data: CategoryCreate):
     """Create a new category."""
     logger.info("Creating category: name=%s", category_data.name)
@@ -579,7 +580,7 @@ async def upsert_category(category_data: CategoryCreate):
 # ============================================================================
 
 
-@router.post("/tags/", response_model=ApiResponse, status_code=201)
+@router.post("/tags", response_model=ApiResponse, status_code=201)
 async def create_tag(tag_data: TagCreate):
     """Create a new tag."""
     logger.info("Creating tag: name=%s", tag_data.name)

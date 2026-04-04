@@ -39,7 +39,14 @@ const loginSchema = z.object({
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+// Use relative /api path on localhost so requests go through the Next.js proxy
+// (avoids cross-origin cookie issues). On production the env var is used directly.
+function getApiBase(): string {
+  if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+    return "/api";
+  }
+  return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+}
 
 const ghostRows = [
   { label: "Transport", pct: 53, amount: "₹1,504" },
@@ -87,7 +94,7 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
+      const res = await fetch(`${getApiBase()}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
