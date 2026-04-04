@@ -95,6 +95,7 @@ export interface TransactionColumnCallbacks {
   allCategoriesRef: RefObject<Category[]>;
   allTransactionsRef: RefObject<Transaction[]>;
   allTransactionsUnfilteredRef: RefObject<Transaction[]>;
+  editingCategoryForTransactionRef: RefObject<string | null>;
   expandedGroupedExpenses: Set<string>;
 
   // Editable columns (from keyboard nav hook)
@@ -302,12 +303,18 @@ export function buildTransactionColumns(
               onSuccess={() => {
                 setEditingRow(null);
                 setEditingField(null);
-                const currentRowIndex = allTransactionsRef.current!.findIndex(
-                  (t) => t.id === row.original.id
-                );
-                setFocusedRowIndex(currentRowIndex);
-                setFocusedColumnId("description");
-                setIsKeyboardNavigationMode(true);
+                // Don't reset focus to description if we already Tab-navigated to
+                // category editing — the async save fires after onTabNext has already
+                // moved focus, so overriding it here causes the category dropdown to
+                // flicker (columns rebuild → Radix Popover re-initializes).
+                if (!editingCategoryForTransactionRef.current) {
+                  const currentRowIndex = allTransactionsRef.current!.findIndex(
+                    (t) => t.id === row.original.id
+                  );
+                  setFocusedRowIndex(currentRowIndex);
+                  setFocusedColumnId("description");
+                  setIsKeyboardNavigationMode(true);
+                }
               }}
               onTabNext={() => {
                 setEditingRow(null);

@@ -278,6 +278,9 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const onUpdateTransactionRef = useRef((params: { id: string; updates: Partial<Transaction> }) =>
     updateTransaction.mutateAsync(params)
   );
+  // Ref used by description column's onSuccess to detect when Tab-navigation
+  // has already moved focus to the category editor before the async save lands.
+  const editingCategoryForTransactionRef = useRef<string | null>(null);
 
   useLayoutEffect(() => { allTransactionsRef.current = allTransactions; }, [allTransactions]);
   useLayoutEffect(() => { allTransactionsUnfilteredRef.current = allTransactionsUnfiltered; }, [allTransactionsUnfiltered]);
@@ -287,6 +290,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     onUpdateTransactionRef.current = (params: { id: string; updates: Partial<Transaction> }) =>
       updateTransaction.mutateAsync(params);
   }, [updateTransaction]);
+  useLayoutEffect(() => { editingCategoryForTransactionRef.current = editingCategoryForTransaction; }, [editingCategoryForTransaction]);
 
   // Selection helpers
   const selectedTransactions = useMemo(() => {
@@ -599,6 +603,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         allCategoriesRef,
         allTransactionsRef,
         allTransactionsUnfilteredRef,
+        editingCategoryForTransactionRef,
         expandedGroupedExpenses,
         editableColumns,
         getNextEditableColumn,
