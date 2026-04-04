@@ -254,12 +254,12 @@ if not check("Standardized DataFrame non-empty", not std_df.empty, f"{len(std_df
     print("  process_csv_file returned empty — check account nickname routing in process_csv_file()")
     sys.exit(1)
 
-check("Has 'amount' column",    "amount"    in std_df.columns, str(list(std_df.columns)))
-check("Has 'direction' column", "direction" in std_df.columns)
-check("Has 'date' column",      "date"      in std_df.columns)
-if "direction" in std_df.columns:
-    unknown_count = (std_df["direction"] == "unknown").sum()
-    check("No 'unknown' direction", unknown_count == 0, f"{unknown_count} unknown row(s)")
+check("Has 'amount' column",           "amount"           in std_df.columns, str(list(std_df.columns)))
+check("Has 'transaction_type' column", "transaction_type" in std_df.columns)
+check("Has 'transaction_date' column", "transaction_date" in std_df.columns)
+if "transaction_type" in std_df.columns:
+    unknown_count = (std_df["transaction_type"] == "unknown").sum()
+    check("No 'unknown' transaction_type", unknown_count == 0, f"{unknown_count} unknown row(s)")
 
 info(f"Columns: {list(std_df.columns)}")
 print(f"\n  Standardized transactions (first 5 rows):\n")
