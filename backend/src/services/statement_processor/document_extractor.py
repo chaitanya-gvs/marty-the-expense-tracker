@@ -163,7 +163,7 @@ class DocumentExtractor:
             from io import StringIO
             
             # Use pandas to read HTML tables - wrap in StringIO to avoid deprecation warning
-            tables = pd.read_html(StringIO(html_table))
+            tables = pd.read_html(StringIO(html_table), flavor="lxml")
             
             if not tables:
                 logger.warning("No tables found in HTML")
