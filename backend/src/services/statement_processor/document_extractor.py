@@ -7,6 +7,7 @@ from PDF bank statements and save the results.
 
 import os
 import sys
+import tempfile
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -331,9 +332,8 @@ class DocumentExtractor:
     def _save_extraction_csv_only(self, extraction_result: Dict[str, Any], pdf_path: Path, account_nickname: str = None, email_date: str = None) -> Optional[str]:
         """Save extraction results as CSV only in extracted_data directory and upload to GCS"""
         try:
-            # Create extracted_data directory for CSV files
-            output_dir = Path("data/extracted_data")
-            output_dir.mkdir(parents=True, exist_ok=True)
+            # Use a temp directory — CSV is transient staging before GCS upload
+            output_dir = Path(tempfile.mkdtemp())
             
             # Generate output filename using account nickname if available
             if account_nickname:
