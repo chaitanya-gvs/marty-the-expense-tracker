@@ -60,7 +60,7 @@ class TransactionStandardizer:
             is_credit_card: If True, default to debit for purchases (credit card logic)
         """
         if pd.isna(amount_str) or amount_str == "":
-            return 0.0, "unknown"
+            return 0.0, "debit" if is_credit_card else "unknown"
             
         # Convert to string and clean
         amount_str = str(amount_str).strip()
@@ -110,7 +110,7 @@ class TransactionStandardizer:
                 
         except ValueError:
             logger.warning(f"Could not parse amount: {amount_str}")
-            return 0.0, "unknown"
+            return 0.0, "debit" if is_credit_card else "unknown"
     
     def parse_date(self, date_str: str) -> Optional[str]:
         """Parse various date formats and return YYYY-MM-DD"""
@@ -347,6 +347,16 @@ class TransactionStandardizer:
             logger.warning(f"No 'Transaction Details' column found in {filename}, skipping")
             return pd.DataFrame()
 
+        # Find the amount column dynamically — it starts with "Amount"
+        # The extracted column name varies (e.g. "Amount (₹)", "Amount (‖)", "Amount (in ₹)")
+        amount_col = next(
+            (c for c in df.columns if str(c).startswith("Amount")),
+            None
+        )
+        if not amount_col:
+            logger.warning(f"No 'Amount' column found in {filename}, skipping")
+            return pd.DataFrame()
+
         for _, row in df.iterrows():
             date_value = row.get("Date")
             description = str(row.get(description_col, "")).strip()
@@ -383,7 +393,7 @@ class TransactionStandardizer:
                 transaction_date = self.parse_date(date_value)
                 last_valid_date = transaction_date
                 
-            amount, transaction_type = self.clean_amount(row.get("Amount (₹)", ""), is_credit_card=True)
+            amount, transaction_type = self.clean_amount(row.get(amount_col, ""), is_credit_card=True)
             
             standardized_data.append({
                 'transaction_date': transaction_date,
