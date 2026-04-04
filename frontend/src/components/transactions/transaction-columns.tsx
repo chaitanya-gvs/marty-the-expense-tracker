@@ -517,7 +517,7 @@ export function buildTransactionColumns(
                 e.stopPropagation();
                 const nextDirection = direction === "debit" ? "credit" : "debit";
                 try {
-                  await onUpdateTransactionRef.current?.({
+                  await onUpdateTransactionRef.current!({
                     id: row.original.id,
                     updates: { direction: nextDirection },
                   });
@@ -864,7 +864,7 @@ export function buildTransactionColumns(
                     onRemove={async (tagId) => {
                       try {
                         const remainingTags = tagObjects.filter((t) => t.id !== tagId);
-                        await onUpdateTransactionRef.current?.({
+                        await onUpdateTransactionRef.current!({
                           id: transaction.id,
                           updates: {
                             tags: remainingTags.map((t) => t.name),
@@ -1086,7 +1086,7 @@ export function buildTransactionColumns(
                 onClick={async (e) => {
                   e.stopPropagation();
                   try {
-                    await onUpdateTransactionRef.current?.({
+                    await onUpdateTransactionRef.current!({
                       id: transaction.id,
                       updates: { is_flagged: !isFlagActive },
                     });

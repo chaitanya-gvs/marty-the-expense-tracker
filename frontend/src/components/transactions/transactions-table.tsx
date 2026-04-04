@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useTransactionKeyboardNav } from "@/hooks/use-transaction-keyboard-nav";
 import { buildTransactionColumns } from "./transaction-columns";
@@ -278,11 +278,11 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     updateTransaction.mutateAsync(params)
   );
 
-  useEffect(() => { allTransactionsRef.current = allTransactions; }, [allTransactions]);
-  useEffect(() => { allTransactionsUnfilteredRef.current = allTransactionsUnfiltered; }, [allTransactionsUnfiltered]);
-  useEffect(() => { allTagsRef.current = allTags; }, [allTags]);
-  useEffect(() => { allCategoriesRef.current = allCategories; }, [allCategories]);
-  useEffect(() => {
+  useLayoutEffect(() => { allTransactionsRef.current = allTransactions; }, [allTransactions]);
+  useLayoutEffect(() => { allTransactionsUnfilteredRef.current = allTransactionsUnfiltered; }, [allTransactionsUnfiltered]);
+  useLayoutEffect(() => { allTagsRef.current = allTags; }, [allTags]);
+  useLayoutEffect(() => { allCategoriesRef.current = allCategories; }, [allCategories]);
+  useLayoutEffect(() => {
     onUpdateTransactionRef.current = (params: { id: string; updates: Partial<Transaction> }) =>
       updateTransaction.mutateAsync(params);
   }, [updateTransaction]);
