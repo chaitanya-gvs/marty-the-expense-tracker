@@ -22,17 +22,27 @@ Usage (run from backend/ on the instance):
 To test a different statement, change GCS_PDF_PATH and ACCOUNT_NICKNAME below.
 """
 
+import os
 import sys
 import tempfile
 from pathlib import Path
 
 # Project root on path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-# Load .env before any service imports so GCS / API credentials are available
-from dotenv import load_dotenv
 _backend_root = Path(__file__).parent.parent
-load_dotenv(_backend_root / "configs" / "secrets" / ".env")
+sys.path.insert(0, str(_backend_root))
+
+# Load BOTH env files before any service imports.
+# pydantic-settings reads them itself, but google-auth reads os.environ directly,
+# so we must populate os.environ here too.
+from dotenv import load_dotenv
+load_dotenv(_backend_root / "configs" / "secrets" / ".env", override=True)
+load_dotenv(_backend_root / "configs" / ".env", override=False)
+
+# Resolve GOOGLE_APPLICATION_CREDENTIALS to an absolute path now so that
+# google-auth finds it even before GCSService.__init__ runs.
+_gcp_creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+if _gcp_creds and not Path(_gcp_creds).is_absolute():
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(_backend_root / _gcp_creds)
 
 # ---------------------------------------------------------------------------
 # Configuration — update these to point at a different statement
@@ -65,7 +75,6 @@ def info(msg: str) -> None:
 print("\n=== Step 0: Download unlocked PDF from GCS ===")
 
 try:
-    import os
     from landingai_ade import LandingAIADE
     from landingai_ade.lib import pydantic_to_json_schema
     from src.services.statement_processor.document_extractor import DocumentExtractor
