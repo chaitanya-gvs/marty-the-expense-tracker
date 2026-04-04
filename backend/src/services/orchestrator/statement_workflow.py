@@ -1190,7 +1190,8 @@ class StatementWorkflow:
     async def _standardize_and_combine_all_data(self) -> List[Dict[str, Any]]:
         """Delegate to DataStandardizerHelper."""
         return await self._data_standardizer_helper.process(
-            override=getattr(self, "override", False)
+            override=getattr(self, "override", False),
+            job_id=self.job_id,
         )
     
     async def _remove_duplicate_transactions(self, transactions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

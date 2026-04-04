@@ -61,7 +61,7 @@ class DataStandardizerHelper:
         self.emit = emit
         self.log_extra = log_extra
 
-    async def process(self, override: bool = False) -> List[Dict[str, Any]]:
+    async def process(self, override: bool = False, job_id: str | None = None) -> List[Dict[str, Any]]:
         """Standardize and combine all transaction data from cloud storage."""
         try:
             logger.info("Standardizing and combining all transaction data", extra=self.log_extra())
@@ -194,6 +194,23 @@ class DataStandardizerHelper:
                             level="success",
                             data={"cloud_file": cloud_file, "row_count": len(standardized_data)},
                         )
+                        # Mark this statement as db_inserted so reruns skip it.
+                        # csv_key = CSV stem without _extracted (e.g. "yes_bank_savings_20260402")
+                        if not "splitwise" in cloud_file.lower():
+                            try:
+                                await StatementLogOperations.update_status(
+                                    csv_key, "db_inserted", job_id=job_id
+                                )
+                                logger.info(
+                                    f"Marked {csv_key} as db_inserted",
+                                    extra=self.log_extra(),
+                                )
+                            except Exception:
+                                logger.warning(
+                                    f"Failed to mark {csv_key} as db_inserted",
+                                    exc_info=True,
+                                    extra=self.log_extra(),
+                                )
                     else:
                         self.emit(
                             "standardization_file_complete", "standardization",
