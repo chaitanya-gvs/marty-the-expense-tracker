@@ -96,6 +96,8 @@ Statement OCR (existing pipeline, modified post-extraction):
 - `backend/src/services/email_ingestion/parsers/yes_bank.py` — Yes Bank Savings
 - `backend/src/services/email_ingestion/dedup_service.py` — tiered matching logic
 - `backend/src/apis/routes/email_ingestion_routes.py` — run + status endpoints
+- `backend/src/services/database_manager/models/review_queue.py` — `ReviewQueue` model
+- `backend/src/services/database_manager/operations/review_queue_operations.py` — queue CRUD
 - `backend/scripts/validate_email_dedup.py` — pre-launch validation script
 
 ### Modified files
@@ -125,21 +127,48 @@ alert_last_processed_at  TIMESTAMPTZ  -- watermark: scheduler resumes from here
 
 ### `transactions` table — 2 new columns
 ```sql
-email_message_id   TEXT     -- Gmail message ID; indexed for fast exact-match dedup
-                            -- populated only for transaction_source = 'email_ingestion'
-statement_confirmed BOOLEAN -- true when statement OCR matched this email transaction
-                            -- default false
+email_message_id    TEXT     -- Gmail message ID; indexed for fast exact-match dedup
+                             -- populated only for transaction_source = 'email_ingestion'
+statement_confirmed BOOLEAN  -- true when statement OCR matched this email transaction
+                             -- default false
 ```
 
-### New indexes
+### `review_queue` table — new
+```sql
+CREATE TABLE review_queue (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    review_type             TEXT        NOT NULL,  -- 'statement_only' | 'ambiguous'
+    transaction_date        DATE        NOT NULL,
+    amount                  NUMERIC     NOT NULL,
+    description             TEXT        NOT NULL,
+    account                 TEXT        NOT NULL,
+    direction               TEXT        NOT NULL,  -- 'debit' | 'credit'
+    transaction_type        TEXT        NOT NULL,
+    reference_number        TEXT,                  -- carried over for display
+    raw_data                JSONB,                 -- full statement-extracted payload
+    ambiguous_candidate_ids UUID[],                -- email tx IDs (ambiguous type only)
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    resolved_at             TIMESTAMPTZ,           -- NULL = unresolved
+    resolution              TEXT                   -- 'confirmed' | 'linked' | 'deleted'
+);
+
+CREATE INDEX idx_review_queue_unresolved ON review_queue(review_type) WHERE resolved_at IS NULL;
+```
+
+**Why a separate table (not `transaction_source = "pending_review"`):**
+Pending items in the main `transactions` table would require every existing query — analytics, totals, settlements, filters — to explicitly exclude them. A missed filter means silently wrong numbers. The dedicated table keeps `transactions` clean with zero impact on existing code paths.
+
+### New indexes on `transactions`
 ```sql
 CREATE INDEX idx_transactions_email_message_id ON transactions(email_message_id);
 CREATE INDEX idx_transactions_reference_number ON transactions(reference_number);
 -- idx_transactions_account and idx_transactions_date already exist (used by Tier 2)
 ```
 
-### Migration
-One Alembic migration touching both tables and adding both indexes.
+### Migrations
+Two Alembic migrations:
+1. Alter `accounts` and `transactions` tables, add indexes
+2. Create `review_queue` table and its index
 
 ---
 
@@ -272,8 +301,17 @@ Actions:
 - **None of these** — treats as new statement-only transaction and inserts it
 
 ### Persistence model
-- **Statement-only** transactions are inserted into the `transactions` table with `transaction_source = "pending_review"`. The review queue UI filters on this value. Confirming a row updates `transaction_source` to `"statement_extraction"`.
-- **Ambiguous** transactions are also inserted with `transaction_source = "pending_review"`, and the list of email candidate IDs is stored in `raw_data` as `{"ambiguous_candidates": ["uuid1", "uuid2"]}`. "Link to this one" merges and sets `statement_confirmed = true` on the chosen candidate; "None of these" clears the candidates and updates source to `"statement_extraction"`.
+Both item types are written to the dedicated `review_queue` table — the main `transactions` table is never touched until the user resolves the item.
+
+**Statement-only lifecycle:**
+1. Statement OCR finds no match → row inserted into `review_queue` with `review_type = "statement_only"`
+2. User hits **Confirm** → transaction inserted into `transactions` as `transaction_source = "statement_extraction"` → `review_queue.resolved_at` stamped, `resolution = "confirmed"`
+3. User hits **Delete** → no transaction inserted → `resolution = "deleted"`
+
+**Ambiguous lifecycle:**
+1. Statement OCR finds >1 email match → row inserted into `review_queue` with `review_type = "ambiguous"`, `ambiguous_candidate_ids` populated with the matching email transaction UUIDs
+2. User hits **Link to this one** → chosen email transaction gets `statement_confirmed = true` → `resolution = "linked"`
+3. User hits **None of these** → treated as statement-only: transaction inserted as `statement_extraction` → `resolution = "confirmed"`
 
 ### Design notes
 - Queue is non-blocking — email transactions are already live in the main view
