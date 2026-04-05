@@ -572,21 +572,18 @@ export function TransactionFilters({
           )}
         </div>
 
-        {/* Quick Presets */}
-        <div className="ml-auto flex items-center gap-1.5 overflow-x-auto scrollbar-none">
-          <button
-            onClick={() => applyQuickDatePreset("this_month")}
-            className="rounded-md px-2 py-1 text-xs bg-muted hover:bg-accent text-foreground transition-colors"
-          >
-            This month
-          </button>
-          <button
-            onClick={() => applyQuickDatePreset("last_30")}
-            className="rounded-md px-2 py-1 text-xs bg-muted hover:bg-accent text-foreground transition-colors"
-          >
-            Last 30d
-          </button>
-        </div>
+        {/* Clear Filters */}
+        {hasActiveFilters && (
+          <div className="ml-auto flex items-center">
+            <button
+              onClick={onClearFilters}
+              className="rounded-md px-2 py-1 text-xs bg-muted hover:bg-accent text-foreground transition-colors flex items-center gap-1"
+            >
+              <X className="h-3 w-3" />
+              Clear filters
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Expanded Panel (Animated) */}

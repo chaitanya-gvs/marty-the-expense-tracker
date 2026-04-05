@@ -753,17 +753,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       <div className="p-4 border-b border-border">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
-            {isKeyboardNavigationMode && (
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-xs flex items-center gap-1">
-                  <Keyboard className="h-3 w-3" />
-                  Keyboard Navigation Active
-                </Badge>
-                <span className="text-xs text-muted-foreground">
-                  Tab: Save & move right • Enter: Edit • Arrow keys: Navigate • Esc: Exit
-                </span>
-              </div>
-            )}
             {!isMultiSelectMode && (
               <Button
                 variant="outline"
@@ -1121,6 +1110,24 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           )}
         </div>
       </div>
+
+      {/* Keyboard nav hint — floats above the footer only when active */}
+      <AnimatePresence>
+        {isKeyboardNavigationMode && (
+          <motion.div
+            className="flex items-center justify-center gap-2 py-1.5 border-t border-border bg-muted/30"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <Keyboard className="h-3 w-3 text-muted-foreground/60" />
+            <span className="text-[11px] text-muted-foreground/60 tabular-nums">
+              Tab: move right &nbsp;•&nbsp; Enter: edit &nbsp;•&nbsp; Arrows: navigate &nbsp;•&nbsp; Esc: exit
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {!hasNextPage && allTransactions.length > 0 && (
         <div className="p-3 border-t border-border flex items-center justify-center gap-3">
