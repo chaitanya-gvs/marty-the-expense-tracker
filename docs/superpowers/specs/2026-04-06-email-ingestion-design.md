@@ -216,7 +216,12 @@ Each parser's `parse()` calls `is_emandate()` first and routes accordingly. Old 
 ## 7. Deduplication Strategy
 
 ### Within email ingestion (preventing re-processing)
-Fast path: check `email_message_id` against `transactions.email_message_id` using indexed lookup. Skip if exists. Done before parsing to avoid wasted work.
+
+**Step 1 — Exact match (same email reprocessed):**
+Check `email_message_id` against `transactions.email_message_id` using indexed lookup. Skip if exists. Done before parsing to avoid wasted work.
+
+**Step 2 — Fuzzy match (two different emails, same transaction):**
+Some banks send an initial alert + a later confirmation email for the same transaction — different Gmail message IDs but identical underlying data. After parsing, run Tier 1 (reference number) and Tier 2 (amount + account + ±3 day window) against existing `email_ingestion` transactions. If a match is found → skip silently and log. No review queue entry — there is no meaningful choice to surface to the user.
 
 ### Between email and statement (reconciliation)
 
