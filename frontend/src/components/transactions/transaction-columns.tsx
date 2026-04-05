@@ -165,6 +165,7 @@ export function buildTransactionColumns(
     allCategoriesRef,
     allTransactionsRef,
     allTransactionsUnfilteredRef,
+    editingCategoryForTransactionRef,
     expandedGroupedExpenses,
     editableColumns,
     getNextEditableColumn,
