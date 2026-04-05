@@ -70,7 +70,9 @@ export function TransactionFilters({
   const [splitFilter, setSplitFilter] = useState<string>(
     filters.is_split === false ? "exclude" : filters.is_split === true ? "only" : "all"
   );
-  const [groupedFilter, setGroupedFilter] = useState<boolean>(filters.is_grouped_expense === true);
+  const [groupedFilter, setGroupedFilter] = useState<"all" | "only" | "exclude">(
+    filters.is_grouped_expense === true ? "only" : filters.is_grouped_expense === false ? "exclude" : "all"
+  );
   const [accountSearchQuery, setAccountSearchQuery] = useState("");
   const [categorySearchQuery, setCategorySearchQuery] = useState("");
   const [participantSearchQuery, setParticipantSearchQuery] = useState("");
@@ -206,7 +208,13 @@ export function TransactionFilters({
     }
 
     // Apply is_grouped_expense filter
-    newFilters.is_grouped_expense = groupedFilter ? true : undefined;
+    if (groupedFilter === "only") {
+      newFilters.is_grouped_expense = true;
+    } else if (groupedFilter === "exclude") {
+      newFilters.is_grouped_expense = false;
+    } else {
+      newFilters.is_grouped_expense = undefined;
+    }
 
     // Check if filters have actually changed
     const filtersChanged =
@@ -255,7 +263,7 @@ export function TransactionFilters({
     setFlaggedFilter("all");
     setHideShared(false);
     setSplitFilter("all");
-    setGroupedFilter(false);
+    setGroupedFilter("all");
     onClearFilters();
 
     // Collapse panel after reset
@@ -329,7 +337,7 @@ export function TransactionFilters({
     const newSplitFilter = filters.is_split === false ? "exclude" : filters.is_split === true ? "only" : "all";
     if (newSplitFilter !== splitFilter) setSplitFilter(newSplitFilter);
 
-    const newGroupedFilter = filters.is_grouped_expense === true;
+    const newGroupedFilter = filters.is_grouped_expense === true ? "only" : filters.is_grouped_expense === false ? "exclude" : "all";
     if (newGroupedFilter !== groupedFilter) setGroupedFilter(newGroupedFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
@@ -418,7 +426,7 @@ export function TransactionFilters({
     else if (key === "flagged") setFlaggedFilter("all");
     else if (key === "is_shared") setHideShared(false);
     else if (key === "is_split") setSplitFilter("all");
-    else if (key === "is_grouped_expense") setGroupedFilter(false);
+    else if (key === "is_grouped_expense") setGroupedFilter("all");
 
     onFiltersChange(newFilters);
   };
@@ -751,7 +759,10 @@ export function TransactionFilters({
                     variant="outline"
                     role="combobox"
                     aria-expanded={isAccountPopoverOpen}
-                    className="h-auto min-h-9 text-sm bg-muted border-border text-foreground justify-between w-full py-2"
+                    className={cn(
+                      "min-h-9 text-sm bg-muted border-border text-foreground justify-between w-full",
+                      (selectedAccounts.length > 0 || excludeAccounts.length > 0) ? "h-auto py-2" : "h-9"
+                    )}
                   >
                     <div className="flex flex-wrap gap-1 flex-1 text-left">
                       {selectedAccounts.length === 0 && excludeAccounts.length === 0 ? (
@@ -918,7 +929,10 @@ export function TransactionFilters({
                     variant="outline"
                     role="combobox"
                     aria-expanded={isCategoryPopoverOpen}
-                    className="h-auto min-h-9 text-sm bg-muted border-border text-foreground justify-between w-full py-2"
+                    className={cn(
+                      "min-h-9 text-sm bg-muted border-border text-foreground justify-between w-full",
+                      (selectedCategories.length > 0 || excludeCategories.length > 0 || includeUncategorized) ? "h-auto py-2" : "h-9"
+                    )}
                   >
                     <div className="flex flex-wrap gap-1 flex-1 text-left">
                       {selectedCategories.length === 0 && excludeCategories.length === 0 && !includeUncategorized ? (
@@ -1145,7 +1159,10 @@ export function TransactionFilters({
                     variant="outline"
                     role="combobox"
                     aria-expanded={isParticipantPopoverOpen}
-                    className="h-auto min-h-9 text-sm bg-muted border-border text-foreground justify-between w-full py-2"
+                    className={cn(
+                      "min-h-9 text-sm bg-muted border-border text-foreground justify-between w-full",
+                      (selectedParticipants.length > 0 || excludeParticipants.length > 0) ? "h-auto py-2" : "h-9"
+                    )}
                   >
                     <div className="flex flex-wrap gap-1 flex-1 text-left">
                       {selectedParticipants.length === 0 && excludeParticipants.length === 0 ? (
@@ -1268,37 +1285,44 @@ export function TransactionFilters({
           {/* Quick Filter Chips */}
           <div className="mt-3 pt-3 border-t border-border flex flex-wrap items-center gap-2">
 
-            {/* Pill chips: Shared, Flagged, Split */}
-            {[
+            {/* Pill chips: Shared, Flagged, Split, Grouped — 3-state: neutral → include → exclude → neutral */}
+            {([
               {
                 label: "Shared",
-                active: selectedTransactionType === "shared",
-                onClick: () => setSelectedTransactionType(selectedTransactionType === "shared" ? "all" : "shared"),
+                state: selectedTransactionType === "shared" ? "include" : hideShared ? "exclude" : "all",
+                onClick: () => {
+                  const cur = selectedTransactionType === "shared" ? "include" : hideShared ? "exclude" : "all";
+                  if (cur === "all") { setSelectedTransactionType("shared"); setHideShared(false); }
+                  else if (cur === "include") { setSelectedTransactionType("all"); setHideShared(true); }
+                  else { setSelectedTransactionType("all"); setHideShared(false); }
+                },
               },
               {
                 label: "Flagged",
-                active: flaggedFilter === "flagged",
-                onClick: () => setFlaggedFilter(flaggedFilter === "flagged" ? "all" : "flagged"),
+                state: flaggedFilter === "flagged" ? "include" : flaggedFilter === "not_flagged" ? "exclude" : "all",
+                onClick: () => setFlaggedFilter(f => f === "all" ? "flagged" : f === "flagged" ? "not_flagged" : "all"),
               },
               {
                 label: "Split",
-                active: splitFilter === "only",
-                onClick: () => setSplitFilter(splitFilter === "only" ? "all" : "only"),
+                state: splitFilter === "only" ? "include" : splitFilter === "exclude" ? "exclude" : "all",
+                onClick: () => setSplitFilter(f => f === "all" ? "only" : f === "only" ? "exclude" : "all"),
               },
               {
                 label: "Grouped",
-                active: groupedFilter,
-                onClick: () => setGroupedFilter(v => !v),
+                state: groupedFilter === "only" ? "include" : groupedFilter === "exclude" ? "exclude" : "all",
+                onClick: () => setGroupedFilter(f => f === "all" ? "only" : f === "only" ? "exclude" : "all"),
               },
-            ].map(({ label, active, onClick }) => (
+            ] as const).map(({ label, state, onClick }) => (
               <button
                 key={label}
                 onClick={onClick}
                 className={cn(
                   "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium border transition-colors select-none",
-                  active
+                  state === "include"
                     ? "bg-primary/15 border-primary/30 text-primary/80"
-                    : "bg-transparent border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground"
+                    : state === "exclude"
+                      ? "bg-red-400/15 border-red-400/30 text-red-300"
+                      : "bg-transparent border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground"
                 )}
               >
                 {label}

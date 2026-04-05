@@ -48,7 +48,7 @@ export function EmailCard({
 
     if (combined.includes("uber")) return { icon: Car, name: "Uber" };
     if (combined.includes("ola")) return { icon: Car, name: "Ola" };
-    if (combined.includes("swiggy")) return { icon: UtensilsCrossed, name: "Swiggy" };
+    if (combined.includes("swiggy") || combined.includes("instamart")) return { icon: UtensilsCrossed, name: combined.includes("instamart") ? "Instamart" : "Swiggy" };
     if (combined.includes("zomato")) return { icon: UtensilsCrossed, name: "Zomato" };
     if (combined.includes("amazon")) return { icon: Package, name: "Amazon" };
     if (combined.includes("flipkart")) return { icon: ShoppingBag, name: "Flipkart" };
@@ -64,7 +64,9 @@ export function EmailCard({
     email.sender?.toLowerCase().includes("uber");
   const isSwiggyEmail =
     email.subject?.toLowerCase().includes("swiggy") ||
-    email.sender?.toLowerCase().includes("swiggy");
+    email.sender?.toLowerCase().includes("swiggy") ||
+    email.subject?.toLowerCase().includes("instamart") ||
+    email.sender?.toLowerCase().includes("instamart");
 
   // Auto-fetch rich details for supported merchants
   useEffect(() => {
