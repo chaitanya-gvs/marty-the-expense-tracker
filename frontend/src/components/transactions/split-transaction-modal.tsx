@@ -5,7 +5,6 @@ import { Modal } from "@/components/ui/modal";
 import { MoneyInput, KeepOriginalToggle } from "@/components/ui/modal/primitives";
 import { CategorySelector } from "@/components/transactions/category-selector";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useSplitTransaction } from "@/hooks/use-transactions";
 import { useCategories } from "@/hooks/use-categories";
 import { Transaction } from "@/lib/types";
@@ -14,6 +13,7 @@ import { Plus, Trash2, Split, Check } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { FieldAutocomplete } from "@/components/transactions/field-autocomplete";
 
 // Fallback palette when a category has no color
 export const PART_COLORS = [
@@ -319,12 +319,16 @@ export function SplitTransactionModal({
                     className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                     style={{ backgroundColor: dotColor }}
                   />
-                  <Input
-                    value={part.description}
-                    onChange={(e) => updatePart(part.id, "description", e.target.value)}
-                    placeholder={`Part ${index + 1} description`}
-                    className="flex-1 h-9 bg-muted/50 border-border/50 text-sm"
-                  />
+                  <div className="flex-1">
+                    <FieldAutocomplete
+                      fieldName="description"
+                      value={part.description}
+                      onValueChange={(val) => updatePart(part.id, "description", val)}
+                      onSave={(val) => updatePart(part.id, "description", val ?? "")}
+                      placeholder={`Part ${index + 1} description`}
+                      className="h-9 bg-muted/50 border-border/50 text-sm"
+                    />
+                  </div>
                   <div className="w-28 flex-shrink-0">
                     <MoneyInput
                       value={part.amount || ""}

@@ -45,7 +45,7 @@ export function InlineCategoryDropdown({
   onTabNext,
   onTabPrevious,
 }: InlineCategoryDropdownProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -74,25 +74,6 @@ export function InlineCategoryDropdown({
     }
   }, [currentCategory, allCategories]);
 
-
-  // Auto-open the popover when component mounts
-  useEffect(() => {
-    setOpen(true);
-  }, []);
-
-  // Focus the search input when the popover opens
-  useEffect(() => {
-    if (open) {
-      // Small delay to ensure the popover is fully rendered
-      const timer = setTimeout(() => {
-        const searchInput = document.querySelector('input[placeholder="Type to search or create..."]') as HTMLInputElement;
-        if (searchInput) {
-          searchInput.focus();
-        }
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [open]);
 
   const handleSelectCategory = async (category: Category) => {
     setSelectedCategory(category);
@@ -307,9 +288,14 @@ export function InlineCategoryDropdown({
               <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent 
-            className="w-64 p-2" 
+          <PopoverContent
+            className="w-64 p-2"
             align="start"
+            onFocusOutside={(e) => {
+              // Prevent Radix from dismissing on focus-outside — Tab navigation
+              // within and into this popover is handled explicitly via onKeyDown.
+              e.preventDefault();
+            }}
             onInteractOutside={(e) => {
               // Prevent closing when clicking on dialogs
               const target = e.target as HTMLElement;
@@ -326,6 +312,7 @@ export function InlineCategoryDropdown({
               </div>
               <div className="flex gap-1">
                 <Input
+                  autoFocus
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Type to search or create..."

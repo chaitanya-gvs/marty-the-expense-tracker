@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { RefObject } from "react";
 import { createColumnHelper, ColumnDef, Row } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import {
@@ -89,11 +89,13 @@ export interface TransactionColumnCallbacks {
   focusedColumnId: string | null;
   focusedActionButton: number;
 
-  // Data
-  allTags: Tag[];
-  allCategories: Category[];
-  allTransactions: Transaction[];
-  allTransactionsUnfiltered: Transaction[];
+  // Data (refs so column callbacks always read latest values without
+  // triggering a columns useMemo rebuild on every data update)
+  allTagsRef: RefObject<Tag[]>;
+  allCategoriesRef: RefObject<Category[]>;
+  allTransactionsRef: RefObject<Transaction[]>;
+  allTransactionsUnfilteredRef: RefObject<Transaction[]>;
+  editingCategoryForTransactionRef: RefObject<string | null>;
   expandedGroupedExpenses: Set<string>;
 
   // Editable columns (from keyboard nav hook)
@@ -111,8 +113,8 @@ export interface TransactionColumnCallbacks {
   // Group expense handler
   toggleGroupExpense: (transaction: Transaction) => void;
 
-  // Update mutation (for tag removal, flag toggle, direction toggle)
-  onUpdateTransaction: (params: { id: string; updates: Partial<Transaction> }) => void;
+  // Update mutation ref (for tag removal, flag toggle, direction toggle)
+  onUpdateTransactionRef: RefObject<(params: { id: string; updates: Partial<Transaction> }) => Promise<unknown>>;
 
   // Editing state setters
   setEditingRow: (id: string | null) => void;
@@ -159,10 +161,11 @@ export function buildTransactionColumns(
     focusedRowIndex,
     focusedColumnId,
     focusedActionButton,
-    allTags,
-    allCategories,
-    allTransactions,
-    allTransactionsUnfiltered,
+    allTagsRef,
+    allCategoriesRef,
+    allTransactionsRef,
+    allTransactionsUnfilteredRef,
+    editingCategoryForTransactionRef,
     expandedGroupedExpenses,
     editableColumns,
     getNextEditableColumn,
@@ -171,7 +174,7 @@ export function buildTransactionColumns(
     handleHighlightTransactions,
     handleClearHighlight,
     toggleGroupExpense,
-    onUpdateTransaction,
+    onUpdateTransactionRef,
     setEditingRow,
     setEditingField,
     setEditingTagsForTransaction,
@@ -291,7 +294,7 @@ export function buildTransactionColumns(
               onCancel={() => {
                 setEditingRow(null);
                 setEditingField(null);
-                const currentRowIndex = allTransactions.findIndex(
+                const currentRowIndex = allTransactionsRef.current!.findIndex(
                   (t) => t.id === row.original.id
                 );
                 setFocusedRowIndex(currentRowIndex);
@@ -301,25 +304,31 @@ export function buildTransactionColumns(
               onSuccess={() => {
                 setEditingRow(null);
                 setEditingField(null);
-                const currentRowIndex = allTransactions.findIndex(
-                  (t) => t.id === row.original.id
-                );
-                setFocusedRowIndex(currentRowIndex);
-                setFocusedColumnId("description");
-                setIsKeyboardNavigationMode(true);
+                // Don't reset focus to description if we already Tab-navigated to
+                // category editing — the async save fires after onTabNext has already
+                // moved focus, so overriding it here causes the category dropdown to
+                // flicker (columns rebuild → Radix Popover re-initializes).
+                if (!editingCategoryForTransactionRef.current) {
+                  const currentRowIndex = allTransactionsRef.current!.findIndex(
+                    (t) => t.id === row.original.id
+                  );
+                  setFocusedRowIndex(currentRowIndex);
+                  setFocusedColumnId("description");
+                  setIsKeyboardNavigationMode(true);
+                }
               }}
               onTabNext={() => {
                 setEditingRow(null);
                 setEditingField(null);
 
-                const currentRowIndex = allTransactions.findIndex(
+                const currentRowIndex = allTransactionsRef.current!.findIndex(
                   (t) => t.id === row.original.id
                 );
                 const nextColumn = getNextEditableColumn("description", "right");
 
                 if (nextColumn === editableColumns[0]) {
-                  const nextRowIndex = Math.min(currentRowIndex + 1, allTransactions.length - 1);
-                  const nextTransaction = allTransactions[nextRowIndex];
+                  const nextRowIndex = Math.min(currentRowIndex + 1, allTransactionsRef.current!.length - 1);
+                  const nextTransaction = allTransactionsRef.current![nextRowIndex];
                   if (nextTransaction) {
                     setFocusedRowIndex(nextRowIndex);
                     setFocusedColumnId(nextColumn);
@@ -350,14 +359,14 @@ export function buildTransactionColumns(
                 setEditingRow(null);
                 setEditingField(null);
 
-                const currentRowIndex = allTransactions.findIndex(
+                const currentRowIndex = allTransactionsRef.current!.findIndex(
                   (t) => t.id === row.original.id
                 );
                 const prevColumn = getNextEditableColumn("description", "left");
 
                 if (prevColumn === editableColumns[editableColumns.length - 1]) {
                   const prevRowIndex = Math.max(currentRowIndex - 1, 0);
-                  const prevTransaction = allTransactions[prevRowIndex];
+                  const prevTransaction = allTransactionsRef.current![prevRowIndex];
                   if (prevTransaction) {
                     setFocusedRowIndex(prevRowIndex);
                     setFocusedColumnId(prevColumn);
@@ -516,7 +525,7 @@ export function buildTransactionColumns(
                 e.stopPropagation();
                 const nextDirection = direction === "debit" ? "credit" : "debit";
                 try {
-                  await onUpdateTransaction({
+                  await onUpdateTransactionRef.current!({
                     id: row.original.id,
                     updates: { direction: nextDirection },
                   });
@@ -594,7 +603,7 @@ export function buildTransactionColumns(
       cell: ({ getValue, row }) => {
         const transaction = row.original;
         const categoryName = getValue();
-        const category = allCategories.find((cat) => cat.name === categoryName);
+        const category = allCategoriesRef.current!.find((cat) => cat.name === categoryName);
         const isEditingCategory = editingCategoryForTransaction === transaction.id;
 
         if (isEditingCategory) {
@@ -605,14 +614,14 @@ export function buildTransactionColumns(
               transactionDirection={transaction.direction}
               onCancel={() => {
                 setEditingCategoryForTransaction(null);
-                const currentRowIndex = allTransactions.findIndex((t) => t.id === transaction.id);
+                const currentRowIndex = allTransactionsRef.current!.findIndex((t) => t.id === transaction.id);
                 setFocusedRowIndex(currentRowIndex);
                 setFocusedColumnId("category");
                 setIsKeyboardNavigationMode(true);
               }}
               onSuccess={() => {
                 setEditingCategoryForTransaction(null);
-                const currentRowIndex = allTransactions.findIndex((t) => t.id === transaction.id);
+                const currentRowIndex = allTransactionsRef.current!.findIndex((t) => t.id === transaction.id);
                 setFocusedRowIndex(currentRowIndex);
                 setFocusedColumnId("category");
                 setIsKeyboardNavigationMode(true);
@@ -620,12 +629,12 @@ export function buildTransactionColumns(
               onTabNext={() => {
                 setEditingCategoryForTransaction(null);
 
-                const currentRowIndex = allTransactions.findIndex((t) => t.id === transaction.id);
+                const currentRowIndex = allTransactionsRef.current!.findIndex((t) => t.id === transaction.id);
                 const nextColumn = getNextEditableColumn("category", "right");
 
                 if (nextColumn === editableColumns[0]) {
-                  const nextRowIndex = Math.min(currentRowIndex + 1, allTransactions.length - 1);
-                  const nextTransaction = allTransactions[nextRowIndex];
+                  const nextRowIndex = Math.min(currentRowIndex + 1, allTransactionsRef.current!.length - 1);
+                  const nextTransaction = allTransactionsRef.current![nextRowIndex];
                   if (nextTransaction) {
                     setFocusedRowIndex(nextRowIndex);
                     setFocusedColumnId(nextColumn);
@@ -655,12 +664,12 @@ export function buildTransactionColumns(
               onTabPrevious={() => {
                 setEditingCategoryForTransaction(null);
 
-                const currentRowIndex = allTransactions.findIndex((t) => t.id === transaction.id);
+                const currentRowIndex = allTransactionsRef.current!.findIndex((t) => t.id === transaction.id);
                 const prevColumn = getNextEditableColumn("category", "left");
 
                 if (prevColumn === editableColumns[editableColumns.length - 1]) {
                   const prevRowIndex = Math.max(currentRowIndex - 1, 0);
-                  const prevTransaction = allTransactions[prevRowIndex];
+                  const prevTransaction = allTransactionsRef.current![prevRowIndex];
                   if (prevTransaction) {
                     setFocusedRowIndex(prevRowIndex);
                     setFocusedColumnId(prevColumn);
@@ -744,7 +753,7 @@ export function buildTransactionColumns(
       cell: ({ getValue, row }) => {
         const tagNames = getValue();
         const transaction = row.original;
-        const tagObjects = convertStringTagsToObjects(tagNames || [], allTags);
+        const tagObjects = convertStringTagsToObjects(tagNames || [], allTagsRef.current!);
         const isEditingTags = editingTagsForTransaction === transaction.id;
 
         if (isEditingTags) {
@@ -754,14 +763,14 @@ export function buildTransactionColumns(
               currentTags={tagNames || []}
               onCancel={() => {
                 setEditingTagsForTransaction(null);
-                const currentRowIndex = allTransactions.findIndex((t) => t.id === transaction.id);
+                const currentRowIndex = allTransactionsRef.current!.findIndex((t) => t.id === transaction.id);
                 setFocusedRowIndex(currentRowIndex);
                 setFocusedColumnId("tags");
                 setIsKeyboardNavigationMode(true);
               }}
               onSuccess={() => {
                 setEditingTagsForTransaction(null);
-                const currentRowIndex = allTransactions.findIndex((t) => t.id === transaction.id);
+                const currentRowIndex = allTransactionsRef.current!.findIndex((t) => t.id === transaction.id);
                 setFocusedRowIndex(currentRowIndex);
                 setFocusedColumnId("tags");
                 setIsKeyboardNavigationMode(true);
@@ -769,12 +778,12 @@ export function buildTransactionColumns(
               onTabNext={() => {
                 setEditingTagsForTransaction(null);
 
-                const currentRowIndex = allTransactions.findIndex((t) => t.id === transaction.id);
+                const currentRowIndex = allTransactionsRef.current!.findIndex((t) => t.id === transaction.id);
                 const nextColumn = getNextEditableColumn("tags", "right");
 
                 if (nextColumn === editableColumns[0]) {
-                  const nextRowIndex = Math.min(currentRowIndex + 1, allTransactions.length - 1);
-                  const nextTransaction = allTransactions[nextRowIndex];
+                  const nextRowIndex = Math.min(currentRowIndex + 1, allTransactionsRef.current!.length - 1);
+                  const nextTransaction = allTransactionsRef.current![nextRowIndex];
                   if (nextTransaction) {
                     setFocusedRowIndex(nextRowIndex);
                     setFocusedColumnId(nextColumn);
@@ -804,12 +813,12 @@ export function buildTransactionColumns(
               onTabPrevious={() => {
                 setEditingTagsForTransaction(null);
 
-                const currentRowIndex = allTransactions.findIndex((t) => t.id === transaction.id);
+                const currentRowIndex = allTransactionsRef.current!.findIndex((t) => t.id === transaction.id);
                 const prevColumn = getNextEditableColumn("tags", "left");
 
                 if (prevColumn === editableColumns[editableColumns.length - 1]) {
                   const prevRowIndex = Math.max(currentRowIndex - 1, 0);
-                  const prevTransaction = allTransactions[prevRowIndex];
+                  const prevTransaction = allTransactionsRef.current![prevRowIndex];
                   if (prevTransaction) {
                     setFocusedRowIndex(prevRowIndex);
                     setFocusedColumnId(prevColumn);
@@ -863,7 +872,7 @@ export function buildTransactionColumns(
                     onRemove={async (tagId) => {
                       try {
                         const remainingTags = tagObjects.filter((t) => t.id !== tagId);
-                        await onUpdateTransaction({
+                        await onUpdateTransactionRef.current!({
                           id: transaction.id,
                           updates: {
                             tags: remainingTags.map((t) => t.name),
@@ -904,7 +913,7 @@ export function buildTransactionColumns(
         const transaction = row.original;
 
         const transactionGroup = transaction.transaction_group_id
-          ? allTransactionsUnfiltered.filter(
+          ? allTransactionsUnfilteredRef.current!.filter(
               (t) => t.transaction_group_id === transaction.transaction_group_id
             )
           : [];
@@ -932,7 +941,7 @@ export function buildTransactionColumns(
 
         const isFocusedRow =
           isKeyboardNavigationMode &&
-          focusedRowIndex === allTransactions.findIndex((t) => t.id === transaction.id);
+          focusedRowIndex === allTransactionsRef.current!.findIndex((t) => t.id === transaction.id);
         const isFocusedActionsColumn = isFocusedRow && focusedColumnId === "actions";
 
         // Derive active states for each badge
@@ -1085,7 +1094,7 @@ export function buildTransactionColumns(
                 onClick={async (e) => {
                   e.stopPropagation();
                   try {
-                    await onUpdateTransaction({
+                    await onUpdateTransactionRef.current!({
                       id: transaction.id,
                       updates: { is_flagged: !isFlagActive },
                     });

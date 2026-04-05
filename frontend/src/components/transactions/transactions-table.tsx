@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useTransactionKeyboardNav } from "@/hooks/use-transaction-keyboard-nav";
 import { buildTransactionColumns } from "./transaction-columns";
@@ -212,6 +212,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number | null>(null);
 
   const queryClient = useQueryClient();
   const updateTransactionSplit = useUpdateTransactionSplit();
@@ -242,27 +243,59 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     return data?.pages.flatMap(page => page.data) || [];
   }, [data]);
 
-  // Filter out parent transactions in split groups (is_split=false but has transaction_group_id with split children)
-  // These are the original transactions that were split - we only want to show the split parts
-  // Transfer groups should NOT be excluded (they all have is_split=false but no split children)
-  const allTransactions = useMemo(() => {
-    return allTransactionsUnfiltered.filter(t => {
-      // Only exclude if this is a split parent (has transaction_group_id, is_split=false, AND has split children)
-      if (t.transaction_group_id && t.is_split === false) {
-        // Check if there are any split children in the same group
-        const hasSplitChildren = allTransactionsUnfiltered.some(
-          other => other.transaction_group_id === t.transaction_group_id &&
-            other.id !== t.id &&
-            other.is_split === true
-        );
-        // Only exclude if it's a split parent (has split children)
-        if (hasSplitChildren) {
-          return false;
-        }
+  // Pre-compute set of split-parent IDs in O(n) instead of O(n²) filter.
+  // Transfer groups should NOT be excluded (they all have is_split=false but no split children).
+  const splitParentIds = useMemo(() => {
+    // Collect all group IDs that have at least one split child (is_split=true)
+    const groupIdsWithSplitChildren = new Set<string>();
+    for (const t of allTransactionsUnfiltered) {
+      if (t.transaction_group_id && t.is_split === true) {
+        groupIdsWithSplitChildren.add(t.transaction_group_id);
       }
-      return true;
-    });
+    }
+    // Collect IDs of the non-split parent rows in those groups
+    const ids = new Set<string>();
+    for (const t of allTransactionsUnfiltered) {
+      if (t.transaction_group_id && t.is_split === false && groupIdsWithSplitChildren.has(t.transaction_group_id)) {
+        ids.add(t.id);
+      }
+    }
+    return ids;
   }, [allTransactionsUnfiltered]);
+
+  // Filter out parent transactions in split groups - we only want to show the split parts
+  const allTransactions = useMemo(() => {
+    if (splitParentIds.size === 0) return allTransactionsUnfiltered;
+    return allTransactionsUnfiltered.filter(t => !splitParentIds.has(t.id));
+  }, [allTransactionsUnfiltered, splitParentIds]);
+
+  // Stable refs so column callbacks always read latest values without
+  // triggering a columns useMemo rebuild on every data update.
+  const allTransactionsRef = useRef(allTransactions);
+  const allTransactionsUnfilteredRef = useRef(allTransactionsUnfiltered);
+  const allTagsRef = useRef(allTags);
+  const allCategoriesRef = useRef(allCategories);
+  const onUpdateTransactionRef = useRef((params: { id: string; updates: Partial<Transaction> }) =>
+    updateTransaction.mutateAsync(params)
+  );
+  // Ref used by description column's onSuccess to detect when Tab-navigation
+  // has already moved focus to the category editor before the async save lands.
+  const editingCategoryForTransactionRef = useRef<string | null>(null);
+  // Refs for group-expand state, used by stable toggleGroupExpense callback.
+  const expandedGroupedExpensesRef = useRef(expandedGroupedExpenses);
+  const groupMembersRef = useRef(groupMembers);
+
+  useLayoutEffect(() => { allTransactionsRef.current = allTransactions; }, [allTransactions]);
+  useLayoutEffect(() => { allTransactionsUnfilteredRef.current = allTransactionsUnfiltered; }, [allTransactionsUnfiltered]);
+  useLayoutEffect(() => { allTagsRef.current = allTags; }, [allTags]);
+  useLayoutEffect(() => { allCategoriesRef.current = allCategories; }, [allCategories]);
+  useLayoutEffect(() => {
+    onUpdateTransactionRef.current = (params: { id: string; updates: Partial<Transaction> }) =>
+      updateTransaction.mutateAsync(params);
+  }, [updateTransaction]);
+  useLayoutEffect(() => { editingCategoryForTransactionRef.current = editingCategoryForTransaction; }, [editingCategoryForTransaction]);
+  useLayoutEffect(() => { expandedGroupedExpensesRef.current = expandedGroupedExpenses; }, [expandedGroupedExpenses]);
+  useLayoutEffect(() => { groupMembersRef.current = groupMembers; }, [groupMembers]);
 
   // Selection helpers
   const selectedTransactions = useMemo(() => {
@@ -272,15 +305,20 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const isAllSelected = allTransactions.length > 0 && selectedTransactionIds.size === allTransactions.length;
   const isIndeterminate = selectedTransactionIds.size > 0 && selectedTransactionIds.size < allTransactions.length;
 
-  const handleSelectAll = () => {
-    if (isAllSelected) {
-      setSelectedTransactionIds(new Set());
-    } else {
-      setSelectedTransactionIds(new Set(allTransactions.map(t => t.id)));
-    }
-  };
+  // useCallback + refs so these are stable references and don't cause the
+  // columns useMemo to rebuild on every render (which would unmount/remount
+  // any open inline editor like InlineCategoryDropdown via flexRender).
+  const handleSelectAll = useCallback(() => {
+    const all = allTransactionsRef.current;
+    setSelectedTransactionIds(prev => {
+      if (all.length > 0 && prev.size === all.length) {
+        return new Set();
+      }
+      return new Set(all.map(t => t.id));
+    });
+  }, []);
 
-  const handleSelectTransaction = (transactionId: string) => {
+  const handleSelectTransaction = useCallback((transactionId: string) => {
     setSelectedTransactionIds(prev => {
       const newSet = new Set(prev);
       if (newSet.has(transactionId)) {
@@ -290,7 +328,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       }
       return newSet;
     });
-  };
+  }, []);
 
   // Enhanced bulk action logic
   const canBulkGroupExpense = useMemo(() => {
@@ -340,35 +378,35 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     queryClient.invalidateQueries({ queryKey: ["transactions-infinite"] });
   };
 
-  const toggleGroupExpense = async (transaction: Transaction) => {
+  const toggleGroupExpense = useCallback(async (transaction: Transaction) => {
     const groupId = transaction.transaction_group_id;
     if (!groupId) return;
 
-    const isExpanded = expandedGroupedExpenses.has(groupId);
+    const isExpanded = expandedGroupedExpensesRef.current.has(groupId);
 
     if (isExpanded) {
       // Collapse
-      const newExpanded = new Set(expandedGroupedExpenses);
+      const newExpanded = new Set(expandedGroupedExpensesRef.current);
       newExpanded.delete(groupId);
       setExpandedGroupedExpenses(newExpanded);
     } else {
       // Expand - fetch members if not already fetched
-      if (!groupMembers.has(groupId)) {
+      if (!groupMembersRef.current.has(groupId)) {
         try {
           const response = await apiClient.getGroupTransactions(transaction.id);
           const members = response.data || [];
-          setGroupMembers(new Map(groupMembers).set(groupId, members));
+          setGroupMembers(new Map(groupMembersRef.current).set(groupId, members));
         } catch {
           toast.error("Failed to fetch group members");
           return;
         }
       }
-      
-      const newExpanded = new Set(expandedGroupedExpenses);
+
+      const newExpanded = new Set(expandedGroupedExpensesRef.current);
       newExpanded.add(groupId);
       setExpandedGroupedExpenses(newExpanded);
     }
-  };
+  }, []);
 
   const handleUngroupExpense = async (transaction: Transaction) => {
     if (!transaction.transaction_group_id) return;
@@ -445,9 +483,14 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   }, []);
 
   const handleBodyScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    if (headerScrollRef.current) {
-      headerScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
-    }
+    const scrollLeft = e.currentTarget.scrollLeft;
+    // Throttle header sync to one write per animation frame
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      if (headerScrollRef.current) {
+        headerScrollRef.current.scrollLeft = scrollLeft;
+      }
+    });
     fetchMoreOnBottomReached(e.currentTarget);
   }, [fetchMoreOnBottomReached]);
 
@@ -566,10 +609,11 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         focusedRowIndex,
         focusedColumnId,
         focusedActionButton,
-        allTags,
-        allCategories,
-        allTransactions,
-        allTransactionsUnfiltered,
+        allTagsRef,
+        allCategoriesRef,
+        allTransactionsRef,
+        allTransactionsUnfilteredRef,
+        editingCategoryForTransactionRef,
         expandedGroupedExpenses,
         editableColumns,
         getNextEditableColumn,
@@ -578,7 +622,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         handleHighlightTransactions,
         handleClearHighlight,
         toggleGroupExpense,
-        onUpdateTransaction: (params) => updateTransaction.mutateAsync(params),
+        onUpdateTransactionRef,
         setEditingRow,
         setEditingField,
         setEditingTagsForTransaction,
@@ -605,8 +649,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     [
       editingRow,
       editingField,
-      allTags,
-      allCategories,
       editingTagsForTransaction,
       editingCategoryForTransaction,
       isMultiSelectMode,
@@ -617,8 +659,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       focusedRowIndex,
       focusedColumnId,
       focusedActionButton,
-      allTransactions,
-      allTransactionsUnfiltered,
       expandedGroupedExpenses,
       editableColumns,
       getNextEditableColumn,
@@ -627,7 +667,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       handleHighlightTransactions,
       handleClearHighlight,
       toggleGroupExpense,
-      updateTransaction,
       setEditingRow,
       setEditingField,
       setEditingTagsForTransaction,
@@ -671,6 +710,21 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
 
   const { rows } = table.getRowModel();
 
+  // Pre-compute daily debit totals: O(n) one pass, used O(1) per date header
+  const dailyDebitTotals = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const r of rows) {
+      if (r.original.direction !== "debit") continue;
+      const date = (r.original.date ?? "").split("T")[0];
+      if (!date) continue;
+      const amount = r.original.is_shared && r.original.split_share_amount
+        ? r.original.split_share_amount
+        : r.original.amount ?? 0;
+      map.set(date, (map.get(date) ?? 0) + amount);
+    }
+    return map;
+  }, [rows]);
+
   const parentRef = React.useRef<HTMLDivElement>(null);
 
   if (isLoading) {
@@ -699,17 +753,6 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       <div className="p-4 border-b border-border">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
-            {isKeyboardNavigationMode && (
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-xs flex items-center gap-1">
-                  <Keyboard className="h-3 w-3" />
-                  Keyboard Navigation Active
-                </Badge>
-                <span className="text-xs text-muted-foreground">
-                  Tab: Save & move right • Enter: Edit • Arrow keys: Navigate • Esc: Exit
-                </span>
-              </div>
-            )}
             {!isMultiSelectMode && (
               <Button
                 variant="outline"
@@ -940,12 +983,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
                   const showDateHeader = rowDate !== lastDate;
                   if (showDateHeader) lastDate = rowDate;
 
-                  // Daily debit total for the date group
-                  const dailyTotal = showDateHeader
-                    ? rows
-                        .filter(r => (r.original.date || "").split("T")[0] === rowDate && r.original.direction === "debit")
-                        .reduce((sum, r) => sum + (r.original.is_shared && r.original.split_share_amount ? r.original.split_share_amount : r.original.amount || 0), 0)
-                    : 0;
+                  // Daily debit total — O(1) lookup into pre-computed map
+                  const dailyTotal = showDateHeader ? (dailyDebitTotals.get(rowDate) ?? 0) : 0;
 
                   const dateLabel = rowDate
                     ? new Date(rowDate + "T12:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
@@ -1071,6 +1110,24 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
           )}
         </div>
       </div>
+
+      {/* Keyboard nav hint — floats above the footer only when active */}
+      <AnimatePresence>
+        {isKeyboardNavigationMode && (
+          <motion.div
+            className="flex items-center justify-center gap-2 py-1.5 border-t border-border bg-muted/30"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <Keyboard className="h-3 w-3 text-muted-foreground/60" />
+            <span className="text-[11px] text-muted-foreground/60 tabular-nums">
+              Tab: move right &nbsp;•&nbsp; Enter: edit &nbsp;•&nbsp; Arrows: navigate &nbsp;•&nbsp; Esc: exit
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {!hasNextPage && allTransactions.length > 0 && (
         <div className="p-3 border-t border-border flex items-center justify-center gap-3">

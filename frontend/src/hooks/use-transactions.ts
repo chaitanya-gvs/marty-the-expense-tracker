@@ -22,7 +22,7 @@ export function useInfiniteTransactions(
   return useInfiniteQuery({
     queryKey: ["transactions-infinite", filters, sort],
     queryFn: ({ pageParam = 1 }) =>
-      apiClient.getTransactions(filters, sort, { page: pageParam - 1, limit: 500 }),
+      apiClient.getTransactions(filters, sort, { page: pageParam - 1, limit: 100 }),
     getNextPageParam: (lastPage) => {
       const { pagination } = lastPage;
       return pagination && pagination.page < pagination.total_pages ? pagination.page + 1 : undefined;
