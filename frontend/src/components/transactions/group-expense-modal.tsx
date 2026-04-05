@@ -52,11 +52,12 @@ export function GroupExpenseModal({
     return !earliest || txDate < earliest ? txDate : earliest;
   }, null as Date | null);
 
-  // Auto-generate a default description
+  // Auto-generate a default description from the highest-amount transaction
   useEffect(() => {
     if (isOpen && selectedTransactions.length > 0) {
-      const defaultDescription = `Grouped expense (${selectedTransactions.length} transactions)`;
-      setDescription(defaultDescription);
+      const highest = selectedTransactions.reduce((max, t) =>
+        (t.amount > max.amount ? t : max), selectedTransactions[0]);
+      setDescription(highest.description);
       
       // Use the category from the first transaction
       if (selectedTransactions[0].category) {
