@@ -281,6 +281,9 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   // Ref used by description column's onSuccess to detect when Tab-navigation
   // has already moved focus to the category editor before the async save lands.
   const editingCategoryForTransactionRef = useRef<string | null>(null);
+  // Refs for group-expand state, used by stable toggleGroupExpense callback.
+  const expandedGroupedExpensesRef = useRef(expandedGroupedExpenses);
+  const groupMembersRef = useRef(groupMembers);
 
   useLayoutEffect(() => { allTransactionsRef.current = allTransactions; }, [allTransactions]);
   useLayoutEffect(() => { allTransactionsUnfilteredRef.current = allTransactionsUnfiltered; }, [allTransactionsUnfiltered]);
@@ -291,6 +294,8 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       updateTransaction.mutateAsync(params);
   }, [updateTransaction]);
   useLayoutEffect(() => { editingCategoryForTransactionRef.current = editingCategoryForTransaction; }, [editingCategoryForTransaction]);
+  useLayoutEffect(() => { expandedGroupedExpensesRef.current = expandedGroupedExpenses; }, [expandedGroupedExpenses]);
+  useLayoutEffect(() => { groupMembersRef.current = groupMembers; }, [groupMembers]);
 
   // Selection helpers
   const selectedTransactions = useMemo(() => {
@@ -300,15 +305,20 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
   const isAllSelected = allTransactions.length > 0 && selectedTransactionIds.size === allTransactions.length;
   const isIndeterminate = selectedTransactionIds.size > 0 && selectedTransactionIds.size < allTransactions.length;
 
-  const handleSelectAll = () => {
-    if (isAllSelected) {
-      setSelectedTransactionIds(new Set());
-    } else {
-      setSelectedTransactionIds(new Set(allTransactions.map(t => t.id)));
-    }
-  };
+  // useCallback + refs so these are stable references and don't cause the
+  // columns useMemo to rebuild on every render (which would unmount/remount
+  // any open inline editor like InlineCategoryDropdown via flexRender).
+  const handleSelectAll = useCallback(() => {
+    const all = allTransactionsRef.current;
+    setSelectedTransactionIds(prev => {
+      if (all.length > 0 && prev.size === all.length) {
+        return new Set();
+      }
+      return new Set(all.map(t => t.id));
+    });
+  }, []);
 
-  const handleSelectTransaction = (transactionId: string) => {
+  const handleSelectTransaction = useCallback((transactionId: string) => {
     setSelectedTransactionIds(prev => {
       const newSet = new Set(prev);
       if (newSet.has(transactionId)) {
@@ -318,7 +328,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
       }
       return newSet;
     });
-  };
+  }, []);
 
   // Enhanced bulk action logic
   const canBulkGroupExpense = useMemo(() => {
@@ -368,35 +378,35 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
     queryClient.invalidateQueries({ queryKey: ["transactions-infinite"] });
   };
 
-  const toggleGroupExpense = async (transaction: Transaction) => {
+  const toggleGroupExpense = useCallback(async (transaction: Transaction) => {
     const groupId = transaction.transaction_group_id;
     if (!groupId) return;
 
-    const isExpanded = expandedGroupedExpenses.has(groupId);
+    const isExpanded = expandedGroupedExpensesRef.current.has(groupId);
 
     if (isExpanded) {
       // Collapse
-      const newExpanded = new Set(expandedGroupedExpenses);
+      const newExpanded = new Set(expandedGroupedExpensesRef.current);
       newExpanded.delete(groupId);
       setExpandedGroupedExpenses(newExpanded);
     } else {
       // Expand - fetch members if not already fetched
-      if (!groupMembers.has(groupId)) {
+      if (!groupMembersRef.current.has(groupId)) {
         try {
           const response = await apiClient.getGroupTransactions(transaction.id);
           const members = response.data || [];
-          setGroupMembers(new Map(groupMembers).set(groupId, members));
+          setGroupMembers(new Map(groupMembersRef.current).set(groupId, members));
         } catch {
           toast.error("Failed to fetch group members");
           return;
         }
       }
-      
-      const newExpanded = new Set(expandedGroupedExpenses);
+
+      const newExpanded = new Set(expandedGroupedExpensesRef.current);
       newExpanded.add(groupId);
       setExpandedGroupedExpenses(newExpanded);
     }
-  };
+  }, []);
 
   const handleUngroupExpense = async (transaction: Transaction) => {
     if (!transaction.transaction_group_id) return;

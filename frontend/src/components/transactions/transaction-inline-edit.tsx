@@ -92,7 +92,8 @@ export function TransactionInlineEdit({
 
       toast.success("Transaction updated successfully");
       onSuccess();
-    } catch {
+    } catch (err) {
+      console.error("[TransactionInlineEdit] handleSave failed:", err);
       toast.error("Failed to update transaction");
     }
   };
