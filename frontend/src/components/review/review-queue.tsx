@@ -4,10 +4,12 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTransactions, useUpdateTransaction } from "@/hooks/use-transactions";
 import { CheckCircle, XCircle, Edit, Eye } from "lucide-react";
 import { Transaction } from "@/lib/types";
 import { format } from "date-fns";
+import { StatementReviewQueue } from "./statement-review-queue";
 
 export function ReviewQueue() {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
@@ -34,24 +36,20 @@ export function ReviewQueue() {
     });
   };
 
-  if (isLoading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-gray-900 dark:text-white">Review Queue</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
+  const workflowContent = isLoading ? (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-gray-900 dark:text-white">Review Queue</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  ) : (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2">
         <Card>
@@ -78,7 +76,7 @@ export function ReviewQueue() {
                           <Badge variant="outline">{transaction.account}</Badge>
                           <Badge variant="secondary">{transaction.category}</Badge>
                         </div>
-                        
+
                         <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
                           <div>Date: {format(new Date(transaction.date), "MMM dd, yyyy")}</div>
                           <div className="flex items-center gap-4">
@@ -103,7 +101,7 @@ export function ReviewQueue() {
                           )}
                         </div>
                       </div>
-                      
+
                       <div className="flex items-center gap-2 ml-4">
                         <Button
                           variant="ghost"
@@ -146,7 +144,7 @@ export function ReviewQueue() {
           </CardContent>
         </Card>
       </div>
-      
+
       <div>
         <Card>
           <CardHeader>
@@ -159,7 +157,7 @@ export function ReviewQueue() {
                   <h3 className="font-medium text-gray-900 dark:text-white">{selectedTransaction.description}</h3>
                   <p className="text-sm text-gray-600 dark:text-gray-300">{selectedTransaction.account}</p>
                 </div>
-                
+
                 <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
                   <div className="flex justify-between">
                     <span>Date:</span>
@@ -178,14 +176,14 @@ export function ReviewQueue() {
                     <span>{selectedTransaction.direction}</span>
                   </div>
                 </div>
-                
+
                 {selectedTransaction.notes && (
                   <div>
                     <h4 className="font-medium text-sm mb-1 text-gray-900 dark:text-white">Notes</h4>
                     <p className="text-sm text-gray-600 dark:text-gray-300">{selectedTransaction.notes}</p>
                   </div>
                 )}
-                
+
                 {selectedTransaction.tags && selectedTransaction.tags.length > 0 && (
                   <div>
                     <h4 className="font-medium text-sm mb-2 text-gray-900 dark:text-white">Tags</h4>
@@ -198,7 +196,7 @@ export function ReviewQueue() {
                     </div>
                   </div>
                 )}
-                
+
                 <div className="pt-4 border-t">
                   <div className="flex gap-2">
                     <Button
@@ -231,5 +229,20 @@ export function ReviewQueue() {
         </Card>
       </div>
     </div>
+  );
+
+  return (
+    <Tabs defaultValue="workflow" className="w-full">
+      <TabsList className="grid w-full grid-cols-2">
+        <TabsTrigger value="workflow">Workflow</TabsTrigger>
+        <TabsTrigger value="statement-queue">Statement Queue</TabsTrigger>
+      </TabsList>
+      <TabsContent value="workflow" className="space-y-4">
+        {workflowContent}
+      </TabsContent>
+      <TabsContent value="statement-queue" className="space-y-4">
+        <StatementReviewQueue />
+      </TabsContent>
+    </Tabs>
   );
 }
