@@ -141,6 +141,22 @@ class AccountOperations:
             return result.rowcount > 0
 
     @staticmethod
+    async def update_alert_last_processed_at(account_id: str) -> bool:
+        """Update the alert last processed timestamp for an account"""
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            result = await session.execute(
+                text("""
+                    UPDATE accounts
+                    SET alert_last_processed_at = CURRENT_TIMESTAMP,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = :account_id
+                """), {"account_id": account_id}
+            )
+            await session.commit()
+            return result.rowcount > 0
+
+    @staticmethod
     async def update_last_processed_at(account_id: str) -> bool:
         """Update the last processed timestamp for an account"""
         session_factory = get_session_factory()

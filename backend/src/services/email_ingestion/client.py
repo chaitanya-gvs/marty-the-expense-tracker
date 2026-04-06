@@ -141,6 +141,61 @@ class EmailClient:
             logger.error("Error listing Gmail messages", exc_info=True)
             raise
 
+    def list_recent_alert_emails(
+        self,
+        max_results: int = 200,
+        days_back: Optional[int] = None,
+        alert_senders: Optional[List[str]] = None,
+        since: Optional[datetime] = None,
+    ) -> List[dict[str, Any]]:
+        """Fetch alert emails from specified senders, optionally filtered by date."""
+        if not self._refresh_credentials():
+            raise Exception("Failed to authenticate with Gmail")
+
+        sender_query = ""
+        if alert_senders:
+            sender_parts = [f"from:{s}" for s in alert_senders]
+            sender_query = "(" + " OR ".join(sender_parts) + ")"
+
+        date_query = ""
+        if since:
+            date_str = since.strftime("%Y/%m/%d")
+            date_query = f"after:{date_str}"
+        elif days_back:
+            date_query = f"newer_than:{days_back}d"
+
+        query_parts = [p for p in [sender_query, date_query] if p]
+        query = " ".join(query_parts) if query_parts else ""
+
+        logger.info("Fetching alert emails with query: %s", query)
+
+        try:
+            messages = []
+            page_token = None
+            while True:
+                kwargs: dict[str, Any] = {
+                    "userId": "me",
+                    "maxResults": min(max_results, 500),
+                    "q": query,
+                }
+                if page_token:
+                    kwargs["pageToken"] = page_token
+                response = self.service.users().messages().list(**kwargs).execute()
+                batch = response.get("messages", [])
+                messages.extend(batch)
+                if len(messages) >= max_results:
+                    break
+                page_token = response.get("nextPageToken")
+                if not page_token:
+                    break
+
+            result = messages[:max_results]
+            logger.info("Found %d alert emails", len(result))
+            return result
+        except Exception:
+            logger.error("Failed to list alert emails", exc_info=True)
+            return []
+
     def get_email_content(self, message_id: str) -> dict[str, Any]:
         """Get full email content including body and attachments"""
         if not self._refresh_credentials():

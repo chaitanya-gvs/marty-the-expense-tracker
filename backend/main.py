@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from src.apis.routes.auth_routes import router as auth_router
 from src.apis.routes.transaction_read_routes import router as transaction_read_router
@@ -15,20 +16,49 @@ from src.apis.routes.participant_routes import router as participant_router
 from src.apis.routes.workflow_routes import router as workflow_router
 from src.apis.routes.splitwise_routes import router as splitwise_router
 from src.utils.auth_deps import get_current_user
-from src.utils.logger import setup_logging
+from src.utils.logger import get_logger, setup_logging
 from src.utils.settings import get_settings
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 limiter = Limiter(key_func=get_remote_address)
+
+_scheduler: AsyncIOScheduler | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _scheduler
     # Re-run after all imports complete so agentic_doc's basicConfig(force=True)
     # does not wipe our RotatingFileHandler.
     setup_logging()
+
+    _scheduler = AsyncIOScheduler()
+
+    async def _scheduled_ingestion():
+        from src.services.email_ingestion.alert_ingestion_service import AlertIngestionService
+        try:
+            result = await AlertIngestionService().run()
+            logger.info("Scheduled email ingestion complete: %s", result)
+        except Exception:
+            logger.error("Scheduled email ingestion failed", exc_info=True)
+
+    _scheduler.add_job(
+        _scheduled_ingestion,
+        "interval",
+        hours=settings.EMAIL_INGESTION_INTERVAL_HOURS,
+        id="email_ingestion",
+        replace_existing=True,
+    )
+    _scheduler.start()
+    logger.info(
+        "APScheduler started (interval: %dh)", settings.EMAIL_INGESTION_INTERVAL_HOURS
+    )
+
     yield
+
+    _scheduler.shutdown(wait=False)
 
 
 app = FastAPI(title="Expense Tracker Backend", lifespan=lifespan)
