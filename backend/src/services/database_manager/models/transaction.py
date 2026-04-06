@@ -47,6 +47,8 @@ class Transaction(Base):
     transaction_source: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # statement_extraction, email_ingestion, manual_entry
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, server_default=func.current_timestamp())
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, server_default=func.current_timestamp())
+    email_message_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    statement_confirmed: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
     tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text), nullable=True, server_default="{}")
     
     # Relationships
@@ -60,4 +62,6 @@ class Transaction(Base):
         Index('idx_transactions_date', 'transaction_date'),
         Index('idx_transactions_direction', 'direction'),
         Index('idx_transactions_type', 'transaction_type'),
+        Index('idx_transactions_email_message_id', 'email_message_id'),
+        Index('idx_transactions_reference_number', 'reference_number'),
     )
