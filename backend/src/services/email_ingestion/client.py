@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import email
 import json
 import math
 import re
@@ -10,7 +9,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, List, Optional
 
-from google.auth.exceptions import RefreshError
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -112,7 +110,7 @@ class EmailClient:
             else:
                 logger.error(f"Failed to get valid credentials for {self.account_id} account")
                 return False
-        except Exception as e:
+        except Exception:
             logger.error(f"Failed to refresh Gmail credentials for {self.account_id}", exc_info=True)
             return False
 
@@ -137,7 +135,7 @@ class EmailClient:
             messages = resp.get("messages", [])
             logger.info(f"Found {len(messages)} transaction emails")
             return messages
-        except Exception as e:
+        except Exception:
             logger.error("Error listing Gmail messages", exc_info=True)
             raise
 
@@ -264,7 +262,7 @@ class EmailClient:
                 raise
             logger.error(f"Error getting email content for {message_id}", exc_info=True)
             raise
-        except Exception as e:
+        except Exception:
             logger.error(f"Error getting email content for {message_id}", exc_info=True)
             raise
 
@@ -442,7 +440,8 @@ class EmailClient:
                 for node in time_nodes:
                     time_val = node.strip()
                     parent = node.parent
-                    if not parent: continue
+                    if not parent:
+                        continue
                     
                     # Heuristic: The address is usually nearby in the DOM
                     # 1. Check siblings (common in some templates)
@@ -499,7 +498,8 @@ class EmailClient:
                                 'time': time_val,
                                 'address': address_candidate
                             })
-                            if len(locations) >= 2: break
+                            if len(locations) >= 2:
+                                break
                 
                 if len(locations) >= 1:
                     trip_info["from_location"] = locations[0]["address"]
@@ -572,9 +572,12 @@ class EmailClient:
                 if amount_match:
                     trip_info["amount"] = amount_match.group(1).replace(',', '')
                 
-                if 'Uber Auto' in plain_text: trip_info["vehicle_type"] = 'Auto'
-                elif 'Uber Go' in plain_text: trip_info["vehicle_type"] = 'Uber Go'
-                elif 'Uber Premier' in plain_text: trip_info["vehicle_type"] = 'Uber Premier'
+                if 'Uber Auto' in plain_text:
+                    trip_info["vehicle_type"] = 'Auto'
+                elif 'Uber Go' in plain_text:
+                    trip_info["vehicle_type"] = 'Uber Go'
+                elif 'Uber Premier' in plain_text:
+                    trip_info["vehicle_type"] = 'Uber Premier'
                 
         except Exception as e:
             logger.warning(f"Error parsing Uber trip info: {e}")
@@ -968,7 +971,7 @@ class EmailClient:
             
             data = attachment["data"]
             return base64.urlsafe_b64decode(data)
-        except Exception as e:
+        except Exception:
             logger.error(f"Error downloading attachment {attachment_id}", exc_info=True)
             raise
 
@@ -998,7 +1001,7 @@ class EmailClient:
                 .execute()
             )
             return resp.get("messages", [])
-        except Exception as e:
+        except Exception:
             logger.error("Error searching emails", exc_info=True)
             raise
 
@@ -1196,7 +1199,7 @@ class EmailClient:
 
             return email_results
 
-        except Exception as e:
+        except Exception:
             logger.error("Error searching emails for transaction", exc_info=True)
             raise
 
@@ -1213,7 +1216,7 @@ class EmailClient:
                 .execute()
             )
             return thread
-        except Exception as e:
+        except Exception:
             logger.error(f"Error getting email thread {thread_id}", exc_info=True)
             raise
 
@@ -1372,7 +1375,7 @@ class EmailClient:
                 date_str = re.sub(r'\s+\([^)]+\)$', '', email_date)
                 parsed_date = datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S %z")
                 formatted_date = parsed_date.strftime("%Y%m%d")
-            except:
+            except Exception:
                 # Fallback to current date if parsing fails
                 formatted_date = datetime.now().strftime("%Y%m%d")
                 logger.warning(f"Could not parse email date '{email_date}', using current date")
@@ -1382,7 +1385,7 @@ class EmailClient:
             
             return normalized_filename
             
-        except Exception as e:
+        except Exception:
             logger.error("Error generating normalized filename", exc_info=True)
             # Fallback to timestamp-based filename
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1404,7 +1407,7 @@ class EmailClient:
             
             return str(file_path)
             
-        except Exception as e:
+        except Exception:
             logger.error("Error saving attachment", exc_info=True)
             return None
 
