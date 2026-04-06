@@ -1,6 +1,7 @@
 from __future__ import annotations
-import re
+
 from typing import Any, Dict, Optional
+
 from src.services.email_ingestion.parsers.base import BaseAlertParser
 
 

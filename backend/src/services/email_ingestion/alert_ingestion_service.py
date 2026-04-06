@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from src.services.database_manager.operations.account_operations import AccountOperations

@@ -9,11 +9,8 @@ This module provides comprehensive token management to minimize Gmail authentica
 5. Automatic re-authentication when needed
 """
 
-import asyncio
-import json
-import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -86,10 +83,10 @@ class TokenManager:
                 logger.info(f"Token refreshed successfully for {self.account_id} account")
                 return True
             return True
-        except RefreshError as e:
+        except RefreshError:
             logger.error(f"Failed to refresh token for {self.account_id}", exc_info=True)
             return False
-        except Exception as e:
+        except Exception:
             logger.error(f"Unexpected error refreshing token for {self.account_id}", exc_info=True)
             return False
     
@@ -105,7 +102,7 @@ class TokenManager:
             
             return credentials
             
-        except Exception as e:
+        except Exception:
             logger.error(f"Error getting credentials for {self.account_id}", exc_info=True)
             return None
     
@@ -212,7 +209,7 @@ class TokenManager:
             logger.info(f"Successfully saved refreshed tokens for {self.account_id} account")
             return True
             
-        except Exception as e:
+        except Exception:
             logger.error(f"Error saving refreshed tokens for {self.account_id}", exc_info=True)
             return False
 
