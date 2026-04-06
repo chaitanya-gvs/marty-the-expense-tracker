@@ -36,6 +36,8 @@ from src.utils.password_manager import BankPasswordManager
 from .statement_extractor_helper import StatementExtractorHelper
 from .splitwise_processor_helper import SplitwiseProcessorHelper
 from .data_standardizer_helper import DataStandardizerHelper
+from src.services.email_ingestion.dedup_service import DeduplicationService
+from src.services.database_manager.operations.review_queue_operations import ReviewQueueOperations
 
 logger = get_logger(__name__)
 
@@ -1071,7 +1073,35 @@ class StatementWorkflow:
                 workflow_results["combined_transaction_count"] = len(combined_data)
                 workflow_results["all_standardized_data"] = combined_data
                 logger.info(f"Combined and standardized {len(combined_data)} total transactions", extra=self._log_extra())
-                
+
+                # Step 5b: Deduplication pass — match statement transactions against email-ingested ones
+                logger.info("Step 5b: Running dedup pass for statement transactions", extra=self._log_extra())
+                self._emit(
+                    "dedup_started", "dedup",
+                    f"Checking {len(combined_data)} transaction(s) for email-alert duplicates",
+                )
+                combined_data, dedup_stats = await self._run_dedup_pass(combined_data)
+                workflow_results["dedup_confirmed"] = dedup_stats["confirmed"]
+                workflow_results["dedup_review_queued"] = dedup_stats["review_queued"]
+                workflow_results["dedup_insert_ready"] = dedup_stats["insert_ready"]
+                if dedup_stats["confirmed"] > 0 or dedup_stats["review_queued"] > 0:
+                    self._emit(
+                        "dedup_complete", "dedup",
+                        (
+                            f"Dedup complete: {dedup_stats['confirmed']} confirmed via email alerts, "
+                            f"{dedup_stats['review_queued']} sent to review queue, "
+                            f"{dedup_stats['insert_ready']} ready for insert"
+                        ),
+                        level="success",
+                        data=dedup_stats,
+                    )
+                else:
+                    self._emit(
+                        "dedup_complete", "dedup",
+                        "Dedup complete: no email-alert matches found, all transactions will be inserted normally",
+                        data=dedup_stats,
+                    )
+
                 # Step 6: Store data in database
                 logger.info("Step 6: Storing transactions in database", extra=self._log_extra())
                 self._emit(
@@ -1080,7 +1110,7 @@ class StatementWorkflow:
                     data={"transaction_count": len(combined_data)},
                 )
                 db_result = await TransactionOperations.bulk_insert_transactions(
-                    combined_data, 
+                    combined_data,
                     check_duplicates=True,
                     upsert_splitwise=True  # Update existing Splitwise transactions with latest data
                 )
@@ -1187,6 +1217,142 @@ class StatementWorkflow:
             except Exception as e:
                 logger.warning(f"Failed to cleanup temp directory: {e}", extra=self._log_extra())
     
+    async def _run_dedup_pass(
+        self, combined_data: List[Dict[str, Any]]
+    ) -> tuple[List[Dict[str, Any]], Dict[str, int]]:
+        """Run deduplication on statement transactions before DB insertion.
+
+        For each non-Splitwise transaction, checks if a matching email-ingested
+        transaction already exists.  Confirmed matches are skipped (the email
+        transaction is marked statement-confirmed).  Ambiguous matches and
+        unmatched transactions from alert-enabled accounts go to the review
+        queue.  Unmatched transactions from non-alert accounts pass through
+        for normal insertion.
+
+        Returns:
+            A tuple of (filtered_data, stats_dict) where *filtered_data* is
+            the list of transactions that should still be bulk-inserted.
+        """
+        dedup_svc = DeduplicationService()
+        stats = {"confirmed": 0, "review_queued": 0, "insert_ready": 0, "splitwise_passthrough": 0}
+
+        # Build a cache: account nickname -> bool(has alert_sender)
+        try:
+            all_accounts = await AccountOperations.get_all_accounts()
+            alert_sender_cache: Dict[str, bool] = {
+                acct["nickname"]: bool(acct.get("alert_sender"))
+                for acct in all_accounts
+            }
+        except Exception:
+            logger.warning(
+                "Failed to load accounts for dedup — skipping dedup pass",
+                exc_info=True, extra=self._log_extra(),
+            )
+            stats["insert_ready"] = len(combined_data)
+            return combined_data, stats
+
+        filtered: List[Dict[str, Any]] = []
+
+        for tx in combined_data:
+            account_name = tx.get("account", "")
+
+            # Splitwise transactions bypass dedup entirely
+            if account_name.lower() == "splitwise":
+                filtered.append(tx)
+                stats["splitwise_passthrough"] += 1
+                continue
+
+            has_alert = alert_sender_cache.get(account_name, False)
+
+            try:
+                result = await dedup_svc.match_statement_transaction(tx, has_alert_sender=has_alert)
+            except Exception:
+                logger.warning(
+                    "Dedup failed for tx %s / %s — inserting normally",
+                    account_name, tx.get("reference_number"),
+                    exc_info=True, extra=self._log_extra(),
+                )
+                filtered.append(tx)
+                stats["insert_ready"] += 1
+                continue
+
+            if result.is_confirmed:
+                logger.info(
+                    "Dedup: confirmed match (tier %s) for %s ref=%s -> email tx %s",
+                    result.tier, account_name, tx.get("reference_number"), result.matched_id,
+                    extra=self._log_extra(),
+                )
+                stats["confirmed"] += 1
+                # Skip insertion — the email-ingested transaction is already in DB
+
+            elif result.is_ambiguous:
+                logger.info(
+                    "Dedup: ambiguous match for %s ref=%s — sending to review queue",
+                    account_name, tx.get("reference_number"), extra=self._log_extra(),
+                )
+                try:
+                    await ReviewQueueOperations.add_item(
+                        review_type="ambiguous",
+                        transaction_date=tx["transaction_date"],
+                        amount=tx["amount"],
+                        description=tx.get("description", ""),
+                        account=account_name,
+                        direction=tx.get("direction", "debit"),
+                        transaction_type=tx.get("transaction_type", ""),
+                        reference_number=tx.get("reference_number"),
+                        raw_data=tx,
+                        ambiguous_candidate_ids=result.candidate_ids,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to add ambiguous tx to review queue — inserting normally",
+                        exc_info=True, extra=self._log_extra(),
+                    )
+                    filtered.append(tx)
+                    stats["insert_ready"] += 1
+                    continue
+                stats["review_queued"] += 1
+
+            elif has_alert:
+                # Unmatched but account has alert_sender — send to review queue
+                logger.info(
+                    "Dedup: unmatched tx for alert-enabled account %s — sending to review queue",
+                    account_name, extra=self._log_extra(),
+                )
+                try:
+                    await ReviewQueueOperations.add_item(
+                        review_type="statement_only",
+                        transaction_date=tx["transaction_date"],
+                        amount=tx["amount"],
+                        description=tx.get("description", ""),
+                        account=account_name,
+                        direction=tx.get("direction", "debit"),
+                        transaction_type=tx.get("transaction_type", ""),
+                        reference_number=tx.get("reference_number"),
+                        raw_data=tx,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to add statement-only tx to review queue — inserting normally",
+                        exc_info=True, extra=self._log_extra(),
+                    )
+                    filtered.append(tx)
+                    stats["insert_ready"] += 1
+                    continue
+                stats["review_queued"] += 1
+
+            else:
+                # Unmatched, no alert sender — insert normally
+                filtered.append(tx)
+                stats["insert_ready"] += 1
+
+        logger.info(
+            "Dedup pass complete: %d confirmed, %d review-queued, %d insert-ready, %d splitwise",
+            stats["confirmed"], stats["review_queued"], stats["insert_ready"], stats["splitwise_passthrough"],
+            extra=self._log_extra(),
+        )
+        return filtered, stats
+
     async def _standardize_and_combine_all_data(self) -> List[Dict[str, Any]]:
         """Delegate to DataStandardizerHelper."""
         return await self._data_standardizer_helper.process(
