@@ -6,6 +6,7 @@ from .category_operations import CategoryOperations
 from .suggestion_operations import SuggestionOperations
 from .statement_log_operations import StatementLogOperations
 from .participant_operations import ParticipantOperations
+from .review_queue_operations import ReviewQueueOperations
 
 __all__ = [
     "AccountOperations",
@@ -15,6 +16,7 @@ __all__ = [
     "SuggestionOperations",
     "StatementLogOperations",
     "ParticipantOperations",
+    "ReviewQueueOperations",
     "get_all_bank_accounts",
     "get_credit_card_accounts",
     "get_account_by_email",
