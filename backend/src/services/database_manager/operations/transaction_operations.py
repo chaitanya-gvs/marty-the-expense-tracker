@@ -1976,3 +1976,49 @@ class TransactionOperations:
                     'average_amount': total_amount / total_count if total_count > 0 else 0
                 }
             }
+
+    @staticmethod
+    async def get_transactions_by_email_message_ids(message_ids: list[str]) -> set[str]:
+        """Return set of email_message_ids already present in transactions table."""
+        if not message_ids:
+            return set()
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            result = await session.execute(
+                text("SELECT email_message_id FROM transactions WHERE email_message_id = ANY(:ids)"),
+                {"ids": message_ids}
+            )
+            return {row[0] for row in result.fetchall()}
+
+    @staticmethod
+    async def get_email_transactions_for_dedup(
+        account: str,
+        date_from: date,
+        date_to: date,
+    ) -> list[dict]:
+        """Fetch email_ingestion transactions for a date window used in Tier 1/2 dedup."""
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            result = await session.execute(
+                text("""
+                    SELECT id, transaction_date, amount, direction, reference_number, account
+                    FROM transactions
+                    WHERE account = :account
+                      AND transaction_source = 'email_ingestion'
+                      AND transaction_date BETWEEN :date_from AND :date_to
+                      AND is_deleted = false
+                """),
+                {"account": account, "date_from": date_from, "date_to": date_to}
+            )
+            return [dict(row._mapping) for row in result.fetchall()]
+
+    @staticmethod
+    async def mark_statement_confirmed(transaction_id: str) -> None:
+        """Set statement_confirmed = true on an email_ingestion transaction."""
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            await session.execute(
+                text("UPDATE transactions SET statement_confirmed = true, updated_at = now() WHERE id = :id"),
+                {"id": transaction_id}
+            )
+            await session.commit()
