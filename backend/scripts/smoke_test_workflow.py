@@ -17,7 +17,9 @@ Usage (run from backend/):
 Tables created in test_env:
     transactions                — starts empty; receives email + statement inserts
     review_queue                — starts empty; receives ambiguous dedup items
-    statement_processing_log    — seeded from production for --month (status preserved)
+    statement_processing_log    — seeded from production for --month;
+                                  db_inserted entries are reset to csv_stored so the
+                                  resume-mode standardizer re-reads existing GCS CSVs
 
 After the run you can inspect test_env manually:
     SELECT * FROM test_env.transactions;
@@ -104,9 +106,10 @@ async def setup_test_schema(statement_month: str) -> int:
             )
             print(f"  ✓  Created test_env.{table}")
 
-        # Seed the statement log from production (status preserved as-is so the
-        # workflow skips already-complete statements and only re-processes those
-        # you have manually reset, e.g. swiggy_hdfc / axis_atlas → pdf_stored).
+        # Seed the statement log from production, then reset all db_inserted
+        # entries to csv_stored so the resume-mode standardizer will re-read
+        # the GCS CSVs and produce combined_data for the dedup pass.
+        # (Production entries stay untouched; only test_env rows are modified.)
         await conn.execute(
             """
             INSERT INTO test_env.statement_processing_log
@@ -120,6 +123,19 @@ async def setup_test_schema(statement_month: str) -> int:
         )
         print(f"  ✓  Seeded {seeded} statement log row(s) for {statement_month}")
 
+        # Reset db_inserted → csv_stored so the standardizer doesn't skip them.
+        # asyncpg execute() returns a status string like "UPDATE 3".
+        status_str = await conn.execute(
+            """
+            UPDATE test_env.statement_processing_log
+            SET    status = 'csv_stored'
+            WHERE  status = 'db_inserted'
+            """
+        )
+        reset = int(status_str.split()[-1])
+        if reset:
+            print(f"  ✓  Reset {reset} db_inserted row(s) → csv_stored (so GCS CSVs will be re-standardized)")
+
         # Show their statuses so user knows what will be re-processed
         rows = await conn.fetch(
             """
@@ -130,7 +146,12 @@ async def setup_test_schema(statement_month: str) -> int:
             """
         )
         for r in rows:
-            marker = "  ↺ will re-extract" if r["status"] in ("pdf_stored", "pdf_unlocked", "downloaded") else "  ✓ will skip"
+            if r["status"] in ("pdf_stored", "pdf_unlocked", "downloaded"):
+                marker = "  ↺ will re-extract (OCR)"
+            elif r["status"] in ("csv_stored", "csv_extracted"):
+                marker = "  ↺ will re-standardize (GCS CSV)"
+            else:
+                marker = "  ✓ will skip"
             print(f"       {r['status']:<20} {r['n']:>3} row(s){marker}")
 
         return seeded
