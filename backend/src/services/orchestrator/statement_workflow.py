@@ -857,6 +857,7 @@ class StatementWorkflow:
         custom_splitwise_start_date: Optional[datetime] = None,
         custom_splitwise_end_date: Optional[datetime] = None,
         email_since_date: Optional[datetime] = None,
+        email_until_date: Optional[datetime] = None,
         override: bool = False,
         job_id: Optional[str] = None,
     ) -> Dict[str, Any]:
@@ -921,7 +922,10 @@ class StatementWorkflow:
                 )
                 try:
                     ingestion_svc = AlertIngestionService()
-                    ingestion_result = await ingestion_svc.run(since_date=email_since_date)
+                    ingestion_result = await ingestion_svc.run(
+                        since_date=email_since_date,
+                        until_date=email_until_date,
+                    )
                     workflow_results["email_ingestion"] = ingestion_result
                     self._emit(
                         "email_ingestion_complete", "email_ingestion",

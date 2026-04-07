@@ -142,7 +142,7 @@ async def setup_test_schema(statement_month: str) -> int:
 # Phase 2 — Workflow run
 # ---------------------------------------------------------------------------
 
-async def run_workflow(include_splitwise: bool, email_since: Optional[datetime]) -> dict:
+async def run_workflow(include_splitwise: bool, email_since: Optional[datetime], email_until: Optional[datetime]) -> dict:
     """
     Import and run StatementWorkflow in-process against test_env tables.
     All DB writes go to test_env due to search_path set by TEST_MODE.
@@ -151,8 +151,8 @@ async def run_workflow(include_splitwise: bool, email_since: Optional[datetime])
 
     print(f"\n{_HDR}")
     print("  WORKFLOW  Running pipeline (writes to test_env)")
-    if email_since:
-        print(f"  Email ingestion since: {email_since.date()}")
+    if email_since or email_until:
+        print(f"  Email window: {email_since.date() if email_since else 'watermark'} → {email_until.date() if email_until else 'today'}")
     print(_HDR)
 
     from src.services.orchestrator.statement_workflow import StatementWorkflow  # noqa: E402
@@ -173,6 +173,7 @@ async def run_workflow(include_splitwise: bool, email_since: Optional[datetime])
         include_statement=True,
         include_splitwise=include_splitwise,
         email_since_date=email_since,
+        email_until_date=email_until,
         job_id="smoke-test",
     )
     result["_events"] = events
@@ -284,17 +285,18 @@ async def teardown_test_schema(skip: bool) -> None:
 async def main(args: argparse.Namespace) -> None:
     from datetime import datetime as _dt
 
-    # Resolve email_since_date — default to 1st of the target month
-    if args.email_since:
-        email_since = _dt.strptime(args.email_since, "%Y-%m-%d")
-    else:
-        year, month = map(int, args.month.split("-"))
-        email_since = _dt(year, month, 1)
+    # Resolve email date window — default to full target month
+    year, month = map(int, args.month.split("-"))
+    email_since = _dt.strptime(args.email_since, "%Y-%m-%d") if args.email_since else _dt(year, month, 1)
+    # Gmail `before:` is exclusive, so 1st of next month = last day of target month inclusive
+    next_month = month % 12 + 1
+    next_year  = year + (1 if month == 12 else 0)
+    email_until = _dt.strptime(args.email_until, "%Y-%m-%d") if args.email_until else _dt(next_year, next_month, 1)
 
     print(f"\n{_HDR}")
     print("  WORKFLOW SMOKE TEST")
     print(f"  Target month  : {args.month}")
-    print(f"  Email since   : {email_since.date()}")
+    print(f"  Email window  : {email_since.date()} → {email_until.date()} (exclusive)")
     print(f"  Splitwise     : {'yes' if not args.no_splitwise else 'skipped (--no-splitwise)'}")
     print(f"  Cleanup       : {'yes' if not args.no_cleanup else 'no (--no-cleanup)'}")
     print(_HDR)
@@ -304,6 +306,7 @@ async def main(args: argparse.Namespace) -> None:
         result = await run_workflow(
             include_splitwise=not args.no_splitwise,
             email_since=email_since,
+            email_until=email_until,
         )
         await print_results(result)
     except Exception as exc:
@@ -343,6 +346,16 @@ if __name__ == "__main__":
         help=(
             "Fetch alert emails since this date (default: 1st of --month). "
             "Overrides the alert_last_processed_at watermarks on the accounts table."
+        ),
+    )
+    parser.add_argument(
+        "--email-until",
+        default=None,
+        metavar="YYYY-MM-DD",
+        help=(
+            "Fetch alert emails up to but not including this date "
+            "(default: 1st of the month after --month, i.e. end of target month). "
+            "Gmail before: is exclusive so 2026-04-01 includes all of March."
         ),
     )
     asyncio.run(main(parser.parse_args()))

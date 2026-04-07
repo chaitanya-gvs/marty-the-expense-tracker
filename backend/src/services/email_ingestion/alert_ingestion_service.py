@@ -24,11 +24,13 @@ class AlertIngestionService:
     async def run(
         self,
         since_date: Optional[datetime] = None,
+        until_date: Optional[datetime] = None,
         account_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Run ingestion. If since_date is provided, use it as watermark (backfill mode).
         Otherwise, use each account's alert_last_processed_at.
+        If until_date is provided, only emails before that date are fetched.
         """
         accounts = await AccountOperations.get_all_accounts()
         alert_accounts = [
@@ -50,7 +52,7 @@ class AlertIngestionService:
         }
 
         for account in alert_accounts:
-            result = await self._run_for_account(account, since_date)
+            result = await self._run_for_account(account, since_date, until_date)
             totals["processed"] += result["processed"]
             totals["inserted"] += result["inserted"]
             totals["skipped"] += result["skipped"]
@@ -60,7 +62,7 @@ class AlertIngestionService:
         return totals
 
     async def _run_for_account(
-        self, account: Dict[str, Any], since_date: Optional[datetime]
+        self, account: Dict[str, Any], since_date: Optional[datetime], until_date: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         alert_sender = account["alert_sender"]
         nickname = account.get("nickname", alert_sender)
@@ -91,6 +93,7 @@ class AlertIngestionService:
                 days_back=days_back,
                 alert_senders=[alert_sender],
                 since=watermark,
+                until=until_date,
             )
         except Exception:
             logger.error("Failed to fetch emails for %s", nickname, exc_info=True)
