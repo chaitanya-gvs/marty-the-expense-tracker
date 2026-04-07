@@ -169,6 +169,7 @@ async def run_workflow(include_splitwise: bool, email_since: Optional[datetime],
 
     workflow = StatementWorkflow(event_callback=callback)
     result = await workflow.run_complete_workflow(
+        resume_from_standardization=True,  # read existing GCS CSVs; skip download/OCR
         include_email_ingestion=True,
         include_statement=True,
         include_splitwise=include_splitwise,

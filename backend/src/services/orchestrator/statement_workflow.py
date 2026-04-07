@@ -908,8 +908,10 @@ class StatementWorkflow:
         }
         
         try:
-            # Step 0: Refresh Gmail tokens proactively (needed for email ingestion and statement download)
-            if (include_email_ingestion or include_statement) and not resume_from_standardization:
+            # Step 0: Refresh Gmail tokens proactively.
+            # Always refresh for email ingestion (needs Gmail access regardless of resume mode).
+            # For statements, only refresh when doing a full download run (not resume).
+            if include_email_ingestion or (include_statement and not resume_from_standardization):
                 logger.info("Step 0: Refreshing Gmail tokens...", extra=self._log_extra())
                 await self._refresh_all_tokens()
             
