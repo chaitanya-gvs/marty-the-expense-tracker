@@ -26,7 +26,8 @@ class AccountOperations:
                             nickname, notes, statement_sender, statement_password,
                             last_statement_date, last_processed_at, credit_limit,
                             available_credit, due_date, billing_cycle_start,
-                            billing_cycle_end, is_active, created_at, updated_at
+                            billing_cycle_end, is_active, created_at, updated_at,
+                            alert_sender, alert_last_processed_at
                         FROM accounts
                         WHERE is_active = true
                         ORDER BY account_type, bank_name

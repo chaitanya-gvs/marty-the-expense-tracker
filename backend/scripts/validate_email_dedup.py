@@ -20,9 +20,35 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.services.email_ingestion.client import EmailClient
 from src.services.email_ingestion.parsers import parser_registry
+from src.services.email_ingestion.parsers.base import BaseAlertParser
 from src.services.database_manager.operations.account_operations import AccountOperations
 from src.services.database_manager.operations.transaction_operations import TransactionOperations
 from src.services.email_ingestion.dedup_service import DeduplicationService, DATE_WINDOW_DAYS
+
+# Alias for clarity: validation checks parsed emails against statement ground truth
+get_candidates = TransactionOperations.get_statement_transactions_for_dedup
+
+
+def _should_skip(subject: str, body: str, account_nickname: str) -> bool:
+    """Return True if this email should be silently skipped for this account.
+
+    Three cases:
+    1. Generic non-transaction subjects (surveys, declined, reminders, OTPs…)
+    2. Axis disambiguation via subject (quick, no body fetch needed)
+    3. Axis disambiguation via body — both accounts share alerts@axis.bank.in,
+       so CC emails land in the savings fetch and vice versa. The email body
+       always contains either "Credit Card No." (CC) or "Account Number:" (savings),
+       which lets us filter definitively without counting it as a parse failure.
+    """
+    if BaseAlertParser.is_non_transaction_subject(subject):
+        return True
+    nick_lower = account_nickname.lower()
+    combined_lower = f"{subject}\n{body}".lower()
+    if "axis bank savings account" in nick_lower and "credit card no." in combined_lower:
+        return True
+    if "axis atlas credit card" in nick_lower and "account number:" in combined_lower:
+        return True
+    return False
 
 
 async def validate(date_from: date, date_to: date, account_filter: str | None):
@@ -38,7 +64,7 @@ async def validate(date_from: date, date_to: date, account_filter: str | None):
         return
 
     dedup = DeduplicationService()
-    overall = {"fetched": 0, "parse_fail": 0, "parsed": 0,
+    overall = {"fetched": 0, "skipped": 0, "parse_fail": 0, "parsed": 0,
                "tier1": 0, "tier2": 0, "tier3": 0, "unmatched": 0}
     per_account: dict = {}
     unmatched_rows: list = []
@@ -46,46 +72,57 @@ async def validate(date_from: date, date_to: date, account_filter: str | None):
 
     for account in alert_accounts:
         nickname = account.get("nickname", account["alert_sender"])
-        parser = parser_registry.get_parser(account["alert_sender"])
-        if not parser:
-            print(f"  [WARN] No parser for {account['alert_sender']}, skipping.")
+        senders = [s.strip() for s in account["alert_sender"].split(",") if s.strip()]
+        account_parser = parser_registry.get_parser_for_account(nickname)
+        if not account_parser:
+            print(f"  [WARN] No parser for account '{nickname}', skipping.")
             continue
 
         email_client = EmailClient(account_id="primary")
         since = datetime.combine(date_from, datetime.min.time())
+        # Gmail `before:` is exclusive — add 1 day to include date_to itself
+        until = datetime.combine(date_to + timedelta(days=1), datetime.min.time())
         messages = email_client.list_recent_alert_emails(
             max_results=500,
             days_back=None,
-            alert_senders=[account["alert_sender"]],
+            alert_senders=senders,
             since=since,
+            until=until,
         )
-        # Filter to date range
-        messages = [m for m in messages
-                    if _email_date(m) and date_from <= _email_date(m) <= date_to]
 
-        stats: dict = {"fetched": len(messages), "parse_fail": 0, "parsed": 0,
-                 "tier1": 0, "tier2": 0, "tier3": 0, "unmatched": 0}
+        stats: dict = {"fetched": len(messages), "skipped": 0, "parse_fail": 0,
+                       "parsed": 0, "tier1": 0, "tier2": 0, "tier3": 0, "unmatched": 0}
 
         for msg in messages:
             overall["fetched"] += 1
             try:
                 content = email_client.get_email_content(msg["id"])
-                parsed = parser.parse(content)
+                subject = content.get("subject", "") or ""
+                body = content.get("body", "") or ""
+
+                if _should_skip(subject, body, nickname):
+                    stats["skipped"] += 1
+                    overall["skipped"] += 1
+                    continue
+
+                parsed = account_parser.parse(content)
                 if not parsed:
                     stats["parse_fail"] += 1
                     overall["parse_fail"] += 1
-                    parse_failures.append(f"  [{nickname}] \"{content.get('subject', '?')}\" — {content.get('date', '?')} — parse returned None")
+                    parse_failures.append(
+                        f"  [{nickname}] \"{subject}\" — {content.get('date', '?')}"
+                    )
                     continue
+
                 stats["parsed"] += 1
                 overall["parsed"] += 1
 
                 tx_date = datetime.strptime(parsed["transaction_date"], "%Y-%m-%d").date()
                 d_from = tx_date - timedelta(days=DATE_WINDOW_DAYS)
                 d_to = tx_date + timedelta(days=DATE_WINDOW_DAYS)
-                candidates = await TransactionOperations.get_email_transactions_for_dedup(
+                candidates = await get_candidates(
                     account=nickname, date_from=d_from, date_to=d_to
                 )
-                # Simulate tier matching (read-only — no DB writes)
                 t1 = dedup._match_tier1(
                     {"reference_number": parsed.get("reference_number"),
                      "amount": Decimal(str(parsed["amount"])),
@@ -111,8 +148,10 @@ async def validate(date_from: date, date_to: date, account_filter: str | None):
                 else:
                     stats["unmatched"] += 1
                     overall["unmatched"] += 1
+                    direction = parsed.get("direction", "?")
                     unmatched_rows.append(
-                        f"  {tx_date}  {parsed['amount']:>10.2f}  {nickname:<22}  {parsed['description'][:40]}"
+                        f"  {tx_date}  {parsed['amount']:>10.2f}  {direction:<6}  "
+                        f"{nickname:<24}  {parsed['description'][:38]}"
                     )
             except Exception as exc:
                 stats["parse_fail"] += 1
@@ -124,37 +163,33 @@ async def validate(date_from: date, date_to: date, account_filter: str | None):
     _print_report(date_from, date_to, overall, per_account, unmatched_rows, parse_failures)
 
 
-def _email_date(msg: dict) -> date | None:
-    raw = msg.get("internalDate")
-    if raw:
-        try:
-            return datetime.fromtimestamp(int(raw) / 1000).date()
-        except Exception:
-            pass
-    return None
-
-
 def _print_report(date_from, date_to, overall, per_account, unmatched_rows, parse_failures):
     def pct(n, d):
         return f"({n/d*100:.1f}%)" if d else ""
+
+    actionable = overall["fetched"] - overall["skipped"]
 
     print("\n=== EMAIL DEDUP VALIDATION REPORT ===")
     print(f"Period: {date_from} → {date_to}\n")
     print("OVERALL SUMMARY")
     print(f"  Emails fetched:         {overall['fetched']:>5}")
-    print(f"  Parse failures:         {overall['parse_fail']:>5}  {pct(overall['parse_fail'], overall['fetched'])}")
-    print(f"  Successfully parsed:    {overall['parsed']:>5}")
+    print(f"  Skipped (non-txn):      {overall['skipped']:>5}  {pct(overall['skipped'], overall['fetched'])}")
+    print(f"  Parse failures:         {overall['parse_fail']:>5}  {pct(overall['parse_fail'], actionable)}")
+    print(f"  Successfully parsed:    {overall['parsed']:>5}  {pct(overall['parsed'], actionable)}")
     print(f"  Tier 1 matched (ref):   {overall['tier1']:>5}  {pct(overall['tier1'], overall['parsed'])}")
     print(f"  Tier 2 matched (amt):   {overall['tier2']:>5}  {pct(overall['tier2'], overall['parsed'])}")
     print(f"  Tier 3 ambiguous:       {overall['tier3']:>5}  {pct(overall['tier3'], overall['parsed'])}")
     print(f"  Unmatched:              {overall['unmatched']:>5}  {pct(overall['unmatched'], overall['parsed'])}")
     print("\nBREAKDOWN BY ACCOUNT")
     for name, s in per_account.items():
-        print(f"  {name:<24} — {s['parsed']} parsed, {s['tier1']+s['tier2']} matched, "
-              f"{s['tier3']} ambiguous, {s['unmatched']} unmatched, {s['parse_fail']} failures")
+        acct_actionable = s["fetched"] - s["skipped"]
+        print(f"  {name:<26}  fetched={s['fetched']}  skipped={s['skipped']}  "
+              f"parsed={s['parsed']}/{acct_actionable}  "
+              f"matched={s['tier1']+s['tier2']}  ambiguous={s['tier3']}  "
+              f"unmatched={s['unmatched']}  failures={s['parse_fail']}")
     if unmatched_rows:
         print("\nUNMATCHED TRANSACTIONS (forex, EMI, or parser gaps)")
-        print(f"  {'Date':<12} {'Amount':>10}  {'Account':<22}  Description")
+        print(f"  {'Date':<12} {'Amount':>10}  {'Dir':<6}  {'Account':<24}  Description")
         for row in unmatched_rows:
             print(row)
     if parse_failures:

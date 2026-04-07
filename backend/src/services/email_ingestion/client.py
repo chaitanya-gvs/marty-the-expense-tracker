@@ -145,8 +145,14 @@ class EmailClient:
         days_back: Optional[int] = None,
         alert_senders: Optional[List[str]] = None,
         since: Optional[datetime] = None,
+        until: Optional[datetime] = None,
     ) -> List[dict[str, Any]]:
-        """Fetch alert emails from specified senders, optionally filtered by date."""
+        """Fetch alert emails from specified senders, optionally filtered by date.
+
+        Args:
+            until: Exclusive upper bound (Gmail `before:` is exclusive, so the date
+                   passed here is used as-is — pass date_to + 1 day to include that day).
+        """
         if not self._refresh_credentials():
             raise Exception("Failed to authenticate with Gmail")
 
@@ -155,12 +161,14 @@ class EmailClient:
             sender_parts = [f"from:{s}" for s in alert_senders]
             sender_query = "(" + " OR ".join(sender_parts) + ")"
 
-        date_query = ""
+        date_parts = []
         if since:
-            date_str = since.strftime("%Y/%m/%d")
-            date_query = f"after:{date_str}"
+            date_parts.append(f"after:{since.strftime('%Y/%m/%d')}")
         elif days_back:
-            date_query = f"newer_than:{days_back}d"
+            date_parts.append(f"newer_than:{days_back}d")
+        if until:
+            date_parts.append(f"before:{until.strftime('%Y/%m/%d')}")
+        date_query = " ".join(date_parts)
 
         query_parts = [p for p in [sender_query, date_query] if p]
         query = " ".join(query_parts) if query_parts else ""

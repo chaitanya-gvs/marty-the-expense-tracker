@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 from src.services.email_ingestion.parsers.base import BaseAlertParser
 
 
-class YesBankParser(BaseAlertParser):
+class YesBankSavingsParser(BaseAlertParser):
     def parse_regular(self, email_content: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         subject = email_content.get("subject", "") or ""
         body = email_content.get("body", "") or ""

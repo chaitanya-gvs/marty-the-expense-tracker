@@ -4,15 +4,25 @@ from typing import Any, Dict, Optional
 from src.services.email_ingestion.parsers.base import BaseAlertParser
 
 
-class AxisCreditParser(BaseAlertParser):
+class AxisAtlasParser(BaseAlertParser):
+    """Axis Atlas credit card — sender: alerts@axis.bank.in.
+    Disambiguates from Axis Savings by rejecting emails that contain 'a/c no.'
+    (savings account pattern) in the subject/body.
+    """
+
     def parse_regular(self, email_content: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         subject = email_content.get("subject", "") or ""
         body = email_content.get("body", "") or ""
         combined = f"{subject}\n{body}"
         lower = combined.lower()
-        amount = self._extract_amount(combined)
+
+        # Reject savings account emails (they say "a/c no." not "credit card no.")
+        if "a/c no." in lower:
+            return None
+
+        amount = self._extract_amount(combined) or self._extract_forex_amount(combined)
         direction = "debit" if any(k in lower for k in ["spent", "debited"]) else \
-                    "credit" if "credited" in lower else None
+                    "credit" if any(k in lower for k in ["credited", "reversed"]) else None
         date_val, time_val = self._extract_datetime(combined)
         description = self._extract_field_label(combined, "Merchant Name") or \
                       self._extract_merchant_at(combined)
@@ -27,6 +37,19 @@ class AxisCreditParser(BaseAlertParser):
             return None
         tail = text[idx + len(label):].lstrip(" :\t")
         return tail.splitlines()[0].strip() or None
+
+    def _extract_forex_amount(self, text: str) -> Optional[float]:
+        """Extract foreign currency amounts (USD, EUR, GBP, AED, QAR…) as numeric value.
+        Used when no INR amount is present (e.g. small-value forex reversals).
+        The value will be unmatched against INR statement data but shouldn't fail parsing.
+        """
+        m = re.search(r"(?:USD|EUR|GBP|AED|QAR|SGD|AUD|CAD)\s*([\d,]+(?:\.\d{1,2})?)", text, re.IGNORECASE)
+        if m:
+            try:
+                return float(m.group(1).replace(",", ""))
+            except ValueError:
+                pass
+        return None
 
     def _extract_merchant_at(self, text: str) -> Optional[str]:
         m = re.search(r"\bat\s+([A-Za-z0-9 &.\-]{3,})", text, re.IGNORECASE)

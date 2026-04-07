@@ -2013,6 +2013,31 @@ class TransactionOperations:
             return [dict(row._mapping) for row in result.fetchall()]
 
     @staticmethod
+    async def get_statement_transactions_for_dedup(
+        account: str,
+        date_from: date,
+        date_to: date,
+    ) -> list[dict]:
+        """Fetch statement_extraction transactions for a date window.
+        Used by the validate_email_dedup script to cross-reference parsed emails
+        against existing ground-truth statement data.
+        """
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            result = await session.execute(
+                text("""
+                    SELECT id, transaction_date, amount, direction, reference_number, account
+                    FROM transactions
+                    WHERE account = :account
+                      AND transaction_source = 'statement_extraction'
+                      AND transaction_date BETWEEN :date_from AND :date_to
+                      AND is_deleted = false
+                """),
+                {"account": account, "date_from": date_from, "date_to": date_to}
+            )
+            return [dict(row._mapping) for row in result.fetchall()]
+
+    @staticmethod
     async def mark_statement_confirmed(transaction_id: str) -> None:
         """Set statement_confirmed = true on an email_ingestion transaction."""
         session_factory = get_session_factory()

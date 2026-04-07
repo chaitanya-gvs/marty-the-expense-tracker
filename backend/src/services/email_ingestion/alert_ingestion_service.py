@@ -64,9 +64,9 @@ class AlertIngestionService:
     ) -> Dict[str, Any]:
         alert_sender = account["alert_sender"]
         nickname = account.get("nickname", alert_sender)
-        parser = parser_registry.get_parser(alert_sender)
+        parsers = parser_registry.get_parsers(alert_sender)
 
-        if not parser:
+        if not parsers:
             logger.warning(
                 "No parser found for sender %s (account: %s)", alert_sender, nickname
             )
@@ -112,7 +112,11 @@ class AlertIngestionService:
             processed += 1
             try:
                 content = email_client.get_email_content(msg_id)
-                parsed = parser.parse(content)
+                parsed = None
+                for p in parsers:
+                    parsed = p.parse(content)
+                    if parsed:
+                        break
                 if not parsed:
                     skipped += 1
                     continue

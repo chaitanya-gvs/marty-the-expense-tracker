@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 from src.services.email_ingestion.parsers.base import BaseAlertParser
 
 
-class SBICardParser(BaseAlertParser):
+class CashbackSBIParser(BaseAlertParser):
     def parse_regular(self, email_content: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         subject = email_content.get("subject", "") or ""
         body = email_content.get("body", "") or ""
@@ -24,7 +24,7 @@ class SBICardParser(BaseAlertParser):
         subject = email_content.get("subject", "") or ""
         body = email_content.get("body", "") or ""
         combined = f"{subject}\n{body}"
-        amount = self._extract_amount(combined)
+        amount = self._extract_amount(combined) or self._extract_mandate_amount(combined)
         direction = "debit"
         date_val, time_val = self._extract_datetime(combined)
         description = self._extract_sbi_emandate_merchant(combined)
@@ -45,7 +45,31 @@ class SBICardParser(BaseAlertParser):
         return None
 
     def _extract_sbi_emandate_merchant(self, text: str) -> Optional[str]:
+        # Pattern 1: "transaction of Rs.X at MERCHANT against e-mandate"
         m = re.search(
             r"transaction\s+of\s+rs\.?\s*[\d,]+(?:\.\d{1,2})?\s+at\s+([A-Za-z0-9 &./_-]+?)\s+against\s+e-?mandate",
             text, re.IGNORECASE)
-        return m.group(1).strip() if m else None
+        if m:
+            return m.group(1).strip()
+        # Pattern 2: success notification — "E-Mandate ... MERCHANT" or "mandate for MERCHANT"
+        m = re.search(r"(?:e-?mandate|mandate)\s+(?:for|against|at)\s+([A-Za-z0-9 &./_-]+)",
+                      text, re.IGNORECASE)
+        if m:
+            return re.split(r"\bon\b|\bvia\b|\bhas\b", m.group(1), flags=re.IGNORECASE)[0].strip()
+        return None
+
+    def _extract_mandate_amount(self, text: str) -> Optional[float]:
+        """Broader amount extraction for e-mandate success notifications."""
+        # "Mandate Amount: Rs. 200" or "amount of Rs.200" or "debited.*Rs.200"
+        for pattern in [
+            re.compile(r"mandate\s+amount\s*[:\-]\s*(?:rs\.?|inr|₹)\s*([\d,]+(?:\.\d{1,2})?)", re.IGNORECASE),
+            re.compile(r"amount\s+of\s+(?:rs\.?|inr|₹)\s*([\d,]+(?:\.\d{1,2})?)", re.IGNORECASE),
+            re.compile(r"debited\s+(?:with\s+)?(?:rs\.?|inr|₹)\s*([\d,]+(?:\.\d{1,2})?)", re.IGNORECASE),
+        ]:
+            m = pattern.search(text)
+            if m:
+                try:
+                    return float(m.group(1).replace(",", ""))
+                except ValueError:
+                    continue
+        return None

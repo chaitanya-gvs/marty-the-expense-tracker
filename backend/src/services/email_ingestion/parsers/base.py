@@ -22,6 +22,21 @@ REFERENCE_REGEXES = [
     re.compile(r"(?:rrn|utr|txn(?:\s*id)?|txnid|reference(?:\s*no)?|ref(?:\.?)?)[:\s#-]*([A-Za-z0-9/-]+)", re.IGNORECASE),
 ]
 
+# Subject keyword patterns that identify non-transaction emails.
+# Matched case-insensitively against the email subject.
+_NON_TRANSACTION_SUBJECTS: list[tuple[str, ...]] = [
+    ("we value your feedback",),
+    ("transaction declined",),
+    ("upcoming autopay",),
+    ("autopay txn. reminder",),
+    ("confirmation required",),
+    ("one time password",),
+    (" otp ",),                          # OTP in subject
+    ("statement for the period",),
+    ("credit card statement",),
+    ("e-statement",),
+]
+
 
 class BaseAlertParser(ABC):
     """Abstract base for all bank alert email parsers."""
@@ -32,13 +47,21 @@ class BaseAlertParser(ABC):
         lower = text.lower()
         return any(kw in lower for kw in self.EMANDATE_KEYWORDS)
 
+    @staticmethod
+    def is_non_transaction_subject(subject: str) -> bool:
+        """Return True if the subject indicates a non-transaction email that should be skipped."""
+        lower = f" {subject.lower()} "  # pad so word-boundary OTP check works
+        return any(all(kw in lower for kw in patterns) for patterns in _NON_TRANSACTION_SUBJECTS)
+
     def parse_emandate(self, email_content: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Override in subclasses that need e-mandate handling."""
         return self.parse_regular(email_content)
 
     @abstractmethod
     def parse_regular(self, email_content: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Parse a regular (non-mandate) transaction email."""
+        """Parse a regular (non-mandate) transaction email.
+        Return None if required fields (amount/direction) can't be extracted.
+        """
 
     def parse(self, email_content: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         subject = email_content.get("subject", "") or ""
