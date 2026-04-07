@@ -38,6 +38,7 @@ from .splitwise_processor_helper import SplitwiseProcessorHelper
 from .data_standardizer_helper import DataStandardizerHelper
 from src.services.email_ingestion.dedup_service import DeduplicationService
 from src.services.database_manager.operations.review_queue_operations import ReviewQueueOperations
+from src.services.email_ingestion.alert_ingestion_service import AlertIngestionService
 
 logger = get_logger(__name__)
 
@@ -848,6 +849,9 @@ class StatementWorkflow:
     async def run_complete_workflow(
         self,
         resume_from_standardization: bool = False,
+        include_email_ingestion: bool = True,
+        include_statement: bool = True,
+        include_splitwise: bool = True,
         custom_start_date: Optional[str] = None,
         custom_end_date: Optional[str] = None,
         custom_splitwise_start_date: Optional[datetime] = None,
@@ -897,272 +901,315 @@ class StatementWorkflow:
             "temp_directory": str(self.temp_dir),
             "errors": [],
             "processed_statements": [],
-            "all_standardized_data": []
+            "all_standardized_data": [],
+            "email_ingestion": None,
         }
         
         try:
-            # Step 0: Refresh Gmail tokens proactively
-            if not resume_from_standardization:
+            # Step 0: Refresh Gmail tokens proactively (needed for email ingestion and statement download)
+            if (include_email_ingestion or include_statement) and not resume_from_standardization:
                 logger.info("Step 0: Refreshing Gmail tokens...", extra=self._log_extra())
                 await self._refresh_all_tokens()
             
-            # Step 1: Get all statement senders
-            logger.info("📋 Step 1: Getting all statement senders", extra=self._log_extra())
-            statement_senders_raw = await AccountOperations.get_all_statement_senders()
-            
-            # Handle comma-separated sender emails
-            statement_senders = []
-            for sender in statement_senders_raw:
-                if ',' in sender:
-                    # Split comma-separated emails and add each one
-                    individual_senders = [s.strip() for s in sender.split(',') if s.strip()]
-                    statement_senders.extend(individual_senders)
-                else:
-                    statement_senders.append(sender)
-            
-            # Remove duplicates while preserving order
-            statement_senders = list(dict.fromkeys(statement_senders))
-            workflow_results["total_senders"] = len(statement_senders)
-            
-            if not statement_senders:
-                logger.warning("No statement senders found in accounts table", extra=self._log_extra())
-                return workflow_results
-            
-            logger.info(f"Found {len(statement_senders)} statement senders", extra=self._log_extra())
-            
-            # Step 2: Calculate date range
-            start_date, end_date = self._calculate_date_range()
-
-            # Override with custom date range if provided
-            if custom_start_date and custom_end_date:
-                logger.info(
-                    f"Using custom date range override: {custom_start_date} to {custom_end_date}"
+            # Step 1: Email alert ingestion
+            if include_email_ingestion:
+                logger.info("📧 Step 1: Running email alert ingestion", extra=self._log_extra())
+                self._emit(
+                    "email_ingestion_started", "email_ingestion",
+                    "Starting email alert ingestion for all alert-enabled accounts",
                 )
-                start_date = custom_start_date
-                end_date = custom_end_date
-            
-            # Step 3: Process each sender (skipped when resuming from standardization)
-            if not resume_from_standardization:
-                logger.info("Starting document extraction step", extra=self._log_extra())
-                # Derive the expected statement month (previous calendar month)
-                _now = datetime.now()
-                _prev_month = (_now.month - 1) or 12
-                _prev_year = _now.year if _now.month > 1 else _now.year - 1
-                expected_statement_month = f"{_prev_year}-{_prev_month:02d}"
+                try:
+                    ingestion_svc = AlertIngestionService()
+                    ingestion_result = await ingestion_svc.run()
+                    workflow_results["email_ingestion"] = ingestion_result
+                    self._emit(
+                        "email_ingestion_complete", "email_ingestion",
+                        (
+                            f"Email ingestion complete: {ingestion_result['inserted']} inserted, "
+                            f"{ingestion_result['skipped']} skipped, "
+                            f"{ingestion_result['errors']} errors"
+                        ),
+                        level="success" if ingestion_result["errors"] == 0 else "warning",
+                        data=ingestion_result,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Email ingestion failed, continuing workflow",
+                        exc_info=True, extra=self._log_extra(),
+                    )
+                    workflow_results["errors"].append(f"Email ingestion: {e}")
+                    self._emit(
+                        "email_ingestion_error", "email_ingestion",
+                        f"Email ingestion failed (non-fatal): {e}",
+                        level="warning",
+                    )
+            else:
+                self._emit(
+                    "email_ingestion_skipped", "email_ingestion",
+                    "Email ingestion skipped (toggle off)",
+                )
 
-                for sender_email in statement_senders:
-                    try:
-                        logger.info(f"Processing sender: {sender_email}", extra=self._log_extra())
+            # Steps 2-4: Statement download + extraction
+            if include_statement:
+                # Step 2: Get all statement senders
+                logger.info("📋 Step 2: Getting all statement senders", extra=self._log_extra())
+                statement_senders_raw = await AccountOperations.get_all_statement_senders()
 
-                        # Skip sender entirely if all their statements are already db_inserted
-                        if not override:
-                            account_nickname_for_check = await AccountOperations.get_account_nickname_by_sender(sender_email)
-                            sender_done = await StatementLogOperations.check_sender_fully_complete(
-                                sender_email, expected_statement_month
-                            )
-                            if sender_done:
-                                logger.info(
-                                    f"All statements already complete for {sender_email} ({expected_statement_month}) — skipping",
-                                    extra=self._log_extra(),
-                                )
-                                self._emit(
-                                    "account_already_complete", "email_search",
-                                    f"Already fully processed for {expected_statement_month}",
-                                    level="success",
-                                    data={
-                                        "sender": sender_email,
-                                        "account_nickname": account_nickname_for_check,
-                                        "statement_month": expected_statement_month,
-                                    },
-                                )
-                                continue
+                # Handle comma-separated sender emails
+                statement_senders = []
+                for sender in statement_senders_raw:
+                    if ',' in sender:
+                        # Split comma-separated emails and add each one
+                        individual_senders = [s.strip() for s in sender.split(',') if s.strip()]
+                        statement_senders.extend(individual_senders)
+                    else:
+                        statement_senders.append(sender)
 
-                        # Download statements from this sender
-                        statements = await self._download_statements_from_sender(sender_email, start_date, end_date)
-                        workflow_results["total_statements_downloaded"] += len(statements)
-                        
-                        # Process each statement
-                        for statement_data in statements:
+                # Remove duplicates while preserving order
+                statement_senders = list(dict.fromkeys(statement_senders))
+                workflow_results["total_senders"] = len(statement_senders)
+
+                if not statement_senders:
+                    logger.warning("No statement senders found in accounts table", extra=self._log_extra())
+                    # Don't return — Splitwise may still need to run
+                else:
+                    logger.info(f"Found {len(statement_senders)} statement senders", extra=self._log_extra())
+
+                    # Step 3: Calculate date range
+                    start_date, end_date = self._calculate_date_range()
+
+                    # Override with custom date range if provided
+                    if custom_start_date and custom_end_date:
+                        logger.info(
+                            f"Using custom date range override: {custom_start_date} to {custom_end_date}"
+                        )
+                        start_date = custom_start_date
+                        end_date = custom_end_date
+
+                    # Step 4: Process each sender (skipped when resuming from standardization)
+                    if not resume_from_standardization:
+                        logger.info("Starting document extraction step", extra=self._log_extra())
+                        # Derive the expected statement month (previous calendar month)
+                        _now = datetime.now()
+                        _prev_month = (_now.month - 1) or 12
+                        _prev_year = _now.year if _now.month > 1 else _now.year - 1
+                        expected_statement_month = f"{_prev_year}-{_prev_month:02d}"
+
+                        for sender_email in statement_senders:
                             try:
-                                # Extract data from statement
-                                extraction_result = await self._process_statement_extraction(statement_data, override=override)
-                                if extraction_result:
-                                    workflow_results["total_statements_processed"] += 1
+                                logger.info(f"Processing sender: {sender_email}", extra=self._log_extra())
 
-                                    # Track if extraction was skipped
-                                    if extraction_result.get("skipped"):
-                                        workflow_results["total_statements_skipped"] = workflow_results.get("total_statements_skipped", 0) + 1
-                                        logger.info(f"Skipped extraction for {statement_data['normalized_filename']}", extra=self._log_extra())
-
-                                    # Upload unlocked statement to cloud storage (only if not skipped)
-                                    cloud_path = None
-                                    if not extraction_result.get("skipped"):
-                                        cloud_path = await self._upload_unlocked_statement_to_cloud(statement_data, extraction_result)
-                                        if cloud_path:
-                                            workflow_results["total_statements_uploaded"] += 1
-
-                                    # Standardize and store
-                                    standardized_data = await self._standardize_and_store_data(extraction_result, statement_data)
-                                    if standardized_data:
-                                        workflow_results["all_standardized_data"].extend(standardized_data)
-
-                                    workflow_results["processed_statements"].append({
-                                        "sender_email": statement_data["sender_email"],
-                                        "filename": statement_data["normalized_filename"],
-                                        "pdf_cloud_path": cloud_path if not extraction_result.get("skipped") else "skipped",
-                                        "csv_cloud_path": extraction_result.get("csv_cloud_path"),
-                                        "extraction_success": True,
-                                        "extraction_skipped": extraction_result.get("skipped", False),
-                                        "standardization_success": len(standardized_data) > 0 if standardized_data else False
-                                    })
-
-                                    # Update last_statement_date and last_processed_at for this account
-                                    try:
-                                        account = await AccountOperations.get_account_by_statement_sender(
-                                            statement_data["sender_email"]
+                                # Skip sender entirely if all their statements are already db_inserted
+                                if not override:
+                                    account_nickname_for_check = await AccountOperations.get_account_nickname_by_sender(sender_email)
+                                    sender_done = await StatementLogOperations.check_sender_fully_complete(
+                                        sender_email, expected_statement_month
+                                    )
+                                    if sender_done:
+                                        logger.info(
+                                            f"All statements already complete for {sender_email} ({expected_statement_month}) — skipping",
+                                            extra=self._log_extra(),
                                         )
-                                        if account:
-                                            stmt_month = self._get_previous_month_folder(statement_data["email_date"])
-                                            year_num = int(stmt_month[:4])
-                                            month_num = int(stmt_month[5:])
-                                            last_day = calendar.monthrange(year_num, month_num)[1]
-                                            last_day_date = date(year_num, month_num, last_day)
-                                            await AccountOperations.update_last_statement_date(str(account["id"]), last_day_date)
-                                            await AccountOperations.update_last_processed_at(str(account["id"]))
-                                            logger.info(
-                                                f"Updated account {account.get('nickname', statement_data['sender_email'])}: "
-                                                f"last_statement_date={last_day_date.isoformat()}"
-                                            )
+                                        self._emit(
+                                            "account_already_complete", "email_search",
+                                            f"Already fully processed for {expected_statement_month}",
+                                            level="success",
+                                            data={
+                                                "sender": sender_email,
+                                                "account_nickname": account_nickname_for_check,
+                                                "statement_month": expected_statement_month,
+                                            },
+                                        )
+                                        continue
+
+                                # Download statements from this sender
+                                statements = await self._download_statements_from_sender(sender_email, start_date, end_date)
+                                workflow_results["total_statements_downloaded"] += len(statements)
+
+                                # Process each statement
+                                for statement_data in statements:
+                                    try:
+                                        # Extract data from statement
+                                        extraction_result = await self._process_statement_extraction(statement_data, override=override)
+                                        if extraction_result:
+                                            workflow_results["total_statements_processed"] += 1
+
+                                            # Track if extraction was skipped
+                                            if extraction_result.get("skipped"):
+                                                workflow_results["total_statements_skipped"] = workflow_results.get("total_statements_skipped", 0) + 1
+                                                logger.info(f"Skipped extraction for {statement_data['normalized_filename']}", extra=self._log_extra())
+
+                                            # Upload unlocked statement to cloud storage (only if not skipped)
+                                            cloud_path = None
+                                            if not extraction_result.get("skipped"):
+                                                cloud_path = await self._upload_unlocked_statement_to_cloud(statement_data, extraction_result)
+                                                if cloud_path:
+                                                    workflow_results["total_statements_uploaded"] += 1
+
+                                            # Standardize and store
+                                            standardized_data = await self._standardize_and_store_data(extraction_result, statement_data)
+                                            if standardized_data:
+                                                workflow_results["all_standardized_data"].extend(standardized_data)
+
+                                            workflow_results["processed_statements"].append({
+                                                "sender_email": statement_data["sender_email"],
+                                                "filename": statement_data["normalized_filename"],
+                                                "pdf_cloud_path": cloud_path if not extraction_result.get("skipped") else "skipped",
+                                                "csv_cloud_path": extraction_result.get("csv_cloud_path"),
+                                                "extraction_success": True,
+                                                "extraction_skipped": extraction_result.get("skipped", False),
+                                                "standardization_success": len(standardized_data) > 0 if standardized_data else False
+                                            })
+
+                                            # Update last_statement_date and last_processed_at for this account
+                                            try:
+                                                account = await AccountOperations.get_account_by_statement_sender(
+                                                    statement_data["sender_email"]
+                                                )
+                                                if account:
+                                                    stmt_month = self._get_previous_month_folder(statement_data["email_date"])
+                                                    year_num = int(stmt_month[:4])
+                                                    month_num = int(stmt_month[5:])
+                                                    last_day = calendar.monthrange(year_num, month_num)[1]
+                                                    last_day_date = date(year_num, month_num, last_day)
+                                                    await AccountOperations.update_last_statement_date(str(account["id"]), last_day_date)
+                                                    await AccountOperations.update_last_processed_at(str(account["id"]))
+                                                    logger.info(
+                                                        f"Updated account {account.get('nickname', statement_data['sender_email'])}: "
+                                                        f"last_statement_date={last_day_date.isoformat()}"
+                                                    )
+                                                else:
+                                                    logger.warning(f"Could not find account for sender {statement_data['sender_email']} — skipping date update", extra=self._log_extra())
+                                            except Exception as e:
+                                                logger.warning(f"Failed to update account dates for {statement_data['sender_email']}: {e}", extra=self._log_extra())
                                         else:
-                                            logger.warning(f"Could not find account for sender {statement_data['sender_email']} — skipping date update", extra=self._log_extra())
+                                            workflow_results["errors"].append(f"Failed to extract data from {statement_data['normalized_filename']}")
+
                                     except Exception as e:
-                                        logger.warning(f"Failed to update account dates for {statement_data['sender_email']}: {e}", extra=self._log_extra())
-                                else:
-                                    workflow_results["errors"].append(f"Failed to extract data from {statement_data['normalized_filename']}")
-                            
+                                        error_msg = f"Error processing statement {statement_data.get('normalized_filename', 'unknown')}: {e}"
+                                        logger.error(error_msg, exc_info=True, extra=self._log_extra())
+                                        workflow_results["errors"].append(error_msg)
+
                             except Exception as e:
-                                error_msg = f"Error processing statement {statement_data.get('normalized_filename', 'unknown')}: {e}"
+                                error_msg = f"Error processing sender {sender_email}: {e}"
                                 logger.error(error_msg, exc_info=True, extra=self._log_extra())
                                 workflow_results["errors"].append(error_msg)
-                    
-                    except Exception as e:
-                        error_msg = f"Error processing sender {sender_email}: {e}"
-                        logger.error(error_msg, exc_info=True, extra=self._log_extra())
-                        workflow_results["errors"].append(error_msg)
-            
-            # Step 4: Process Splitwise data
-            logger.info("Step 4: Processing Splitwise data", extra=self._log_extra())
-            splitwise_result = await self._process_splitwise_data(
-                continue_on_error=True,
-                custom_start_date=custom_splitwise_start_date,
-                custom_end_date=custom_splitwise_end_date
-            )
-            if splitwise_result:
-                workflow_results["splitwise_processed"] = True
-                workflow_results["splitwise_cloud_path"] = splitwise_result.get("cloud_path")
-                workflow_results["splitwise_transaction_count"] = splitwise_result.get("transaction_count")
-                logger.info(f"Processed {splitwise_result.get('transaction_count')} Splitwise transactions", extra=self._log_extra())
-            else:
-                workflow_results["splitwise_processed"] = False
-                logger.warning("Splitwise processing failed or no data found", extra=self._log_extra())
-            
-            # Step 5: Standardize and combine all data
-            logger.info("Step 5: Standardizing and combining all transaction data", extra=self._log_extra())
-            combined_data = await self._standardize_and_combine_all_data()
-            if combined_data:
-                workflow_results["combined_transaction_count"] = len(combined_data)
-                workflow_results["all_standardized_data"] = combined_data
-                logger.info(f"Combined and standardized {len(combined_data)} total transactions", extra=self._log_extra())
 
-                # Step 5b: Deduplication pass — match statement transactions against email-ingested ones
-                logger.info("Step 5b: Running dedup pass for statement transactions", extra=self._log_extra())
-                self._emit(
-                    "dedup_started", "dedup",
-                    f"Checking {len(combined_data)} transaction(s) for email-alert duplicates",
+            # Step 5: Splitwise sync
+            if include_splitwise:
+                logger.info("Step 5: Processing Splitwise data", extra=self._log_extra())
+                splitwise_result = await self._process_splitwise_data(
+                    continue_on_error=True,
+                    custom_start_date=custom_splitwise_start_date,
+                    custom_end_date=custom_splitwise_end_date
                 )
-                combined_data, dedup_stats = await self._run_dedup_pass(combined_data)
-                workflow_results["dedup_confirmed"] = dedup_stats["confirmed"]
-                workflow_results["dedup_review_queued"] = dedup_stats["review_queued"]
-                workflow_results["dedup_insert_ready"] = dedup_stats["insert_ready"]
-                if dedup_stats["confirmed"] > 0 or dedup_stats["review_queued"] > 0:
-                    self._emit(
-                        "dedup_complete", "dedup",
-                        (
-                            f"Dedup complete: {dedup_stats['confirmed']} confirmed via email alerts, "
-                            f"{dedup_stats['review_queued']} sent to review queue, "
-                            f"{dedup_stats['insert_ready']} ready for insert"
-                        ),
-                        level="success",
-                        data=dedup_stats,
-                    )
+                if splitwise_result:
+                    workflow_results["splitwise_processed"] = True
+                    workflow_results["splitwise_cloud_path"] = splitwise_result.get("cloud_path")
+                    workflow_results["splitwise_transaction_count"] = splitwise_result.get("transaction_count")
+                    logger.info(f"Processed {splitwise_result.get('transaction_count')} Splitwise transactions", extra=self._log_extra())
                 else:
+                    workflow_results["splitwise_processed"] = False
+                    logger.warning("Splitwise processing failed or no data found", extra=self._log_extra())
+            
+            # Steps 6-8: Standardize, dedup, and insert (runs if any data was collected)
+            if include_statement or include_splitwise:
+                logger.info("Step 6: Standardizing and combining all transaction data", extra=self._log_extra())
+                combined_data = await self._standardize_and_combine_all_data()
+                if combined_data:
+                    workflow_results["combined_transaction_count"] = len(combined_data)
+                    workflow_results["all_standardized_data"] = combined_data
+                    logger.info(f"Combined and standardized {len(combined_data)} total transactions", extra=self._log_extra())
+
+                    # Step 7: Deduplication pass — match statement transactions against email-ingested ones
+                    logger.info("Step 7: Running dedup pass for statement transactions", extra=self._log_extra())
                     self._emit(
-                        "dedup_complete", "dedup",
-                        "Dedup complete: no email-alert matches found, all transactions will be inserted normally",
-                        data=dedup_stats,
+                        "dedup_started", "dedup",
+                        f"Checking {len(combined_data)} transaction(s) for email-alert duplicates",
+                    )
+                    combined_data, dedup_stats = await self._run_dedup_pass(combined_data)
+                    workflow_results["dedup_confirmed"] = dedup_stats["confirmed"]
+                    workflow_results["dedup_review_queued"] = dedup_stats["review_queued"]
+                    workflow_results["dedup_insert_ready"] = dedup_stats["insert_ready"]
+                    if dedup_stats["confirmed"] > 0 or dedup_stats["review_queued"] > 0:
+                        self._emit(
+                            "dedup_complete", "dedup",
+                            (
+                                f"Dedup complete: {dedup_stats['confirmed']} confirmed via email alerts, "
+                                f"{dedup_stats['review_queued']} sent to review queue, "
+                                f"{dedup_stats['insert_ready']} ready for insert"
+                            ),
+                            level="success",
+                            data=dedup_stats,
+                        )
+                    else:
+                        self._emit(
+                            "dedup_complete", "dedup",
+                            "Dedup complete: no email-alert matches found, all transactions will be inserted normally",
+                            data=dedup_stats,
+                        )
+
+                    # Step 8: Store data in database
+                    logger.info("Step 8: Storing transactions in database", extra=self._log_extra())
+                    self._emit(
+                        "db_insert_started", "db_insert",
+                        f"Inserting {len(combined_data)} transaction(s) into the database",
+                        data={"transaction_count": len(combined_data)},
+                    )
+                    db_result = await TransactionOperations.bulk_insert_transactions(
+                        combined_data,
+                        check_duplicates=True,
+                        upsert_splitwise=True  # Update existing Splitwise transactions with latest data
                     )
 
-                # Step 6: Store data in database
-                logger.info("Step 6: Storing transactions in database", extra=self._log_extra())
-                self._emit(
-                    "db_insert_started", "db_insert",
-                    f"Inserting {len(combined_data)} transaction(s) into the database",
-                    data={"transaction_count": len(combined_data)},
-                )
-                db_result = await TransactionOperations.bulk_insert_transactions(
-                    combined_data,
-                    check_duplicates=True,
-                    upsert_splitwise=True  # Update existing Splitwise transactions with latest data
-                )
-                
-                if db_result.get("success"):
-                    workflow_results["database_inserted_count"] = db_result.get("inserted_count", 0)
-                    workflow_results["database_updated_count"] = db_result.get("updated_count", 0)
-                    workflow_results["database_skipped_count"] = db_result.get("skipped_count", 0)
-                    workflow_results["database_error_count"] = db_result.get("error_count", 0)
-                    logger.info(f"Database storage: {db_result.get('inserted_count', 0)} inserted, "
-                               f"{db_result.get('updated_count', 0)} updated, "
-                               f"{db_result.get('skipped_count', 0)} skipped, "
-                               f"{db_result.get('error_count', 0)} errors")
-                    # Mark statements as db_inserted only if standardization actually produced data.
-                    # Extraction-skipped statements (already done) and failed extractions (no CSV)
-                    # must not be stamped db_inserted — they need to remain retryable.
-                    for stmt in workflow_results.get("processed_statements", []):
-                        if not stmt.get("extraction_skipped") and stmt.get("standardization_success"):
-                            stmt_log_key = stmt["filename"].replace("_locked.pdf", "")
-                            try:
-                                await StatementLogOperations.update_status(
-                                    stmt_log_key, "db_inserted", job_id=self.job_id
-                                )
-                            except Exception:
-                                logger.warning(f"Failed to mark {stmt_log_key} as db_inserted", exc_info=True, extra=self._log_extra())
-                    self._emit(
-                        "db_insert_complete", "db_insert",
-                        (
-                            f"DB insert complete: {db_result.get('inserted_count', 0)} inserted, "
-                            f"{db_result.get('updated_count', 0)} updated, "
-                            f"{db_result.get('skipped_count', 0)} skipped"
-                        ),
-                        level="success",
-                        data={
-                            "inserted": db_result.get("inserted_count", 0),
-                            "updated": db_result.get("updated_count", 0),
-                            "skipped": db_result.get("skipped_count", 0),
-                            "errors": db_result.get("error_count", 0),
-                            "splitwise_upsert_updates": db_result.get("splitwise_upsert_updates") or [],
-                        },
-                    )
+                    if db_result.get("success"):
+                        workflow_results["database_inserted_count"] = db_result.get("inserted_count", 0)
+                        workflow_results["database_updated_count"] = db_result.get("updated_count", 0)
+                        workflow_results["database_skipped_count"] = db_result.get("skipped_count", 0)
+                        workflow_results["database_error_count"] = db_result.get("error_count", 0)
+                        logger.info(f"Database storage: {db_result.get('inserted_count', 0)} inserted, "
+                                   f"{db_result.get('updated_count', 0)} updated, "
+                                   f"{db_result.get('skipped_count', 0)} skipped, "
+                                   f"{db_result.get('error_count', 0)} errors")
+                        # Mark statements as db_inserted only if standardization actually produced data.
+                        # Extraction-skipped statements (already done) and failed extractions (no CSV)
+                        # must not be stamped db_inserted — they need to remain retryable.
+                        for stmt in workflow_results.get("processed_statements", []):
+                            if not stmt.get("extraction_skipped") and stmt.get("standardization_success"):
+                                stmt_log_key = stmt["filename"].replace("_locked.pdf", "")
+                                try:
+                                    await StatementLogOperations.update_status(
+                                        stmt_log_key, "db_inserted", job_id=self.job_id
+                                    )
+                                except Exception:
+                                    logger.warning(f"Failed to mark {stmt_log_key} as db_inserted", exc_info=True, extra=self._log_extra())
+                        self._emit(
+                            "db_insert_complete", "db_insert",
+                            (
+                                f"DB insert complete: {db_result.get('inserted_count', 0)} inserted, "
+                                f"{db_result.get('updated_count', 0)} updated, "
+                                f"{db_result.get('skipped_count', 0)} skipped"
+                            ),
+                            level="success",
+                            data={
+                                "inserted": db_result.get("inserted_count", 0),
+                                "updated": db_result.get("updated_count", 0),
+                                "skipped": db_result.get("skipped_count", 0),
+                                "errors": db_result.get("error_count", 0),
+                                "splitwise_upsert_updates": db_result.get("splitwise_upsert_updates") or [],
+                            },
+                        )
+                    else:
+                        workflow_results["database_errors"] = db_result.get("errors", [])
+                        logger.error(f"Database storage failed: {db_result.get('errors', [])}", exc_info=True, extra=self._log_extra())
+                        self._emit(
+                            "db_insert_complete", "db_insert",
+                            f"DB insert failed: {db_result.get('errors', [])}",
+                            level="error",
+                            data={"errors": db_result.get("errors", [])},
+                        )
                 else:
-                    workflow_results["database_errors"] = db_result.get("errors", [])
-                    logger.error(f"Database storage failed: {db_result.get('errors', [])}", exc_info=True, extra=self._log_extra())
-                    self._emit(
-                        "db_insert_complete", "db_insert",
-                        f"DB insert failed: {db_result.get('errors', [])}",
-                        level="error",
-                        data={"errors": db_result.get("errors", [])},
-                    )
-            else:
-                logger.warning("No combined transaction data generated", extra=self._log_extra())
+                    logger.warning("No combined transaction data generated", extra=self._log_extra())
             
             logger.info("Complete statement processing workflow finished", extra=self._log_extra())
             
