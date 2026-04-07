@@ -64,7 +64,11 @@ class TransactionStandardizer:
             
         # Convert to string and clean
         amount_str = str(amount_str).strip()
-        
+
+        # Strip non-ASCII characters before any further processing — handles mangled
+        # currency symbols (e.g. â€¢ / bullet / garbled ₹) that survive CSV round-trips
+        amount_str = amount_str.encode('ascii', 'ignore').decode('ascii').strip()
+
         # Remove currency symbols and extra spaces, but keep decimal point
         amount_str = re.sub(r'[₹Rs\s]', '', amount_str)
         # Remove commas but keep decimal point
@@ -297,7 +301,7 @@ class TransactionStandardizer:
                 'amount': amount,
                 'transaction_type': transaction_type,
                 'account': account_name or "Axis Atlas Credit Card",
-                'category': str(row.get("MERCHANT CATEGORY", "")).strip() if pd.notna(row.get("MERCHANT CATEGORY")) else None,
+                'category': None,  # merchant category dropped from extraction schema
                 'reference_number': None,
                 'source_file': filename,
                 'raw_data': row.to_dict()
@@ -315,11 +319,23 @@ class TransactionStandardizer:
                 continue
                 
             amount, transaction_type = self.clean_amount(row.get("AMOUNT", ""), is_credit_card=True)
-            
+
+            # The HDFC PDF sometimes puts the time in the TRANSACTION DESCRIPTION column
+            # (e.g. "00:00 1% Swiggy Cashback_Reversal") instead of in DATE & TIME.
+            # Detect a leading HH:MM prefix and strip it; recover the time value as a fallback.
+            raw_desc = str(row.get("TRANSACTION DESCRIPTION", "")).strip()
+            time_prefix = re.match(r'^(\d{1,2}:\d{2})\s+(.*)', raw_desc)
+            if time_prefix:
+                description = time_prefix.group(2).strip()
+                transaction_time = self.extract_time(row.get("DATE & TIME")) or f"{time_prefix.group(1).zfill(5)}:00"
+            else:
+                description = raw_desc
+                transaction_time = self.extract_time(row.get("DATE & TIME"))
+
             standardized_data.append({
                 'transaction_date': self.parse_date(row.get("DATE & TIME")),
-                'transaction_time': self.extract_time(row.get("DATE & TIME")),
-                'description': str(row.get("TRANSACTION DESCRIPTION", "")).strip(),
+                'transaction_time': transaction_time,
+                'description': description,
                 'amount': amount,
                 'transaction_type': transaction_type,
                 'account': account_name or "Swiggy HDFC Credit Card",
