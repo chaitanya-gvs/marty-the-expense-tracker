@@ -64,7 +64,12 @@ class AlertIngestionService:
     ) -> Dict[str, Any]:
         alert_sender = account["alert_sender"]
         nickname = account.get("nickname", alert_sender)
-        parsers = parser_registry.get_parsers(alert_sender)
+
+        # Prefer the nickname-specific parser so that accounts sharing the same
+        # alert_sender (e.g. Axis Atlas CC and Axis Bank Savings both use
+        # alerts@axis.bank.in) don't accidentally parse each other's emails.
+        specific = parser_registry.get_parser_for_account(nickname)
+        parsers = [specific] if specific else parser_registry.get_parsers(alert_sender)
 
         if not parsers:
             logger.warning(

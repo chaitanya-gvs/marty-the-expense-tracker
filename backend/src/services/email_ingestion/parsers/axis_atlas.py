@@ -20,7 +20,11 @@ class AxisAtlasParser(BaseAlertParser):
         if "a/c no." in lower:
             return None
 
-        amount = self._extract_amount(combined) or self._extract_forex_amount(combined)
+        # Strip lines that mention available balance / limit so the INR amount
+        # extractor doesn't pick up "Available Balance: INR 663,110.70" instead
+        # of the actual transaction amount.
+        clean = re.sub(r"(?i)[^\n]*(?:available|avl\.?|credit limit|bal\.?)[^\n]*", "", combined)
+        amount = self._extract_amount(clean) or self._extract_forex_amount(combined)
         direction = "debit" if any(k in lower for k in ["spent", "debited"]) else \
                     "credit" if any(k in lower for k in ["credited", "reversed"]) else None
         date_val, time_val = self._extract_datetime(combined)

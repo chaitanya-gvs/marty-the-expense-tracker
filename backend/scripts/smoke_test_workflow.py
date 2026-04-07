@@ -32,8 +32,9 @@ import argparse
 import asyncio
 import os
 import sys
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
+from typing import Optional
 
 # ── CRITICAL: set TEST_MODE before any app imports ─────────────────────────
 # connection.py reads this env var when creating the engine and adds
@@ -141,13 +142,17 @@ async def setup_test_schema(statement_month: str) -> int:
 # Phase 2 — Workflow run
 # ---------------------------------------------------------------------------
 
-async def run_workflow(include_splitwise: bool) -> dict:
+async def run_workflow(include_splitwise: bool, email_since: Optional[datetime]) -> dict:
     """
     Import and run StatementWorkflow in-process against test_env tables.
     All DB writes go to test_env due to search_path set by TEST_MODE.
     """
+    from datetime import datetime as _dt  # noqa: F401 — imported for type use above
+
     print(f"\n{_HDR}")
     print("  WORKFLOW  Running pipeline (writes to test_env)")
+    if email_since:
+        print(f"  Email ingestion since: {email_since.date()}")
     print(_HDR)
 
     from src.services.orchestrator.statement_workflow import StatementWorkflow  # noqa: E402
@@ -167,6 +172,7 @@ async def run_workflow(include_splitwise: bool) -> dict:
         include_email_ingestion=True,
         include_statement=True,
         include_splitwise=include_splitwise,
+        email_since_date=email_since,
         job_id="smoke-test",
     )
     result["_events"] = events
@@ -276,16 +282,29 @@ async def teardown_test_schema(skip: bool) -> None:
 # ---------------------------------------------------------------------------
 
 async def main(args: argparse.Namespace) -> None:
+    from datetime import datetime as _dt
+
+    # Resolve email_since_date — default to 1st of the target month
+    if args.email_since:
+        email_since = _dt.strptime(args.email_since, "%Y-%m-%d")
+    else:
+        year, month = map(int, args.month.split("-"))
+        email_since = _dt(year, month, 1)
+
     print(f"\n{_HDR}")
     print("  WORKFLOW SMOKE TEST")
     print(f"  Target month  : {args.month}")
+    print(f"  Email since   : {email_since.date()}")
     print(f"  Splitwise     : {'yes' if not args.no_splitwise else 'skipped (--no-splitwise)'}")
     print(f"  Cleanup       : {'yes' if not args.no_cleanup else 'no (--no-cleanup)'}")
     print(_HDR)
 
     try:
         await setup_test_schema(args.month)
-        result = await run_workflow(include_splitwise=not args.no_splitwise)
+        result = await run_workflow(
+            include_splitwise=not args.no_splitwise,
+            email_since=email_since,
+        )
         await print_results(result)
     except Exception as exc:
         print(f"\n❌  Smoke test failed: {exc}")
@@ -316,5 +335,14 @@ if __name__ == "__main__":
         "--no-splitwise",
         action="store_true",
         help="Skip the Splitwise sync step",
+    )
+    parser.add_argument(
+        "--email-since",
+        default=None,
+        metavar="YYYY-MM-DD",
+        help=(
+            "Fetch alert emails since this date (default: 1st of --month). "
+            "Overrides the alert_last_processed_at watermarks on the accounts table."
+        ),
     )
     asyncio.run(main(parser.parse_args()))
