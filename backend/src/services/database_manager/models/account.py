@@ -35,8 +35,6 @@ class Account(Base):
     is_active: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=True)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, server_default=func.current_timestamp())
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, server_default=func.current_timestamp())
-    alert_sender: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    alert_last_processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Indexes
     __table_args__ = (

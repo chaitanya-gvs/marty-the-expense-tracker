@@ -18,7 +18,7 @@ from src.services.database_manager.connection import Base
 from src.utils.settings import get_settings
 
 # Import all models to ensure they are registered with Base.metadata
-from src.services.database_manager.models import Account, Category, ReviewQueue, StatementProcessingLog, Tag, Transaction, TransactionTag
+from src.services.database_manager.models import Account, Category, StatementProcessingLog, Tag, Transaction, TransactionTag
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
