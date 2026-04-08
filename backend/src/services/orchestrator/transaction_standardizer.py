@@ -282,14 +282,14 @@ class TransactionStandardizer:
     def process_axis_atlas(self, df: pd.DataFrame, filename: str, account_name: str = None) -> pd.DataFrame:
         """Process Axis Atlas Credit Card data"""
         logger.info(f"Processing Axis Atlas data: {filename}")
-        
+
         standardized_data = []
         for _, row in df.iterrows():
             if pd.isna(row.get("DATE")) or str(row.get("DATE")).strip() == "":
                 continue
-                
+
             amount, transaction_type = self.clean_amount(row.get("AMOUNT (Rs.)", ""), is_credit_card=True)
-            
+
             standardized_data.append({
                 'transaction_date': self.parse_date(row.get("DATE")),
                 'transaction_time': None,
@@ -297,29 +297,55 @@ class TransactionStandardizer:
                 'amount': amount,
                 'transaction_type': transaction_type,
                 'account': account_name or "Axis Atlas Credit Card",
-                'category': str(row.get("MERCHANT CATEGORY", "")).strip() if pd.notna(row.get("MERCHANT CATEGORY")) else None,
+                'category': None,
                 'reference_number': None,
                 'source_file': filename,
                 'raw_data': row.to_dict()
             })
-        
+
         return pd.DataFrame(standardized_data)
     
     def process_swiggy_hdfc(self, df: pd.DataFrame, filename: str, account_name: str = None) -> pd.DataFrame:
         """Process Swiggy HDFC Credit Card data"""
         logger.info(f"Processing Swiggy HDFC data: {filename}")
-        
+
         standardized_data = []
         for _, row in df.iterrows():
-            if pd.isna(row.get("DATE & TIME")) or str(row.get("DATE & TIME")).strip() == "":
+            date_time_val = row.get("DATE & TIME")
+            if pd.isna(date_time_val) or str(date_time_val).strip() == "":
                 continue
-                
-            amount, transaction_type = self.clean_amount(row.get("AMOUNT", ""), is_credit_card=True)
-            
+
+            description_col_val = str(row.get("TRANSACTION DESCRIPTION", "")).strip()
+
+            # The LLM sometimes splits "DATE & TIME" into separate date and time cells,
+            # shifting every subsequent column right by one:
+            #   DATE & TIME → date only   |   TRANSACTION DESCRIPTION → time (HH:MM)
+            #   AMOUNT → actual description   |   PI → actual amount
+            # Detect this by checking if TRANSACTION DESCRIPTION looks like a bare time.
+            is_column_shifted = bool(re.match(r'^\d{1,2}:\d{2}$', description_col_val))
+
+            if is_column_shifted:
+                time_str = description_col_val
+                description = str(row.get("AMOUNT", "")).strip()
+                # PI column holds the amount; strip bullet characters before parsing
+                pi_raw = str(row.get("PI", "")).strip()
+                pi_clean = re.sub(r'[•●]', '', pi_raw).strip()
+                amount, transaction_type = self.clean_amount(pi_clean, is_credit_card=True)
+                # Reconstruct the full datetime string so parse_date / extract_time work normally
+                full_datetime = f"{str(date_time_val).strip()}| {time_str}"
+                logger.warning(
+                    f"Column shift detected in {filename} row (date={date_time_val}): "
+                    f"reading description from AMOUNT, amount from PI"
+                )
+            else:
+                description = description_col_val
+                amount, transaction_type = self.clean_amount(row.get("AMOUNT", ""), is_credit_card=True)
+                full_datetime = str(date_time_val).strip()
+
             standardized_data.append({
-                'transaction_date': self.parse_date(row.get("DATE & TIME")),
-                'transaction_time': self.extract_time(row.get("DATE & TIME")),
-                'description': str(row.get("TRANSACTION DESCRIPTION", "")).strip(),
+                'transaction_date': self.parse_date(full_datetime),
+                'transaction_time': self.extract_time(full_datetime),
+                'description': description,
                 'amount': amount,
                 'transaction_type': transaction_type,
                 'account': account_name or "Swiggy HDFC Credit Card",
@@ -328,7 +354,7 @@ class TransactionStandardizer:
                 'source_file': filename,
                 'raw_data': row.to_dict()
             })
-        
+
         return pd.DataFrame(standardized_data)
     
     def process_cashback_sbi(self, df: pd.DataFrame, filename: str, account_name: str = None) -> pd.DataFrame:

@@ -47,8 +47,8 @@ if _gcp_creds and not Path(_gcp_creds).is_absolute():
 # ---------------------------------------------------------------------------
 # Configuration — update these to point at a different statement
 # ---------------------------------------------------------------------------
-GCS_PDF_PATH = "2026-03/unlocked_statements/axis_atlas_20260402.pdf"
-ACCOUNT_NICKNAME = "Axis Atlas Credit Card"
+GCS_PDF_PATH = "2026-03/unlocked_statements/swiggy_hdfc_20260406.pdf"
+ACCOUNT_NICKNAME = "Swiggy HDFC Credit Card"
 # ---------------------------------------------------------------------------
 
 PASS = "\033[92mPASS\033[0m"

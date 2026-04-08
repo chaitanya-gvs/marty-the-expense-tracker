@@ -47,12 +47,12 @@ class PageFilterConfig:
 
 class AxisAtlasCreditCard(BaseModel):
     """Pydantic model for extracting transaction tables from Axis Bank statements"""
-    table: str = Field(description="The transaction table in markdown format called Transaction Details")
+    table: str = Field(description="The transaction table in markdown format called Transaction Details. Include only these columns: DATE, TRANSACTION DETAILS, AMOUNT (Rs.). Do NOT include the MERCHANT CATEGORY column.")
 
 
 class SwiggyHDFCCreditCard(BaseModel):
     """Pydantic model for extracting transaction tables from HDFC Bank statements"""
-    table: str = Field(description="The transaction table in markdown format called Domestic Transactions")
+    table: str = Field(description="The transaction table in markdown format called Domestic Transactions. The table has 4 columns: DATE & TIME, TRANSACTION DESCRIPTION, AMOUNT, PI. The DATE & TIME column contains both the date and time — combine them into a single cell in the format 'DD/MM/YYYY| HH:MM'. Do NOT split date and time into separate columns.")
 
 
 class AmazonPayICICICreditCard(BaseModel):
