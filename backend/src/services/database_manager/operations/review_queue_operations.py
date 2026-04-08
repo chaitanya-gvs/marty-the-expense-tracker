@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import text
 
 from ..connection import get_session_factory
+from src.services.database_manager.operations.transaction_operations import TransactionOperations
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -29,6 +30,11 @@ class ReviewQueueOperations:
     ) -> str:
         """Insert a review queue item. Returns the new item's UUID."""
         import json
+
+        # Coerce transaction_date to a date object if it comes in as an ISO string
+        if isinstance(transaction_date, str):
+            transaction_date = date.fromisoformat(transaction_date)
+
         session_factory = get_session_factory()
         async with session_factory() as session:
             result = await session.execute(
@@ -38,8 +44,8 @@ class ReviewQueueOperations:
                          direction, transaction_type, reference_number, raw_data, ambiguous_candidate_ids)
                     VALUES
                         (:review_type, :transaction_date, :amount, :description, :account,
-                         :direction, :transaction_type, :reference_number, :raw_data::jsonb,
-                         :ambiguous_candidate_ids)
+                         :direction, :transaction_type, :reference_number,
+                         :raw_data, :ambiguous_candidate_ids)
                     RETURNING id
                 """),
                 {
@@ -51,7 +57,7 @@ class ReviewQueueOperations:
                     "direction": direction,
                     "transaction_type": transaction_type,
                     "reference_number": reference_number,
-                    "raw_data": json.dumps(raw_data) if raw_data else None,
+                    "raw_data": json.dumps(TransactionOperations._clean_data_for_json(raw_data)) if raw_data else None,
                     "ambiguous_candidate_ids": ambiguous_candidate_ids,
                 }
             )

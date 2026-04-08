@@ -48,10 +48,9 @@ class DeduplicationService:
         return DeduplicationResult(tier=None)
 
     def _match_tier2(
-        self, stmt_tx: Dict[str, Any], candidates: List[Dict[str, Any]]
+        self, stmt_tx: Dict[str, Any], candidates: List[Dict[str, Any]], stmt_date: date
     ) -> DeduplicationResult:
         stmt_amount = Decimal(str(stmt_tx["amount"]))
-        stmt_date: date = stmt_tx["transaction_date"]
         date_min = stmt_date - timedelta(days=DATE_WINDOW_DAYS)
         date_max = stmt_date + timedelta(days=DATE_WINDOW_DAYS)
 
@@ -71,7 +70,8 @@ class DeduplicationService:
     ) -> DeduplicationResult:
         """Full tiered match for one statement transaction against email_ingestion candidates."""
         account = stmt_tx["account"]
-        stmt_date: date = stmt_tx["transaction_date"]
+        raw_date = stmt_tx["transaction_date"]
+        stmt_date: date = date.fromisoformat(raw_date) if isinstance(raw_date, str) else raw_date
         date_from = stmt_date - timedelta(days=DATE_WINDOW_DAYS)
         date_to = stmt_date + timedelta(days=DATE_WINDOW_DAYS)
 
@@ -84,7 +84,7 @@ class DeduplicationService:
             await TransactionOperations.mark_statement_confirmed(tier1.matched_id)
             return tier1
 
-        tier2 = self._match_tier2(stmt_tx, candidates)
+        tier2 = self._match_tier2(stmt_tx, candidates, stmt_date)
         if tier2.is_confirmed:
             await TransactionOperations.mark_statement_confirmed(tier2.matched_id)
             return tier2

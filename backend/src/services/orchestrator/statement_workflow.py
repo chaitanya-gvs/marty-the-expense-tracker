@@ -1138,6 +1138,7 @@ class StatementWorkflow:
                     workflow_results["dedup_confirmed"] = dedup_stats["confirmed"]
                     workflow_results["dedup_review_queued"] = dedup_stats["review_queued"]
                     workflow_results["dedup_insert_ready"] = dedup_stats["insert_ready"]
+                    workflow_results["dedup_errors"] = dedup_stats.get("dedup_errors", 0)
                     if dedup_stats["confirmed"] > 0 or dedup_stats["review_queued"] > 0:
                         self._emit(
                             "dedup_complete", "dedup",
@@ -1288,7 +1289,7 @@ class StatementWorkflow:
             the list of transactions that should still be bulk-inserted.
         """
         dedup_svc = DeduplicationService()
-        stats = {"confirmed": 0, "review_queued": 0, "insert_ready": 0, "splitwise_passthrough": 0}
+        stats = {"confirmed": 0, "review_queued": 0, "insert_ready": 0, "splitwise_passthrough": 0, "dedup_errors": 0}
 
         # Build a cache: account nickname -> bool(has alert_sender)
         try:
@@ -1328,6 +1329,7 @@ class StatementWorkflow:
                 )
                 filtered.append(tx)
                 stats["insert_ready"] += 1
+                stats["dedup_errors"] += 1
                 continue
 
             if result.is_confirmed:
@@ -1364,6 +1366,7 @@ class StatementWorkflow:
                     )
                     filtered.append(tx)
                     stats["insert_ready"] += 1
+                    stats["dedup_errors"] += 1
                     continue
                 stats["review_queued"] += 1
 
@@ -1392,6 +1395,7 @@ class StatementWorkflow:
                     )
                     filtered.append(tx)
                     stats["insert_ready"] += 1
+                    stats["dedup_errors"] += 1
                     continue
                 stats["review_queued"] += 1
 

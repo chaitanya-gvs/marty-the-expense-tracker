@@ -269,6 +269,7 @@ async def print_results(result: dict) -> None:
     print(f"  statements proc'd {result.get('total_statements_processed', 0)}")
     print(f"  dedup confirmed   {result.get('dedup_confirmed', 0)}")
     print(f"  dedup → review    {result.get('dedup_review_queued', 0)}")
+    print(f"  dedup errors      {result.get('dedup_errors', 0)}")
     print(f"  db inserted       {result.get('database_inserted_count', 0)}")
     print(f"  db skipped        {result.get('database_skipped_count', 0)}")
 
