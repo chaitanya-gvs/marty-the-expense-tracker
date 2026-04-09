@@ -35,17 +35,27 @@ async def get_review_queue(review_type: str | None = None):
 
 @router.post("/{item_id}/confirm")
 async def confirm_review_item(item_id: str, request: ConfirmReviewItemRequest = ConfirmReviewItemRequest()):
-    """Insert statement-only item as a new statement_extraction transaction."""
+    """
+    Confirm a review queue item.
+    - statement_only: insert as a new statement_extraction transaction.
+    - ambiguous (single candidate): mark the existing email_ingestion tx as statement_confirmed.
+    """
     items = await ReviewQueueOperations.get_unresolved()
     item = next((i for i in items if str(i["id"]) == item_id), None)
     if not item:
         raise HTTPException(404, "Item not found or already resolved")
 
-    tx = {**(item.get("raw_data") or {}), **(request.edits or {})}
-    await TransactionOperations.bulk_insert_transactions(
-        [tx],
-        transaction_source="statement_extraction",
-    )
+    candidate_ids = item.get("ambiguous_candidate_ids") or []
+    if item.get("review_type") == "ambiguous" and len(candidate_ids) == 1:
+        # Email tx exists — just mark it confirmed
+        await TransactionOperations.mark_statement_confirmed(candidate_ids[0])
+    else:
+        # statement_only — insert as new transaction
+        tx = {**(item.get("raw_data") or {}), **(request.edits or {})}
+        await TransactionOperations.bulk_insert_transactions(
+            [tx],
+            transaction_source="statement_extraction",
+        )
     await ReviewQueueOperations.resolve(item_id, "confirmed")
     return {"status": "confirmed"}
 

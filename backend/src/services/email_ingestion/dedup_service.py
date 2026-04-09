@@ -10,7 +10,7 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-DATE_WINDOW_DAYS = 3
+DATE_WINDOW_DAYS = 2
 
 
 @dataclass

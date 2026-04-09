@@ -32,7 +32,7 @@ async def test_tier2_single_match_by_amount_and_date():
     svc = DeduplicationService()
     stmt = make_stmt_tx(ref=None)  # no reference
     candidates = [make_email_tx(ref=None, tx_date=date(2026, 4, 2))]  # 1 day drift
-    result = svc._match_tier2(stmt, candidates)
+    result = svc._match_tier2(stmt, candidates, date(2026, 4, 1))
     assert result.tier == 2
     assert result.matched_id == "abc-123"
 
@@ -45,7 +45,7 @@ async def test_tier3_ambiguous_when_multiple_amount_matches():
         make_email_tx(tx_id="id-1", ref=None),
         make_email_tx(tx_id="id-2", ref=None),
     ]
-    result = svc._match_tier2(stmt, candidates)
+    result = svc._match_tier2(stmt, candidates, date(2026, 4, 1))
     assert result.tier == 3
     assert len(result.candidate_ids) == 2
 
@@ -54,5 +54,5 @@ def test_no_match_returns_tier_none():
     svc = DeduplicationService()
     stmt = make_stmt_tx(amount=999.0, ref=None)
     candidates = [make_email_tx(amount=100.0, ref=None)]
-    result = svc._match_tier2(stmt, candidates)
+    result = svc._match_tier2(stmt, candidates, date(2026, 4, 1))
     assert result.tier is None
