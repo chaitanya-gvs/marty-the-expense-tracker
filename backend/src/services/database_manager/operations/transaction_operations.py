@@ -1976,3 +1976,102 @@ class TransactionOperations:
                     'average_amount': total_amount / total_count if total_count > 0 else 0
                 }
             }
+
+    @staticmethod
+    async def get_transactions_by_email_message_ids(message_ids: list[str]) -> set[str]:
+        """Return set of email_message_ids already present in transactions table."""
+        if not message_ids:
+            return set()
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            result = await session.execute(
+                text("SELECT email_message_id FROM transactions WHERE email_message_id = ANY(:ids)"),
+                {"ids": message_ids}
+            )
+            return {row[0] for row in result.fetchall()}
+
+    @staticmethod
+    async def get_email_transactions_for_dedup(
+        account: str,
+        date_from: date,
+        date_to: date,
+    ) -> list[dict]:
+        """Fetch email_ingestion transactions for a date window used in Tier 1/2 dedup."""
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            result = await session.execute(
+                text("""
+                    SELECT id, transaction_date, amount, direction, reference_number, account
+                    FROM transactions
+                    WHERE account = :account
+                      AND transaction_source = 'email_ingestion'
+                      AND transaction_date BETWEEN :date_from AND :date_to
+                      AND is_deleted = false
+                """),
+                {"account": account, "date_from": date_from, "date_to": date_to}
+            )
+            return [dict(row._mapping) for row in result.fetchall()]
+
+    @staticmethod
+    async def get_statement_transactions_for_dedup(
+        account: str,
+        date_from: date,
+        date_to: date,
+    ) -> list[dict]:
+        """Fetch statement_extraction transactions for a date window.
+        Used by the validate_email_dedup script to cross-reference parsed emails
+        against existing ground-truth statement data.
+        """
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            result = await session.execute(
+                text("""
+                    SELECT id, transaction_date, amount, direction, reference_number, account
+                    FROM transactions
+                    WHERE account = :account
+                      AND transaction_source = 'statement_extraction'
+                      AND transaction_date BETWEEN :date_from AND :date_to
+                      AND is_deleted = false
+                """),
+                {"account": account, "date_from": date_from, "date_to": date_to}
+            )
+            return [dict(row._mapping) for row in result.fetchall()]
+
+    @staticmethod
+    async def get_unconfirmed_email_transactions_for_account_date_range(
+        account: str,
+        date_from: date,
+        date_to: date,
+    ) -> list[dict]:
+        """
+        Fetch email_ingestion transactions not yet confirmed by a statement.
+        Used in the post-dedup email reconciliation pass.
+        """
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            result = await session.execute(
+                text("""
+                    SELECT id, transaction_date, amount, direction, reference_number,
+                           description, account, transaction_type
+                    FROM transactions
+                    WHERE account = :account
+                      AND transaction_source = 'email_ingestion'
+                      AND transaction_date BETWEEN :date_from AND :date_to
+                      AND (statement_confirmed IS NULL OR statement_confirmed = false)
+                      AND is_deleted = false
+                      AND NOT (is_grouped_expense = true AND amount = 0)
+                """),
+                {"account": account, "date_from": date_from, "date_to": date_to}
+            )
+            return [dict(row._mapping) for row in result.fetchall()]
+
+    @staticmethod
+    async def mark_statement_confirmed(transaction_id: str) -> None:
+        """Set statement_confirmed = true on an email_ingestion transaction."""
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            await session.execute(
+                text("UPDATE transactions SET statement_confirmed = true, updated_at = now() WHERE id = :id"),
+                {"id": transaction_id}
+            )
+            await session.commit()

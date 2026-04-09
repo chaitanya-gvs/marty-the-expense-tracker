@@ -1,4 +1,4 @@
-import { ApiResponse, Transaction, Budget, Category, Tag, TransactionFilters, TransactionSort, PaginationParams, TransferSuggestion, RefundSuggestion, SplitBreakdown, EmailMetadata, EmailDetails, EmailSearchFilters, ExpenseAnalytics, ExpenseAnalyticsFilters, SplitwiseFriend, SplitwiseFriendExpense, SettlementSummary, SettlementDetail } from "@/lib/types";
+import { ApiResponse, Transaction, Budget, Category, Tag, TransactionFilters, TransactionSort, PaginationParams, TransferSuggestion, RefundSuggestion, SplitBreakdown, EmailMetadata, EmailDetails, EmailSearchFilters, ExpenseAnalytics, ExpenseAnalyticsFilters, SplitwiseFriend, SplitwiseFriendExpense, SettlementSummary, SettlementDetail, ReviewQueueResponse, EmailIngestionRunResponse } from "@/lib/types";
 import type {
   WorkflowRunRequest,
   WorkflowRunResponse,
@@ -739,6 +739,48 @@ class ApiClient {
     const params = month ? `?month=${month}` : "";
     const res = await this.request<unknown>(`/workflow/period-check${params}`);
     return res as unknown as WorkflowPeriodCheck;
+  }
+
+  // Email ingestion
+  async runEmailIngestion(params?: { since_date?: string; account_ids?: string[] }): Promise<EmailIngestionRunResponse> {
+    const res = await this.request<unknown>("/email-ingestion/run", {
+      method: "POST",
+      body: JSON.stringify(params ?? {}),
+    });
+    return res as unknown as EmailIngestionRunResponse;
+  }
+
+  // Review queue
+  async getReviewQueue(review_type?: string): Promise<ReviewQueueResponse> {
+    const qs = review_type ? `?review_type=${encodeURIComponent(review_type)}` : "";
+    const res = await this.request<unknown>(`/review-queue${qs}`);
+    return res as unknown as ReviewQueueResponse;
+  }
+
+  async confirmReviewItem(itemId: string, edits?: Record<string, unknown>): Promise<void> {
+    await this.request<void>(`/review-queue/${itemId}/confirm`, {
+      method: "POST",
+      body: JSON.stringify({ edits: edits ?? null }),
+    });
+  }
+
+  async linkReviewItem(itemId: string, transactionId: string): Promise<void> {
+    await this.request<void>(`/review-queue/${itemId}/link`, {
+      method: "POST",
+      body: JSON.stringify({ transaction_id: transactionId }),
+    });
+  }
+
+  async deleteReviewItem(itemId: string): Promise<void> {
+    await this.request<void>(`/review-queue/${itemId}`, { method: "DELETE" });
+  }
+
+  async bulkConfirmReviewItems(itemIds: string[]): Promise<{ confirmed: number }> {
+    const res = await this.request<unknown>("/review-queue/bulk-confirm", {
+      method: "POST",
+      body: JSON.stringify({ item_ids: itemIds }),
+    });
+    return res as unknown as { confirmed: number };
   }
 }
 

@@ -30,6 +30,11 @@ class WorkflowEvent(BaseModel):
 
 class WorkflowRunRequest(BaseModel):
     mode: WorkflowMode = WorkflowMode.full
+    # Independent subsystem toggles (None = use mode preset default)
+    include_email_ingestion: Optional[bool] = None
+    include_statement: Optional[bool] = None
+    include_splitwise: Optional[bool] = None
+    # Existing fields (unchanged)
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     splitwise_start_date: Optional[str] = None

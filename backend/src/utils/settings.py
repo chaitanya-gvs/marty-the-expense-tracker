@@ -71,6 +71,9 @@ class Settings(BaseSettings):
     SENTRY_DSN: str | None = None
     VISION_AGENT_API_KEY: str | None = None
 
+    # Email ingestion scheduler
+    EMAIL_INGESTION_INTERVAL_HOURS: int = 4
+
     @computed_field
     @property
     def DATABASE_URL(self) -> str:  # noqa: N802 (FastAPI convention)

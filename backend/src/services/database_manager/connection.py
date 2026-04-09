@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
@@ -24,6 +25,15 @@ def get_engine() -> AsyncEngine:
     
     if _engine is None:
         settings = get_settings()
+        server_settings: dict = {
+            "application_name": "expense_tracker",
+            "jit": "off",  # Disable JIT compilation to avoid cached statement issues
+        }
+        # Smoke-test mode: redirect all unqualified table references to test_env schema.
+        # Set TEST_MODE=true in the process environment before importing app modules.
+        if os.getenv("TEST_MODE", "").lower() == "true":
+            server_settings["search_path"] = "test_env,public"
+
         _engine = create_async_engine(
             settings.DATABASE_URL,
             echo=False,  # Set to True for SQL query logging
@@ -32,10 +42,7 @@ def get_engine() -> AsyncEngine:
             max_overflow=20,
             # Add connection arguments to handle cached statement invalidation
             connect_args={
-                "server_settings": {
-                    "application_name": "expense_tracker",
-                    "jit": "off"  # Disable JIT compilation to avoid cached statement issues
-                },
+                "server_settings": server_settings,
                 "prepared_statement_cache_size": 0,  # Disable prepared statement caching
                 "command_timeout": 60
             }

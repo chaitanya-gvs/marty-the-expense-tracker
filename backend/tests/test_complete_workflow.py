@@ -22,7 +22,7 @@ from datetime import datetime
 backend_path = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_path))
 
-from src.services.statement_processor.workflow import StatementWorkflow
+from src.services.orchestrator.statement_workflow import StatementWorkflow
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)

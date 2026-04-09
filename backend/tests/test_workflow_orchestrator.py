@@ -14,7 +14,7 @@ from unittest.mock import Mock, patch, AsyncMock
 backend_path = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_path))
 
-from src.services.statement_processor import StatementWorkflow
+from src.services.orchestrator.statement_workflow import StatementWorkflow
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -83,7 +83,7 @@ class TestStatementWorkflow:
         workflow = StatementWorkflow()
         
         # Mock the async function call
-        with patch('src.services.statement_processor.workflow.AccountOperations.get_account_nickname_by_sender') as mock_get_nickname:
+        with patch('src.services.orchestrator.statement_workflow.AccountOperations.get_account_nickname_by_sender') as mock_get_nickname:
             mock_get_nickname.return_value = "test_account"
             
             # Test primary account (no suffix)
@@ -100,7 +100,7 @@ class TestStatementWorkflow:
         
         logger.info("✅ Normalized filename generation test passed")
     
-    @patch('src.services.statement_processor.workflow.AccountOperations.get_all_statement_senders')
+    @patch('src.services.orchestrator.statement_workflow.AccountOperations.get_all_statement_senders')
     async def test_workflow_dry_run(self, mock_get_senders):
         """Test workflow with mocked dependencies (dry run)"""
         # Mock the database call

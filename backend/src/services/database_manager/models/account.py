@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import Boolean, Date, DateTime, Index, Numeric, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, Index, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.services.database_manager.connection import Base
@@ -30,11 +30,12 @@ class Account(Base):
     credit_limit: Mapped[Optional[Decimal]] = mapped_column(Numeric, nullable=True)
     available_credit: Mapped[Optional[Decimal]] = mapped_column(Numeric, nullable=True)
     due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    billing_cycle_start: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    billing_cycle_end: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    billing_cycle_start: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     is_active: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=True)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, server_default=func.current_timestamp())
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, server_default=func.current_timestamp())
+    alert_sender: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    alert_last_processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Indexes
     __table_args__ = (

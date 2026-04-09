@@ -43,6 +43,33 @@ logger = get_logger(__name__)
 # End of "today" for auto Splitwise range (API uses date strings; IST matches user's calendar day)
 _IST = ZoneInfo("Asia/Kolkata")
 
+# ---------------------------------------------------------------------------
+# Mode preset → toggle resolution
+# ---------------------------------------------------------------------------
+
+_MODE_PRESETS = {
+    WorkflowMode.full:           dict(email=True,  statement=True,  splitwise=True,  resume=False),
+    WorkflowMode.resume:         dict(email=False, statement=True,  splitwise=True,  resume=True),
+    WorkflowMode.splitwise_only: dict(email=False, statement=False, splitwise=True,  resume=False),
+}
+
+
+def _resolve_toggles(req: WorkflowRunRequest) -> tuple[bool, bool, bool, bool]:
+    """
+    Resolve effective (email, statement, splitwise, resume) booleans from
+    the mode preset and any explicit toggle overrides on the request.
+
+    Returns:
+        (include_email, include_statement, include_splitwise, resume_from_standardization)
+    """
+    preset = _MODE_PRESETS[req.mode]
+    include_email     = req.include_email_ingestion if req.include_email_ingestion is not None else preset["email"]
+    include_statement = req.include_statement       if req.include_statement       is not None else preset["statement"]
+    include_splitwise = req.include_splitwise       if req.include_splitwise       is not None else preset["splitwise"]
+    resume            = preset["resume"]  # always mode-driven, never a user toggle
+    return include_email, include_statement, include_splitwise, resume
+
+
 router = APIRouter(prefix="/workflow", tags=["workflow"])
 
 
@@ -169,40 +196,25 @@ async def _run_workflow_task(job_id: str, req: WorkflowRunRequest) -> None:
 
     try:
         sw_start, sw_end = await _resolve_splitwise_dates(req, job_id=job_id)
+        include_email, include_statement, include_splitwise, resume = _resolve_toggles(req)
 
         workflow = StatementWorkflow(
             enable_secondary_account=req.enable_secondary_account,
             event_callback=emit_callback,
         )
 
-        if req.mode == WorkflowMode.full:
-            result = await workflow.run_complete_workflow(
-                resume_from_standardization=False,
-                custom_start_date=req.start_date,
-                custom_end_date=req.end_date,
-                custom_splitwise_start_date=sw_start,
-                custom_splitwise_end_date=sw_end,
-                override=req.override,
-                job_id=job_id,
-            )
-        elif req.mode == WorkflowMode.resume:
-            result = await workflow.run_complete_workflow(
-                resume_from_standardization=True,
-                custom_start_date=req.start_date,
-                custom_end_date=req.end_date,
-                custom_splitwise_start_date=sw_start,
-                custom_splitwise_end_date=sw_end,
-                override=req.override,
-                job_id=job_id,
-            )
-        elif req.mode == WorkflowMode.splitwise_only:
-            result = await workflow.run_splitwise_only_workflow(
-                custom_start_date=sw_start,
-                custom_end_date=sw_end,
-                job_id=job_id,
-            )
-        else:
-            raise ValueError(f"Unknown workflow mode: {req.mode}")
+        result = await workflow.run_complete_workflow(
+            resume_from_standardization=resume,
+            include_email_ingestion=include_email,
+            include_statement=include_statement,
+            include_splitwise=include_splitwise,
+            custom_start_date=req.start_date,
+            custom_end_date=req.end_date,
+            custom_splitwise_start_date=sw_start,
+            custom_splitwise_end_date=sw_end,
+            override=req.override,
+            job_id=job_id,
+        )
 
         job.summary = {k: v for k, v in result.items() if k != "all_standardized_data"}
         job.status = WorkflowJobStatus.completed

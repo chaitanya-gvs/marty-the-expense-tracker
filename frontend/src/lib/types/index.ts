@@ -366,3 +366,38 @@ export interface SplitwiseFriendExpense {
     owed_share: number;
   }[];
 }
+
+export interface ReviewQueueItem {
+  id: string;
+  review_type: "statement_only" | "ambiguous";
+  transaction_date: string;
+  amount: number;
+  description: string;
+  account: string;
+  direction: "debit" | "credit";
+  transaction_type: string;
+  reference_number?: string | null;
+  ambiguous_candidate_ids?: string[] | null;
+  created_at: string;
+  resolved_at?: string | null;
+  resolution?: string | null;
+}
+
+export interface ReviewQueueResponse {
+  items: ReviewQueueItem[];
+  total: number;
+}
+
+export interface EmailIngestionRunResponse {
+  processed: number;
+  inserted: number;
+  skipped: number;
+  errors: number;
+  accounts: Array<{
+    account: string | null;
+    processed: number;
+    inserted: number;
+    skipped: number;
+    errors: number;
+  }>;
+}

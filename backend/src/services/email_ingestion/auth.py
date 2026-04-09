@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Optional
-from urllib.parse import urlencode
 from pathlib import Path
 
 from google_auth_oauthlib.flow import Flow
@@ -95,7 +93,7 @@ class EmailAuthHandler:
             
             logger.info("Generated Gmail OAuth authorization URL")
             return authorization_url
-        except Exception as e:
+        except Exception:
             logger.error("Error generating authorization URL", exc_info=True)
             raise
 
@@ -124,7 +122,7 @@ class EmailAuthHandler:
             
             logger.info("Successfully exchanged authorization code for tokens")
             return token_info
-        except Exception as e:
+        except Exception:
             logger.error("Error exchanging authorization code for tokens", exc_info=True)
             raise
 
@@ -161,7 +159,7 @@ class EmailAuthHandler:
             
             logger.info(f"Successfully refreshed access token for {self.account_id} account")
             return token_info
-        except Exception as e:
+        except Exception:
             logger.error(f"Error refreshing access token for {self.account_id} account", exc_info=True)
             raise
 
@@ -188,7 +186,7 @@ class EmailAuthHandler:
             credentials.refresh(Request())
             logger.info(f"Credentials validation successful for {self.account_id} account")
             return True
-        except Exception as e:
+        except Exception:
             logger.error(f"Credentials validation failed for {self.account_id} account", exc_info=True)
             return False
 
@@ -252,6 +250,6 @@ class EmailAuthHandler:
                 f.writelines(updated_lines)
             
             logger.info(f"Successfully saved tokens for {self.account_id} account to secrets environment file")
-        except Exception as e:
+        except Exception:
             logger.error("Error saving tokens to secrets environment file", exc_info=True)
             raise

@@ -26,7 +26,8 @@ class AccountOperations:
                             nickname, notes, statement_sender, statement_password,
                             last_statement_date, last_processed_at, credit_limit,
                             available_credit, due_date, billing_cycle_start,
-                            billing_cycle_end, is_active, created_at, updated_at
+                            is_active, created_at, updated_at,
+                            alert_sender, alert_last_processed_at
                         FROM accounts
                         WHERE is_active = true
                         ORDER BY account_type, bank_name
@@ -136,6 +137,22 @@ class AccountOperations:
                     "account_id": account_id,
                     "statement_date": statement_date
                 }
+            )
+            await session.commit()
+            return result.rowcount > 0
+
+    @staticmethod
+    async def update_alert_last_processed_at(account_id: str) -> bool:
+        """Update the alert last processed timestamp for an account"""
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            result = await session.execute(
+                text("""
+                    UPDATE accounts
+                    SET alert_last_processed_at = CURRENT_TIMESTAMP,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = :account_id
+                """), {"account_id": account_id}
             )
             await session.commit()
             return result.rowcount > 0

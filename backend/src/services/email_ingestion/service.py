@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-import asyncio
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from src.services.email_ingestion.client import EmailClient
 from src.services.llm_parser.parser import LLMExpenseParser
 from src.utils.logger import get_logger
 from src.utils.settings import get_settings
+
+try:
+    from src.services.ocr_engine.engine import OCREngine
+except ImportError:
+    OCREngine = None  # type: ignore
 
 logger = get_logger(__name__)
 
@@ -55,7 +59,7 @@ class EmailIngestionService:
                     else:
                         logger.info(f"No expense data found in email: {email_content.get('subject', 'N/A')}")
                         
-                except Exception as e:
+                except Exception:
                     error_count += 1
                     logger.error(f"Error processing email {message.get('id')}", exc_info=True)
                     continue
@@ -69,7 +73,7 @@ class EmailIngestionService:
                 "expenses": extracted_expenses
             }
             
-        except Exception as e:
+        except Exception:
             logger.error("Error in email ingestion", exc_info=True)
             raise
 
@@ -103,7 +107,7 @@ class EmailIngestionService:
             
             return None
             
-        except Exception as e:
+        except Exception:
             logger.error("Error extracting expense from email", exc_info=True)
             return None
 
@@ -141,7 +145,7 @@ class EmailIngestionService:
                         extracted_expenses.append(expense_data)
                         logger.info(f"Successfully extracted expense: {expense_data.get('amount', 'N/A')} - {expense_data.get('description', 'N/A')}")
                     
-                except Exception as e:
+                except Exception:
                     error_count += 1
                     logger.error(f"Error processing search result {message.get('id')}")
                     continue
@@ -155,7 +159,7 @@ class EmailIngestionService:
                 "expenses": extracted_expenses
             }
             
-        except Exception as e:
+        except Exception:
             logger.error("Error in search and ingestion")
             raise
 
@@ -188,13 +192,13 @@ class EmailIngestionService:
                         if processed_data:
                             processed_attachments.append(processed_data)
                     
-                except Exception as e:
+                except Exception:
                     logger.error(f"Error processing attachment {attachment.get('filename')}")
                     continue
             
             return processed_attachments
             
-        except Exception as e:
+        except Exception:
             logger.error("Error processing email attachments")
             return []
 
@@ -204,7 +208,7 @@ class EmailIngestionService:
             # For now, we'll use the LLM parser to extract text and parse it
             # In the future, you might want to add OCR processing here
             
-            if mime_type.startswith("image/"):
+            if mime_type.startswith("image/") and OCREngine is not None:
                 # Use OCR to extract text from images
                 ocr_engine = OCREngine()
                 extracted_text = await ocr_engine.extract_text_from_image(file_data)
@@ -222,7 +226,7 @@ class EmailIngestionService:
             
             return None
             
-        except Exception as e:
+        except Exception:
             logger.error(f"Error processing attachment file {filename}")
             return None
 
@@ -244,7 +248,7 @@ class EmailIngestionService:
                     if domain_match:
                         domain = domain_match.group(1)
                         sender_stats[domain] = sender_stats.get(domain, 0) + 1
-                except Exception as e:
+                except Exception:
                     logger.error("Error getting email content for stats")
                     continue
             
@@ -254,7 +258,7 @@ class EmailIngestionService:
                 "period_days": days_back
             }
             
-        except Exception as e:
+        except Exception:
             logger.error("Error getting email statistics")
             raise
 
@@ -316,6 +320,6 @@ class EmailIngestionService:
             
             return all_results
             
-        except Exception as e:
+        except Exception:
             logger.error("Error in multi-account email ingestion")
             raise
