@@ -2059,6 +2059,7 @@ class TransactionOperations:
                       AND transaction_date BETWEEN :date_from AND :date_to
                       AND (statement_confirmed IS NULL OR statement_confirmed = false)
                       AND is_deleted = false
+                      AND NOT (is_grouped_expense = true AND amount = 0)
                 """),
                 {"account": account, "date_from": date_from, "date_to": date_to}
             )
