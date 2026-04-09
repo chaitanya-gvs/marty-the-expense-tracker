@@ -905,6 +905,7 @@ class StatementWorkflow:
             "processed_statements": [],
             "all_standardized_data": [],
             "email_ingestion": None,
+            "email_reconciliation_queued": 0,
         }
         
         try:
@@ -1156,6 +1157,21 @@ class StatementWorkflow:
                             "Dedup complete: no email-alert matches found, all transactions will be inserted normally",
                             data=dedup_stats,
                         )
+
+                    # Step 7.5: Email reconciliation — flag unconfirmed email txns
+                    logger.info("Step 7.5: Running email reconciliation pass", extra=self._log_extra())
+                    self._emit("email_reconciliation_started", "email_reconciliation",
+                               "Checking for unconfirmed email transactions in statement date ranges")
+                    recon_stats = await self._run_email_reconciliation_pass(combined_data)
+                    workflow_results["email_reconciliation_queued"] = recon_stats["email_reconciliation_queued"]
+                    if recon_stats["email_reconciliation_queued"] > 0:
+                        self._emit("email_reconciliation_complete", "email_reconciliation",
+                                   f"Email reconciliation: {recon_stats['email_reconciliation_queued']} unconfirmed email transaction(s) sent to review queue",
+                                   level="warning", data=recon_stats)
+                    else:
+                        self._emit("email_reconciliation_complete", "email_reconciliation",
+                                   "Email reconciliation complete: all email transactions confirmed by statement",
+                                   data=recon_stats)
 
                     # Step 8: Store data in database
                     logger.info("Step 8: Storing transactions in database", extra=self._log_extra())
@@ -1410,6 +1426,83 @@ class StatementWorkflow:
             extra=self._log_extra(),
         )
         return filtered, stats
+
+    async def _run_email_reconciliation_pass(
+        self, combined_data: List[Dict[str, Any]]
+    ) -> Dict[str, int]:
+        """
+        Step 7.5: After dedup, find email-ingested transactions for each processed
+        account that were NOT confirmed by the statement.
+
+        For each account that had statement_extraction transactions in combined_data,
+        derives the statement's date range (min/max tx dates), then queries for
+        unconfirmed email_ingestion rows in that range and sends them to the
+        review queue as ambiguous items.
+
+        ambiguous_candidate_ids holds the single email transaction ID so that
+        resolution can mark it statement_confirmed = true.
+        """
+        # Build per_account_range from statement_extraction rows only
+        per_account_range: Dict[str, tuple] = {}
+        for tx in combined_data:
+            if tx.get("transaction_source") != "statement_extraction":
+                continue
+            account_name = tx.get("account", "")
+            if not account_name or account_name.lower() == "splitwise":
+                continue
+            raw_date = tx.get("transaction_date")
+            if raw_date is None:
+                continue
+            tx_date = date.fromisoformat(raw_date) if isinstance(raw_date, str) else raw_date
+            if account_name in per_account_range:
+                d_from, d_to = per_account_range[account_name]
+                per_account_range[account_name] = (min(d_from, tx_date), max(d_to, tx_date))
+            else:
+                per_account_range[account_name] = (tx_date, tx_date)
+
+        total_count = 0
+
+        for account, (date_from, date_to) in per_account_range.items():
+            try:
+                email_txns = await TransactionOperations.get_unconfirmed_email_transactions_for_account_date_range(
+                    account, date_from, date_to
+                )
+            except Exception:
+                logger.warning(
+                    "Email reconciliation: failed to query unconfirmed email txns for %s — skipping",
+                    account, exc_info=True, extra=self._log_extra(),
+                )
+                continue
+
+            for email_tx in email_txns:
+                raw_date = email_tx.get("transaction_date")
+                tx_date = date.fromisoformat(raw_date) if isinstance(raw_date, str) else raw_date
+                try:
+                    await ReviewQueueOperations.add_item(
+                        review_type="ambiguous",
+                        transaction_date=tx_date,
+                        amount=email_tx["amount"],
+                        description=email_tx.get("description", ""),
+                        account=email_tx["account"],
+                        direction=email_tx.get("direction", "debit"),
+                        transaction_type=email_tx.get("transaction_type", ""),
+                        reference_number=email_tx.get("reference_number"),
+                        raw_data=None,
+                        ambiguous_candidate_ids=[str(email_tx["id"])],
+                    )
+                    total_count += 1
+                except Exception:
+                    logger.warning(
+                        "Email reconciliation: failed to queue unconfirmed email tx %s for review — skipping",
+                        email_tx.get("id"), exc_info=True, extra=self._log_extra(),
+                    )
+                    continue
+
+        logger.info(
+            "Email reconciliation pass complete: %d unconfirmed email transaction(s) queued for review",
+            total_count, extra=self._log_extra(),
+        )
+        return {"email_reconciliation_queued": total_count}
 
     async def _standardize_and_combine_all_data(self) -> List[Dict[str, Any]]:
         """Delegate to DataStandardizerHelper."""

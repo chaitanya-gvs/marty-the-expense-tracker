@@ -2038,6 +2038,33 @@ class TransactionOperations:
             return [dict(row._mapping) for row in result.fetchall()]
 
     @staticmethod
+    async def get_unconfirmed_email_transactions_for_account_date_range(
+        account: str,
+        date_from: date,
+        date_to: date,
+    ) -> list[dict]:
+        """
+        Fetch email_ingestion transactions not yet confirmed by a statement.
+        Used in the post-dedup email reconciliation pass.
+        """
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            result = await session.execute(
+                text("""
+                    SELECT id, transaction_date, amount, direction, reference_number,
+                           description, account, transaction_type
+                    FROM transactions
+                    WHERE account = :account
+                      AND transaction_source = 'email_ingestion'
+                      AND transaction_date BETWEEN :date_from AND :date_to
+                      AND (statement_confirmed IS NULL OR statement_confirmed = false)
+                      AND is_deleted = false
+                """),
+                {"account": account, "date_from": date_from, "date_to": date_to}
+            )
+            return [dict(row._mapping) for row in result.fetchall()]
+
+    @staticmethod
     async def mark_statement_confirmed(transaction_id: str) -> None:
         """Set statement_confirmed = true on an email_ingestion transaction."""
         session_factory = get_session_factory()
