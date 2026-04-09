@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Any
 
 import pandas as pd
+from dateutil.relativedelta import relativedelta
 from googleapiclient.discovery import build
 
 from src.services.database_manager.operations import AccountOperations, StatementLogOperations, TransactionOperations
@@ -1427,6 +1428,37 @@ class StatementWorkflow:
         )
         return filtered, stats
 
+    def _get_billing_window(
+        self,
+        account_name: str,
+        stmt_dates: list,
+        billing_cycle_start_day: Optional[int],
+    ) -> tuple:
+        """
+        Derive the reconciliation window for an account.
+        If billing_cycle_start_day is set, use it with the statement's approximate month.
+        Otherwise fall back to min/max of statement transaction dates.
+        """
+        if not billing_cycle_start_day or not stmt_dates:
+            # Fallback: use actual min/max of statement transaction dates
+            return min(stmt_dates), max(stmt_dates)
+
+        # Derive month from the earliest statement transaction
+        anchor = min(stmt_dates)
+
+        # Handle edge case: if anchor day < billing_cycle_start_day,
+        # the statement might belong to the previous cycle
+        # e.g. billing starts 6th, anchor is March 3 → cycle started Feb 6
+        if anchor.day < billing_cycle_start_day:
+            # Go back one month for the cycle start
+            cycle_start_month = anchor - relativedelta(months=1)
+            date_from = date(cycle_start_month.year, cycle_start_month.month, billing_cycle_start_day)
+        else:
+            date_from = date(anchor.year, anchor.month, billing_cycle_start_day)
+
+        date_to = date_from + relativedelta(months=1) - timedelta(days=1)
+        return date_from, date_to
+
     async def _run_email_reconciliation_pass(
         self, combined_data: List[Dict[str, Any]]
     ) -> Dict[str, int]:
@@ -1435,15 +1467,30 @@ class StatementWorkflow:
         account that were NOT confirmed by the statement.
 
         For each account that had statement_extraction transactions in combined_data,
-        derives the statement's date range (min/max tx dates), then queries for
-        unconfirmed email_ingestion rows in that range and sends them to the
-        review queue as ambiguous items.
+        derives the statement's date range using billing_cycle_start (day-of-month)
+        from the accounts table, then queries for unconfirmed email_ingestion rows
+        in that range and sends them to the review queue as ambiguous items.
 
         ambiguous_candidate_ids holds the single email transaction ID so that
         resolution can mark it statement_confirmed = true.
         """
-        # Build per_account_range from statement_extraction rows only
-        per_account_range: Dict[str, tuple] = {}
+        # Load billing_cycle_start per account
+        try:
+            all_accounts = await AccountOperations.get_all_accounts()
+            billing_cache: Dict[str, Optional[int]] = {
+                acct["nickname"]: acct.get("billing_cycle_start")
+                for acct in all_accounts
+                if acct.get("nickname")
+            }
+        except Exception:
+            logger.warning(
+                "Email reconciliation: failed to load accounts for billing cache — falling back to min/max dates",
+                exc_info=True, extra=self._log_extra(),
+            )
+            billing_cache = {}
+
+        # Build per_account_dates: collect all statement tx dates per account
+        per_account_dates: Dict[str, list] = {}
         for tx in combined_data:
             if tx.get("transaction_source") != "statement_extraction":
                 continue
@@ -1454,15 +1501,14 @@ class StatementWorkflow:
             if raw_date is None:
                 continue
             tx_date = date.fromisoformat(raw_date) if isinstance(raw_date, str) else raw_date
-            if account_name in per_account_range:
-                d_from, d_to = per_account_range[account_name]
-                per_account_range[account_name] = (min(d_from, tx_date), max(d_to, tx_date))
-            else:
-                per_account_range[account_name] = (tx_date, tx_date)
+            per_account_dates.setdefault(account_name, []).append(tx_date)
 
         total_count = 0
 
-        for account, (date_from, date_to) in per_account_range.items():
+        for account, stmt_dates_list in per_account_dates.items():
+            date_from, date_to = self._get_billing_window(
+                account, stmt_dates_list, billing_cache.get(account)
+            )
             try:
                 email_txns = await TransactionOperations.get_unconfirmed_email_transactions_for_account_date_range(
                     account, date_from, date_to

@@ -32,6 +32,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from dateutil.relativedelta import relativedelta
+
 # ── CRITICAL: set TEST_MODE before any app imports ──────────────────────────
 # connection.py reads this env var and adds search_path=test_env,public so all
 # ORM writes land in test_env.
@@ -73,6 +75,30 @@ def _month_date_range(month_str: str) -> Tuple[date, date]:
     else:
         last = date(year, month + 1, 1) - timedelta(days=1)
     return first, last
+
+
+def _get_billing_window(
+    stmt_dates: List[date],
+    billing_cycle_start_day: Optional[int],
+) -> Tuple[date, date]:
+    """
+    Derive the reconciliation window for an account.
+    If billing_cycle_start_day is set, use it with the statement's approximate month.
+    Otherwise fall back to min/max of statement transaction dates.
+    """
+    if not billing_cycle_start_day or not stmt_dates:
+        return min(stmt_dates), max(stmt_dates)
+
+    anchor = min(stmt_dates)
+
+    if anchor.day < billing_cycle_start_day:
+        cycle_start_month = anchor - relativedelta(months=1)
+        date_from = date(cycle_start_month.year, cycle_start_month.month, billing_cycle_start_day)
+    else:
+        date_from = date(anchor.year, anchor.month, billing_cycle_start_day)
+
+    date_to = date_from + relativedelta(months=1) - timedelta(days=1)
+    return date_from, date_to
 
 
 async def _raw_conn():
@@ -544,14 +570,18 @@ async def teardown_test_schema(skip: bool) -> None:
 async def main(args: argparse.Namespace) -> None:
     month_str = args.month
     account = args.account
-    date_from, date_to = _month_date_range(month_str)
+    billing_cycle_start_day: Optional[int] = args.billing_cycle_start
+
+    # Derive billing window from all seeded dates — for the header we use month bounds
+    date_from_month, date_to_month = _month_date_range(month_str)
 
     print(f"\n{_HDR}")
     print("  EMAIL RECONCILIATION SMOKE TEST")
-    print(f"  Account       : {account}")
-    print(f"  Month         : {month_str} ({date_from} → {date_to})")
-    print(f"  Excluded rows : {EXCLUDED_COUNT}  (middle {EXCLUDED_COUNT} by date — these must appear in review queue)")
-    print(f"  Cleanup       : {'yes' if not args.no_cleanup else 'no (--no-cleanup)'}")
+    print(f"  Account              : {account}")
+    print(f"  Month                : {month_str} ({date_from_month} → {date_to_month})")
+    print(f"  Billing cycle start  : day {billing_cycle_start_day} of month")
+    print(f"  Excluded rows        : {EXCLUDED_COUNT}  (middle {EXCLUDED_COUNT} by date — these must appear in review queue)")
+    print(f"  Cleanup              : {'yes' if not args.no_cleanup else 'no (--no-cleanup)'}")
     print(_HDR)
 
     # Phase 1 — Setup
@@ -586,6 +616,19 @@ async def main(args: argparse.Namespace) -> None:
         print("  PHASE 3   Build synthetic statement combined_data")
         print(_HDR)
         combined_data, excluded_rows = build_combined_data(seeded_rows)
+
+        # Derive and display the billing window from the included statement dates
+        included_dates = [
+            date.fromisoformat(tx["transaction_date"])
+            if isinstance(tx["transaction_date"], str)
+            else tx["transaction_date"]
+            for tx in combined_data
+        ]
+        if included_dates:
+            win_from, win_to = _get_billing_window(included_dates, billing_cycle_start_day)
+            print(f"\n  Billing cycle start day : {billing_cycle_start_day}")
+            print(f"  Derived window          : {win_from} → {win_to}")
+
         print(
             f"\n  Built {len(combined_data)} statement transactions "
             f"(excluded {EXCLUDED_COUNT} middle row(s) to simulate missing alerts)"
@@ -634,6 +677,13 @@ if __name__ == "__main__":
         default=_prev_month(),
         metavar="YYYY-MM",
         help="Month to pull/generate email transactions for (default: previous month)",
+    )
+    parser.add_argument(
+        "--billing-cycle-start",
+        type=int,
+        default=1,
+        metavar="DAY",
+        help="Day-of-month when the billing cycle starts (default: 1)",
     )
     parser.add_argument(
         "--no-cleanup",

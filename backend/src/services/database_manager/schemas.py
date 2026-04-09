@@ -67,7 +67,6 @@ class AccountRow(TypedDict, total=False):
     available_credit: Optional[str]
     due_date: Optional[str]
     billing_cycle_start: Optional[int]
-    billing_cycle_end: Optional[int]
     is_active: bool
     created_at: str
     updated_at: str
