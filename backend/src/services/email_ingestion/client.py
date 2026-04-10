@@ -620,18 +620,35 @@ class EmailClient:
                 
                 # Extract restaurant name (skip for Instamart as it's already set)
                 if not is_instamart:
-                    # Pattern: <p>Restaurant</p> followed by <h5>Restaurant Name</h5>
-                    restaurant_label = soup.find('p', string=re.compile(r'^\s*Restaurant\s*$', re.I))
-                    if restaurant_label:
-                        # Look for h5 in the same parent or next sibling
-                        parent = restaurant_label.find_parent()
-                        if parent:
-                            restaurant_h5 = parent.find('h5')
-                            if restaurant_h5:
-                                restaurant_name = restaurant_h5.get_text(strip=True)
-                                if restaurant_name and len(restaurant_name) < 100:
-                                    order_info["restaurant_name"] = restaurant_name
-                    
+                    # New layout: <p>ORDER JOURNEY</p> followed by a <table> whose first bold <p>
+                    # is the restaurant name.
+                    oj_tag = soup.find(string=re.compile(r'^\s*ORDER JOURNEY\s*$', re.I))
+                    if oj_tag:
+                        oj_parent = oj_tag.find_parent()
+                        if oj_parent:
+                            next_table = oj_parent.find_next_sibling('table')
+                            if next_table:
+                                # First <p> with bold font-weight is the restaurant name
+                                for p in next_table.find_all('p'):
+                                    style = p.get('style', '')
+                                    if 'font-weight: 700' in style or 'font-weight:700' in style:
+                                        candidate = p.get_text(strip=True)
+                                        if candidate and len(candidate) < 80 and not re.search(r'\d{1,2}:\d{2}|No\.|^\d', candidate):
+                                            order_info["restaurant_name"] = candidate
+                                            break
+
+                    # Old layout: <p>Restaurant</p> followed by <h5>Restaurant Name</h5>
+                    if "restaurant_name" not in order_info:
+                        restaurant_label = soup.find('p', string=re.compile(r'^\s*Restaurant\s*$', re.I))
+                        if restaurant_label:
+                            parent = restaurant_label.find_parent()
+                            if parent:
+                                restaurant_h5 = parent.find('h5')
+                                if restaurant_h5:
+                                    restaurant_name = restaurant_h5.get_text(strip=True)
+                                    if restaurant_name and len(restaurant_name) < 100:
+                                        order_info["restaurant_name"] = restaurant_name
+
                     # Fallback: Look for "at [Restaurant Name] was completed" pattern (Swiggy Dineout)
                     if "restaurant_name" not in order_info:
                         restaurant_match = re.search(r'at\s+([A-Z][A-Za-z\s&\'-]+?)\s+was\s+completed', plain_text)

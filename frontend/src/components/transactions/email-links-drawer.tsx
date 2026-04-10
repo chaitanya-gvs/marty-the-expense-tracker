@@ -78,8 +78,8 @@ export function EmailLinksDrawer({
         filters.verify_body_amount = true; // Post-filter: keep only emails where ceil(fare) ∈ [bank-1, bank+5]
       } else if (isSwiggy) {
         // Swiggy/Instamart: order confirmation emails don't contain the exact bank debit amount.
-        // Search by keyword (swiggy OR instamart) within a 1-day window instead.
-        filters.custom_search_term = "swiggy OR instamart";
+        // Restrict to emails from a Swiggy sender with Swiggy/Instamart in the subject only.
+        filters.custom_search_term = "from:swiggy subject:(swiggy OR instamart)";
         filters.include_amount_filter = false;
         filters.date_offset_days = 1;
       }
