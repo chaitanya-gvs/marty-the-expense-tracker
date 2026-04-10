@@ -628,6 +628,7 @@ function ConfigFormFields({
   periodCheck,
 }: ConfigFormFieldsProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const noSubsystemSelected = !includeEmail && !includeStatement && !includeSplitwise;
   const showEmailDates = includeEmail || includeStatement;
   const showSplitwiseDates = includeSplitwise;
 
@@ -679,6 +680,11 @@ function ConfigFormFields({
             />
           </div>
         </div>
+        {noSubsystemSelected && (
+          <p className="text-xs text-amber-400 px-1 pt-1">
+            Select at least one subsystem to run.
+          </p>
+        )}
       </div>
 
       {/* ── Advanced toggle ────────────────────────────────────────── */}
@@ -852,6 +858,8 @@ function CompletionSummary({ data, status }: { data: CompletionData; status: Wor
     },
   ];
   const hasErrors = (data.errors ?? 0) > 0;
+  const visibleItems = items.filter(({ value }) => value > 0);
+  const hasAnyData = visibleItems.length > 0 || hasErrors;
 
   const borderColor =
     status === "completed"
@@ -886,29 +894,31 @@ function CompletionSummary({ data, status }: { data: CompletionData; status: Wor
         )}
         <span className={cn("text-sm font-medium", titleColor)}>{titleText}</span>
       </div>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-        {items.map(({ label, value, highlight }) => (
-          <div key={label} className="flex items-baseline justify-between gap-2">
-            <span className="text-xs text-muted-foreground/70">{label}</span>
-            <span
-              className={cn(
-                "text-sm font-semibold tabular-nums",
-                highlight ? "text-amber-400" : "text-foreground"
-              )}
-            >
-              {value}
-            </span>
-          </div>
-        ))}
-        {hasErrors && (
-          <div className="flex items-baseline justify-between gap-2 col-span-2">
-            <span className="text-xs text-muted-foreground/70">Errors</span>
-            <span className="text-sm font-semibold tabular-nums text-[#F44D4D]">
-              {data.errors}
-            </span>
-          </div>
-        )}
-      </div>
+      {hasAnyData && (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+          {visibleItems.map(({ label, value, highlight }) => (
+            <div key={label} className="flex items-baseline justify-between gap-2">
+              <span className="text-xs text-muted-foreground/70">{label}</span>
+              <span
+                className={cn(
+                  "text-sm font-semibold tabular-nums",
+                  highlight ? "text-amber-400" : "text-foreground"
+                )}
+              >
+                {value}
+              </span>
+            </div>
+          ))}
+          {hasErrors && (
+            <div className="flex items-baseline justify-between gap-2 col-span-2">
+              <span className="text-xs text-muted-foreground/70">Errors</span>
+              <span className="text-sm font-semibold tabular-nums text-[#F44D4D]">
+                {data.errors ?? 0}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
