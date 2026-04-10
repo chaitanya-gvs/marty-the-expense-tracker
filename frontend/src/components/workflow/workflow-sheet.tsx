@@ -828,6 +828,91 @@ function ConfigFormFields({
   );
 }
 
+// ─── Completion summary ───────────────────────────────────────────────────────
+
+interface CompletionData {
+  email_inserted?: number;
+  statement_inserted?: number;
+  splitwise_transactions?: number;
+  review_queue_total?: number;
+  dedup_confirmed?: number;
+  errors?: number;
+}
+
+function CompletionSummary({ data, status }: { data: CompletionData; status: WorkflowJobStatus }) {
+  const items: Array<{ label: string; value: number; highlight?: boolean }> = [
+    { label: "From email", value: data.email_inserted ?? 0 },
+    { label: "From statements", value: data.statement_inserted ?? 0 },
+    { label: "Splitwise synced", value: data.splitwise_transactions ?? 0 },
+    { label: "Dedup confirmed", value: data.dedup_confirmed ?? 0 },
+    {
+      label: "Needs review",
+      value: data.review_queue_total ?? 0,
+      highlight: (data.review_queue_total ?? 0) > 0,
+    },
+  ];
+  const hasErrors = (data.errors ?? 0) > 0;
+
+  const borderColor =
+    status === "completed"
+      ? "border-emerald-500/30 bg-emerald-500/5"
+      : status === "failed"
+      ? "border-[#F44D4D]/30 bg-[#F44D4D]/5"
+      : "border-amber-400/30 bg-amber-400/5";
+
+  const titleColor =
+    status === "completed"
+      ? "text-emerald-400"
+      : status === "failed"
+      ? "text-[#F44D4D]"
+      : "text-amber-400";
+
+  const titleText =
+    status === "completed"
+      ? "Run complete"
+      : status === "failed"
+      ? "Run failed"
+      : "Run cancelled";
+
+  return (
+    <div className={cn("rounded-xl border p-4 mb-3", borderColor)}>
+      <div className="flex items-center gap-2 mb-3">
+        {status === "completed" ? (
+          <CheckCircle2 className={cn("h-4 w-4 shrink-0", titleColor)} />
+        ) : status === "failed" ? (
+          <AlertCircle className={cn("h-4 w-4 shrink-0", titleColor)} />
+        ) : (
+          <TriangleAlert className={cn("h-4 w-4 shrink-0", titleColor)} />
+        )}
+        <span className={cn("text-sm font-medium", titleColor)}>{titleText}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+        {items.map(({ label, value, highlight }) => (
+          <div key={label} className="flex items-baseline justify-between gap-2">
+            <span className="text-xs text-muted-foreground/70">{label}</span>
+            <span
+              className={cn(
+                "text-sm font-semibold tabular-nums",
+                highlight ? "text-amber-400" : "text-foreground"
+              )}
+            >
+              {value}
+            </span>
+          </div>
+        ))}
+        {hasErrors && (
+          <div className="flex items-baseline justify-between gap-2 col-span-2">
+            <span className="text-xs text-muted-foreground/70">Errors</span>
+            <span className="text-sm font-semibold tabular-nums text-[#F44D4D]">
+              {data.errors}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Live log panel ───────────────────────────────────────────────────────────
 
 interface LiveLogProps {
@@ -839,19 +924,38 @@ interface LiveLogProps {
 function LiveLog({ jobId, onStatusChange, onProgressChange }: LiveLogProps) {
   const [events, setEvents] = useState<WorkflowEvent[]>([]);
   const [view, setView] = useState<"tasks" | "log">("tasks");
+  const [jobStatus, setJobStatus] = useState<WorkflowJobStatus>("pending");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const handleEvent = useCallback((event: WorkflowEvent) => {
     setEvents((prev) => [...prev, event]);
-    if (event.event === "workflow_complete") onStatusChange("completed");
-    else if (event.event === "workflow_error") onStatusChange("failed");
-    else if (event.event === "workflow_cancelled") onStatusChange("cancelled");
-    else if (event.event === "workflow_started") onStatusChange("running");
+    if (event.event === "workflow_complete") {
+      onStatusChange("completed");
+      setJobStatus("completed");
+    } else if (event.event === "workflow_error") {
+      onStatusChange("failed");
+      setJobStatus("failed");
+    } else if (event.event === "workflow_cancelled") {
+      onStatusChange("cancelled");
+      setJobStatus("cancelled");
+    } else if (event.event === "workflow_started") {
+      onStatusChange("running");
+      setJobStatus("running");
+    }
   }, [onStatusChange]);
 
   useWorkflowStream(jobId, handleEvent);
 
   const tasks = useMemo(() => buildTaskTree(events), [events]);
+
+  const isTerminalLocal = ["completed", "failed", "cancelled"].includes(jobStatus);
+
+  const completionData = useMemo<CompletionData | null>(() => {
+    if (!isTerminalLocal) return null;
+    const completeEvent = [...events].reverse().find((e) => e.event === "workflow_complete");
+    if (!completeEvent) return null;
+    return completeEvent.data as CompletionData;
+  }, [events, isTerminalLocal]);
 
   // Report progress to parent
   useEffect(() => {
@@ -909,7 +1013,20 @@ function LiveLog({ jobId, onStatusChange, onProgressChange }: LiveLogProps) {
       {/* Content area */}
       <div className="flex-1 overflow-y-auto">
         {view === "tasks" ? (
-          <TaskTreeView tasks={tasks} bottomRef={bottomRef} />
+          <div className="flex flex-col h-full">
+            <AnimatePresence>
+              {completionData && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <CompletionSummary data={completionData} status={jobStatus} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <TaskTreeView tasks={tasks} bottomRef={bottomRef} />
+          </div>
         ) : (
           <div className="rounded-md border border-border bg-card text-xs">
             {events.length === 0 ? (
