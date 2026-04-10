@@ -22,26 +22,26 @@ class AlertIngestionService:
         self.dedup = DeduplicationService()
         self._event_callback = event_callback
 
-    def _emit(self, event_type: str, message: str, level: str = "info", data: dict = None) -> None:
+    def _emit(self, event_type: str, message: str, level: str = "info", data: dict = None, account: str = None) -> None:
         """Fire an SSE event if a callback was registered (no-op otherwise)."""
         if self._event_callback is None:
             return
-        from datetime import datetime as _dt
         self._event_callback({
             "event": event_type,
             "step": "email_ingestion",
             "message": message,
+            "account": account,
             "level": level,
-            "timestamp": _dt.utcnow().isoformat() + "Z",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
             "data": data or {},
         })
 
     async def run(
         self,
-        since_date=None,
-        until_date=None,
-        account_ids=None,
-    ):
+        since_date: Optional[datetime] = None,
+        until_date: Optional[datetime] = None,
+        account_ids: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         """
         Run ingestion for all alert-enabled accounts.
         If since_date is provided, use it as watermark (backfill mode).
@@ -66,9 +66,23 @@ class AlertIngestionService:
             self._emit(
                 "email_ingestion_account_started",
                 f"Fetching alert emails for {nickname}",
+                account=nickname,
                 data={"account": nickname},
             )
-            result = await self._run_for_account(account, since_date, until_date)
+            try:
+                result = await self._run_for_account(account, since_date, until_date)
+            except Exception as exc:
+                logger.exception("Error processing account %s", nickname)
+                totals["errors"] += 1
+                totals["accounts"].append({"account": nickname, "processed": 0, "inserted": 0, "skipped": 0, "errors": 1})
+                self._emit(
+                    "email_ingestion_account_complete",
+                    f"{nickname}: failed — {exc}",
+                    level="error",
+                    account=nickname,
+                    data={"account": nickname, "processed": 0, "inserted": 0, "skipped": 0, "errors": 1},
+                )
+                continue
             totals["processed"] += result["processed"]
             totals["inserted"] += result["inserted"]
             totals["skipped"] += result["skipped"]
@@ -82,6 +96,7 @@ class AlertIngestionService:
                     f"{result['skipped']} skipped, {result['errors']} error(s)"
                 ),
                 level=level,
+                account=nickname,
                 data={"account": nickname, **result},
             )
 
