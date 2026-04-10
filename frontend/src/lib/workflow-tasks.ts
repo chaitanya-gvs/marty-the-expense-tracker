@@ -187,6 +187,7 @@ const EMAIL_INGESTION_EVENTS = new Set([
   "email_ingestion_error",
   "email_ingestion_account_started",
   "email_ingestion_account_complete",
+  "email_ingestion_account_error",
 ]);
 
 // ─── buildTaskTree ─────────────────────────────────────────────────────────────
@@ -320,7 +321,7 @@ export function buildTaskTree(events: WorkflowEvent[]): WorkflowTask[] {
     if (EMAIL_INGESTION_EVENTS.has(e)) {
       const task = ensureTask(EMAIL_INGESTION_TASK_ID, "Email Ingestion");
 
-      if (e === "email_ingestion_account_started" || e === "email_ingestion_account_complete") {
+      if (e === "email_ingestion_account_started" || e === "email_ingestion_account_complete" || e === "email_ingestion_account_error") {
         // Per-account subtask
         const accountName =
           event.account ??
