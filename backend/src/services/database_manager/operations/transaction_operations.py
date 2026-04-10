@@ -906,12 +906,14 @@ class TransactionOperations:
                         transaction_date, transaction_time, amount, split_share_amount,
                         direction, transaction_type, is_shared, split_breakdown,
                         account, sub_category, tags, description, notes, reference_number,
-                        related_mails, source_file, raw_data, transaction_group_id, transaction_source
+                        related_mails, source_file, raw_data, transaction_group_id, transaction_source,
+                        email_message_id, statement_confirmed
                     ) VALUES (
                         :transaction_date, :transaction_time, :amount, :split_share_amount,
                         :direction, :transaction_type, :is_shared, :split_breakdown,
                         :account, :sub_category, :tags, :description, :notes, :reference_number,
-                        :related_mails, :source_file, :raw_data, :transaction_group_id, :transaction_source
+                        :related_mails, :source_file, :raw_data, :transaction_group_id, :transaction_source,
+                        :email_message_id, :statement_confirmed
                     )
                 """)
 
@@ -1708,11 +1710,13 @@ class TransactionOperations:
             "description": transaction.get('description', ''),
             "notes": None,
             "reference_number": _normalize_reference_number(transaction.get('reference_number')),
-            "related_mails": [],
+            "related_mails": transaction.get('related_mails') or [],
             "source_file": transaction.get('source_file', ''),
             "raw_data": TransactionOperations._prepare_raw_data_for_json(transaction.get('raw_data')),
             "transaction_group_id": None,
             "transaction_source": transaction.get("transaction_source") or default_source,
+            "email_message_id": transaction.get('email_message_id'),
+            "statement_confirmed": transaction.get('statement_confirmed', False),
         }
 
     @staticmethod
