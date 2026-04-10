@@ -46,7 +46,6 @@ import {
 import type {
   WorkflowEvent,
   WorkflowJobStatus,
-  WorkflowMode,
   WorkflowPeriodCheck,
 } from "@/lib/api/types/workflow";
 import {
@@ -56,40 +55,10 @@ import {
   type WorkflowTask,
 } from "@/lib/workflow-tasks";
 
-// ─── Mode options ─────────────────────────────────────────────────────────────
-
-const MODE_OPTIONS: Array<{
-  value: WorkflowMode;
-  label: string;
-  description: string;
-}> = [
-  {
-    value: "full",
-    label: "Full",
-    description: "Fetch emails, extract transactions and sync Splitwise",
-  },
-  {
-    value: "resume",
-    label: "Resume",
-    description: "Skip re-extraction, re-standardize existing data",
-  },
-  {
-    value: "splitwise_only",
-    label: "Splitwise",
-    description: "Sync only Splitwise expenses, skip email processing",
-  },
-];
-
-const MODE_LABEL: Record<WorkflowMode, string> = {
-  full: "Full run",
-  resume: "Resume",
-  splitwise_only: "Splitwise only",
-};
-
 // ─── Last-run stub (replace with API data when endpoint exists) ───────────────
 
 interface LastRunSummary {
-  mode: WorkflowMode;
+  mode: string;
   status: WorkflowJobStatus;
   startedAt: string;         // ISO string
   durationSeconds: number;
@@ -102,7 +71,7 @@ interface LastRunSummary {
 
 // TODO: replace with real API call (GET /api/workflow/last-run or similar)
 const STUB_LAST_RUN: LastRunSummary = {
-  mode: "full",
+  mode: "Full run",
   status: "completed",
   startedAt: "2026-03-31T14:32:00.000Z",
   durationSeconds: 187,
@@ -165,7 +134,7 @@ function LastRunCard({
 
       {/* Stats grid — row 1 */}
       <div className="grid grid-cols-3 divide-x divide-border/30 border-b border-border/30">
-        <StatCell label="Mode"     value={MODE_LABEL[run.mode]} />
+        <StatCell label="Mode"     value={run.mode} />
         <StatCell label="Date"     value={dateLabel} />
         <StatCell label="Duration" value={durationLabel} mono />
       </div>
@@ -614,8 +583,12 @@ function TaskTreeView({
 // ─── Config form fields (controlled) ─────────────────────────────────────────
 
 interface ConfigFormFieldsProps {
-  mode: WorkflowMode;
-  onModeChange: (m: WorkflowMode) => void;
+  includeEmail: boolean;
+  onIncludeEmailChange: (v: boolean) => void;
+  includeStatement: boolean;
+  onIncludeStatementChange: (v: boolean) => void;
+  includeSplitwise: boolean;
+  onIncludeSplitwiseChange: (v: boolean) => void;
   startDate: string;
   onStartDateChange: (v: string) => void;
   endDate: string;
@@ -633,8 +606,12 @@ interface ConfigFormFieldsProps {
 }
 
 function ConfigFormFields({
-  mode,
-  onModeChange,
+  includeEmail,
+  onIncludeEmailChange,
+  includeStatement,
+  onIncludeStatementChange,
+  includeSplitwise,
+  onIncludeSplitwiseChange,
   startDate,
   onStartDateChange,
   endDate,
@@ -651,51 +628,57 @@ function ConfigFormFields({
   periodCheck,
 }: ConfigFormFieldsProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const selectedMode = MODE_OPTIONS.find((m) => m.value === mode)!;
+  const showEmailDates = includeEmail || includeStatement;
+  const showSplitwiseDates = includeSplitwise;
 
   return (
     <div className="flex flex-col gap-5">
-      {/* ── Mode segmented control ─────────────────────────────────── */}
-      <div className="space-y-3">
+      {/* ── Subsystem toggles ──────────────────────────────────── */}
+      <div className="space-y-2">
         <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-          Mode
+          What to run
         </Label>
-
-        {/* Tab strip */}
-        <div className="flex rounded-xl bg-muted/40 border border-border/40 p-1 gap-1">
-          {MODE_OPTIONS.map(({ value, label }) => {
-            const isActive = mode === value;
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => onModeChange(value)}
-                className={cn(
-                  "flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
-                  isActive
-                    ? "bg-card text-foreground shadow-sm border border-border/60"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {label}
-              </button>
-            );
-          })}
+        <div className="flex flex-col rounded-xl border border-border/40 bg-muted/20 divide-y divide-border/30">
+          <div className="flex items-center justify-between px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">Email ingestion</p>
+              <p className="text-xs text-muted-foreground/60 mt-0.5">
+                Parse bank alert emails for new transactions
+              </p>
+            </div>
+            <Switch
+              checked={includeEmail}
+              onCheckedChange={onIncludeEmailChange}
+              className="data-[state=checked]:bg-primary"
+            />
+          </div>
+          <div className="flex items-center justify-between px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">Statement processing</p>
+              <p className="text-xs text-muted-foreground/60 mt-0.5">
+                Download PDFs, extract and standardize transactions
+              </p>
+            </div>
+            <Switch
+              checked={includeStatement}
+              onCheckedChange={onIncludeStatementChange}
+              className="data-[state=checked]:bg-primary"
+            />
+          </div>
+          <div className="flex items-center justify-between px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">Splitwise sync</p>
+              <p className="text-xs text-muted-foreground/60 mt-0.5">
+                Pull shared expenses from Splitwise
+              </p>
+            </div>
+            <Switch
+              checked={includeSplitwise}
+              onCheckedChange={onIncludeSplitwiseChange}
+              className="data-[state=checked]:bg-primary"
+            />
+          </div>
         </div>
-
-        {/* Selected mode description */}
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.p
-            key={mode}
-            initial={{ opacity: 0, y: 3 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -3 }}
-            transition={{ duration: 0.14 }}
-            className="text-xs text-muted-foreground/60 leading-relaxed"
-          >
-            {selectedMode.description}
-          </motion.p>
-        </AnimatePresence>
       </div>
 
       {/* ── Advanced toggle ────────────────────────────────────────── */}
@@ -757,7 +740,7 @@ function ConfigFormFields({
 
               {/* Date ranges */}
               <div className="flex flex-col gap-4 px-4 pb-4">
-                {mode !== "splitwise_only" && (
+                {showEmailDates && (
                   <div className="space-y-2">
                     <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
                       Email date range
@@ -788,7 +771,7 @@ function ConfigFormFields({
                   </div>
                 )}
 
-                {mode !== "resume" && (
+                {showSplitwiseDates && (
                   <div className="space-y-2">
                     <div>
                       <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
@@ -830,7 +813,6 @@ function ConfigFormFields({
       </AnimatePresence>
 
       {/* ── Last run summary ───────────────────────────────────────── */}
-      {/* TODO: replace STUB_LAST_RUN with real API data once endpoint exists */}
       {periodLoading && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -949,7 +931,6 @@ function LiveLog({ jobId, onStatusChange, onProgressChange }: LiveLogProps) {
 
 interface ActiveJob {
   jobId: string;
-  mode: WorkflowMode;
   startedAt: string;
 }
 
@@ -963,7 +944,9 @@ export function WorkflowSheet({
   const [expanded, setExpanded] = useState(false);
 
   // Config state
-  const [mode, setMode] = useState<WorkflowMode>("full");
+  const [includeEmail, setIncludeEmail] = useState(true);
+  const [includeStatement, setIncludeStatement] = useState(true);
+  const [includeSplitwise, setIncludeSplitwise] = useState(true);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [swStartDate, setSwStartDate] = useState("");
@@ -985,13 +968,16 @@ export function WorkflowSheet({
   const handleStart = () => {
     startWorkflow(
       {
-        mode,
+        mode: "full",
         start_date: startDate || null,
         end_date: endDate || null,
         splitwise_start_date: swStartDate || null,
         splitwise_end_date: swEndDate || null,
         enable_secondary_account: secondaryAccount || null,
         override,
+        include_email_ingestion: includeEmail,
+        include_statement: includeStatement,
+        include_splitwise: includeSplitwise,
       },
       {
         onSuccess: (data) => {
@@ -999,7 +985,6 @@ export function WorkflowSheet({
           setProgressPct(0);
           setActiveJob({
             jobId: data.job_id,
-            mode,
             startedAt: new Date().toISOString(),
           });
         },
@@ -1037,7 +1022,7 @@ export function WorkflowSheet({
 
   // Subtitle text
   const subtitle = activeJob
-    ? `${MODE_LABEL[activeJob.mode]} · started ${format(new Date(activeJob.startedAt), "HH:mm")}`
+    ? `Started ${format(new Date(activeJob.startedAt), "HH:mm")}`
     : "Configure and start a statement processing run";
 
   // Progress bar width: when terminal, go to 100%
@@ -1125,8 +1110,12 @@ export function WorkflowSheet({
                 transition={{ duration: 0.18 }}
               >
                 <ConfigFormFields
-                  mode={mode}
-                  onModeChange={setMode}
+                  includeEmail={includeEmail}
+                  onIncludeEmailChange={setIncludeEmail}
+                  includeStatement={includeStatement}
+                  onIncludeStatementChange={setIncludeStatement}
+                  includeSplitwise={includeSplitwise}
+                  onIncludeSplitwiseChange={setIncludeSplitwise}
                   startDate={startDate}
                   onStartDateChange={setStartDate}
                   endDate={endDate}
