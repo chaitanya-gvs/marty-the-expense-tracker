@@ -234,9 +234,9 @@ class EmailClient:
                 if html_content:
                     uber_trip_info = self._parse_uber_trip_info(html_content)
             
-            # Extract Swiggy order info if this is a Swiggy email
+            # Extract Swiggy order info if this is a Swiggy or Instamart email
             swiggy_order_info = None
-            if "swiggy" in subject.lower() or "swiggy" in sender.lower():
+            if "swiggy" in subject.lower() or "swiggy" in sender.lower() or "instamart" in subject.lower() or "instamart" in sender.lower():
                 html_content = self._extract_html_content(message.get("payload", {}))
                 if html_content:
                     swiggy_order_info = self._parse_swiggy_order_info(html_content)
@@ -912,7 +912,7 @@ class EmailClient:
         merchants = {
             'uber': {'type': 'ride_sharing', 'patterns': ['uber']},
             'ola': {'type': 'ride_sharing', 'patterns': ['ola', 'olacabs']},
-            'swiggy': {'type': 'food_delivery', 'patterns': ['swiggy']},
+            'swiggy': {'type': 'food_delivery', 'patterns': ['swiggy', 'instamart']},
             'zomato': {'type': 'food_delivery', 'patterns': ['zomato']},
             'amazon': {'type': 'ecommerce', 'patterns': ['amazon']},
             'flipkart': {'type': 'ecommerce', 'patterns': ['flipkart']},
