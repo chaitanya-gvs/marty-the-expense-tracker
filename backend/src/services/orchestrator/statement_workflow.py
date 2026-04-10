@@ -958,7 +958,7 @@ class StatementWorkflow:
                     "Starting email alert ingestion for all alert-enabled accounts",
                 )
                 try:
-                    ingestion_svc = AlertIngestionService()
+                    ingestion_svc = AlertIngestionService(event_callback=self.event_callback)
                     ingestion_result = await ingestion_svc.run(
                         since_date=email_since_date,
                         until_date=email_until_date,

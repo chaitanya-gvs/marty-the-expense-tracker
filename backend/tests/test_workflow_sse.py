@@ -121,3 +121,42 @@ async def test_token_refresh_retries_failed_account_on_next_call():
     finally:
         for p in init_patches:
             p.stop()
+
+
+# ---------------------------------------------------------------------------
+# Task 2 — Per-account SSE events from AlertIngestionService
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_alert_ingestion_service_emits_per_account_events():
+    """AlertIngestionService must fire account_started/account_complete for each account."""
+    from src.services.email_ingestion.alert_ingestion_service import AlertIngestionService
+
+    emitted: list[dict] = []
+
+    def callback(event: dict) -> None:
+        emitted.append(event)
+
+    fake_account = {
+        "id": "acc-1", "nickname": "Test Bank CC", "alert_sender": "alerts@test.bank",
+        "is_active": True, "alert_last_processed_at": None,
+    }
+
+    with patch(
+        "src.services.email_ingestion.alert_ingestion_service.AccountOperations.get_all_accounts",
+        new_callable=AsyncMock, return_value=[fake_account],
+    ), patch.object(
+        AlertIngestionService, "_run_for_account",
+        new_callable=AsyncMock,
+        return_value={"processed": 2, "inserted": 2, "skipped": 0, "errors": 0},
+    ):
+        svc = AlertIngestionService(event_callback=callback)
+        await svc.run()
+
+    event_types = [e["event"] for e in emitted]
+    assert "email_ingestion_account_started" in event_types
+    assert "email_ingestion_account_complete" in event_types
+
+    complete_evt = next(e for e in emitted if e["event"] == "email_ingestion_account_complete")
+    assert complete_evt["data"]["inserted"] == 2
+    assert complete_evt["data"]["account"] == "Test Bank CC"
