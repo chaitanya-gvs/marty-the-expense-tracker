@@ -953,8 +953,9 @@ function LiveLog({ jobId, onStatusChange, onProgressChange }: LiveLogProps) {
   const completionData = useMemo<CompletionData | null>(() => {
     if (!isTerminalLocal) return null;
     const completeEvent = [...events].reverse().find((e) => e.event === "workflow_complete");
-    if (!completeEvent) return null;
-    return completeEvent.data as CompletionData;
+    // For failed/cancelled runs there is no workflow_complete event — render the
+    // summary card with empty counts so the status header still shows.
+    return (completeEvent?.data ?? {}) as CompletionData;
   }, [events, isTerminalLocal]);
 
   // Report progress to parent
@@ -1013,12 +1014,14 @@ function LiveLog({ jobId, onStatusChange, onProgressChange }: LiveLogProps) {
       {/* Content area */}
       <div className="flex-1 overflow-y-auto">
         {view === "tasks" ? (
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col">
             <AnimatePresence>
               {completionData && (
                 <motion.div
+                  key="completion-summary"
                   initial={{ opacity: 0, y: -8 }}
                   animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
                   transition={{ duration: 0.2 }}
                 >
                   <CompletionSummary data={completionData} status={jobStatus} />
