@@ -236,7 +236,7 @@ class EmailClient:
             
             # Extract Swiggy order info if this is a Swiggy or Instamart email
             swiggy_order_info = None
-            if "swiggy" in subject.lower() or "swiggy" in sender.lower() or "instamart" in subject.lower() or "instamart" in sender.lower():
+            if "swiggy" in subject.lower() or "instamart" in subject.lower():
                 html_content = self._extract_html_content(message.get("payload", {}))
                 if html_content:
                     swiggy_order_info = self._parse_swiggy_order_info(html_content)
@@ -922,8 +922,8 @@ class EmailClient:
             'phonepe': {'type': 'other', 'patterns': ['phonepe']},
         }
         
-        # Check subject and sender for merchant patterns
-        combined_text = f"{subject} {sender}".lower()
+        # Check subject only for merchant patterns (sender can cause false positives)
+        combined_text = subject.lower()
         
         for merchant_name, merchant_data in merchants.items():
             for pattern in merchant_data['patterns']:
