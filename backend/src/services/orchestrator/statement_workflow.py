@@ -191,12 +191,19 @@ class StatementWorkflow:
 
     async def _refresh_all_tokens(self) -> bool:
         """Refresh Gmail tokens for all accounts before starting workflow.
-        Each account_id is refreshed at most once per workflow instance.
+
+        Each account_id is refreshed at most once per workflow instance (success path only).
+        Failed accounts — where credentials returned None or raised an exception — are NOT
+        added to _refreshed_accounts and will be retried on the next call.
         """
+        pending = [a for a in self.account_ids if a not in self._refreshed_accounts]
+        if not pending:
+            logger.debug("All tokens already refreshed this run — skipping", extra=self._log_extra())
+            return True
         logger.info("Refreshing Gmail tokens for all accounts...", extra=self._log_extra())
         self._emit(
             "token_refresh_started", "token_refresh",
-            f"Refreshing Gmail tokens for accounts: {', '.join(self.account_ids)}"
+            f"Refreshing Gmail tokens for accounts: {', '.join(pending)}"
         )
         all_success = True
         for account_id in self.account_ids:

@@ -32,7 +32,8 @@ def _patch_workflow_init():
 async def test_token_refresh_skips_already_refreshed_account():
     """_refresh_all_tokens must not re-refresh an account already done in this run."""
     init_patches = _patch_workflow_init()
-    started = [p.start() for p in init_patches]
+    for p in init_patches:
+        p.start()
     try:
         with patch("src.services.orchestrator.statement_workflow.TokenManager") as MockTM, \
              patch("src.services.orchestrator.statement_workflow.build"):
@@ -59,7 +60,8 @@ async def test_token_refresh_skips_already_refreshed_account():
 async def test_token_refresh_runs_for_new_account_id():
     """A second account_id not yet refreshed must still be refreshed."""
     init_patches = _patch_workflow_init()
-    started = [p.start() for p in init_patches]
+    for p in init_patches:
+        p.start()
     try:
         with patch("src.services.orchestrator.statement_workflow.TokenManager") as MockTM, \
              patch("src.services.orchestrator.statement_workflow.build"):
@@ -73,6 +75,49 @@ async def test_token_refresh_runs_for_new_account_id():
             await workflow._refresh_all_tokens()
             # Only secondary should have been attempted (1 call, not 2)
             assert MockTM.return_value.get_valid_credentials.call_count == 1
+    finally:
+        for p in init_patches:
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_token_refresh_retries_failed_account_on_next_call():
+    """Accounts that fail to refresh must NOT be added to _refreshed_accounts,
+    so they are retried on the next call to _refresh_all_tokens."""
+    init_patches = [
+        patch("src.services.orchestrator.statement_workflow.EmailClient"),
+        patch("src.services.orchestrator.statement_workflow.GoogleCloudStorageService"),
+        patch("src.services.orchestrator.statement_workflow.DocumentExtractor"),
+        patch("src.services.orchestrator.statement_workflow.TransactionStandardizer"),
+        patch("src.services.orchestrator.statement_workflow.PDFUnlocker"),
+        patch("src.services.orchestrator.statement_workflow.BankPasswordManager"),
+        patch("src.services.orchestrator.statement_workflow.SplitwiseService"),
+        patch("src.services.orchestrator.statement_workflow.tempfile.mkdtemp", return_value="/tmp/fake"),
+    ]
+    for p in init_patches:
+        p.start()
+
+    try:
+        with patch("src.services.orchestrator.statement_workflow.TokenManager") as MockTM, \
+             patch("src.services.orchestrator.statement_workflow.build"):
+            # First call: credentials returns None (failure)
+            MockTM.return_value.get_valid_credentials.return_value = None
+
+            workflow = StatementWorkflow(account_ids=["primary"])
+            await workflow._refresh_all_tokens()
+
+            # Account must NOT be in the refreshed set after a failure
+            assert "primary" not in workflow._refreshed_accounts
+
+            # Second call: credentials now succeed
+            mock_creds = MagicMock()
+            MockTM.return_value.get_valid_credentials.return_value = mock_creds
+            await workflow._refresh_all_tokens()
+
+            # Now it should be in the set (retried and succeeded)
+            assert "primary" in workflow._refreshed_accounts
+            # get_valid_credentials called once per attempt = 2 total
+            assert MockTM.return_value.get_valid_credentials.call_count == 2
     finally:
         for p in init_patches:
             p.stop()
