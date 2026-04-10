@@ -95,6 +95,7 @@ function eventToStatus(event: WorkflowEvent): TaskStatus {
   }
   if (
     e.endsWith("_failed") ||
+    e.endsWith("_error") ||
     e === "workflow_error" ||
     level === "error"
   ) {
@@ -102,6 +103,7 @@ function eventToStatus(event: WorkflowEvent): TaskStatus {
   }
   if (
     e === "extraction_skipped" ||
+    e.endsWith("_skipped") ||
     (e === "email_search_complete" &&
       (event.data as { downloaded_count?: number }).downloaded_count === 0)
   ) {
