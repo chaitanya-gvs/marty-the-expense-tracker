@@ -75,9 +75,13 @@ class AxisAtlasParser(BaseAlertParser):
         if idx == -1:
             return None
         tail = text[idx + len(label):].lstrip(" :\t")
-        # If the body has real newlines, take just the first line
+        # If the body has real newlines, find the first non-empty line
         if "\n" in tail:
-            return tail.splitlines()[0].strip() or None
+            for line in tail.splitlines():
+                value = line.strip()
+                if value:
+                    return value
+            return None
         # Collapsed single-line body — stop at the next field delimiter
         m = self._FIELD_DELIMITERS.search(tail)
         return (tail[:m.start()].strip() if m else tail.strip()) or None
