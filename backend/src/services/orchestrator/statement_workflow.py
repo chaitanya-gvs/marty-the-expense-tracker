@@ -79,6 +79,61 @@ def extract_search_pattern_from_csv_filename(csv_filename: str) -> str:
         return csv_filename.replace('.csv', '').replace('_extracted', '')
 
 
+def _build_completion_data(workflow_results: dict) -> dict:
+    """Build the data payload for the workflow_complete SSE event.
+
+    Extracts all meaningful pipeline metrics from workflow_results into a flat
+    dict suitable for SSE serialisation. Keeps db_inserted as a backward-compat
+    alias for statement_inserted.
+    """
+    email_ing = workflow_results.get("email_ingestion") or {}
+    email_inserted = email_ing.get("inserted", 0)
+    statement_inserted = workflow_results.get("database_inserted_count", 0)
+    dedup_review = workflow_results.get("dedup_review_queued", 0)
+    email_recon = workflow_results.get("email_reconciliation_queued", 0)
+
+    return {
+        # Statement pipeline
+        "statements_downloaded": workflow_results.get("total_statements_downloaded", 0),
+        "statements_processed": workflow_results.get("total_statements_processed", 0),
+        "splitwise_transactions": workflow_results.get("splitwise_transaction_count", 0),
+        # Insertions breakdown
+        "email_inserted": email_inserted,
+        "statement_inserted": statement_inserted,
+        "db_inserted": statement_inserted,       # backward-compat alias
+        "db_updated": workflow_results.get("database_updated_count", 0),
+        "db_skipped": workflow_results.get("database_skipped_count", 0),
+        # Dedup summary
+        "dedup_confirmed": workflow_results.get("dedup_confirmed", 0),
+        "dedup_review_queued": dedup_review,
+        "email_reconciliation_queued": email_recon,
+        "review_queue_total": dedup_review + email_recon,
+        # Errors
+        "errors": workflow_results.get("errors", []),
+    }
+
+
+def _build_completion_message(workflow_results: dict) -> str:
+    """Build the human-readable message string for the workflow_complete SSE event."""
+    email_ing = workflow_results.get("email_ingestion") or {}
+    email_inserted = email_ing.get("inserted", 0)
+    stmt_inserted = workflow_results.get("database_inserted_count", 0)
+    dedup_review = workflow_results.get("dedup_review_queued", 0)
+    email_recon = workflow_results.get("email_reconciliation_queued", 0)
+    review_total = dedup_review + email_recon
+
+    parts = [
+        f"{email_inserted} from email",
+        f"{stmt_inserted} from statements",
+    ]
+    if workflow_results.get("dedup_confirmed", 0):
+        parts.append(f"{workflow_results['dedup_confirmed']} dedup confirmed")
+    if review_total:
+        parts.append(f"{review_total} sent to review queue")
+
+    return "Workflow complete — " + ", ".join(parts)
+
+
 class StatementWorkflow:
     """Orchestrates the complete statement processing workflow"""
     
@@ -129,6 +184,9 @@ class StatementWorkflow:
         # Create temp directory for processing
         self.temp_dir = Path(tempfile.mkdtemp(prefix="statement_processing_"))
         self.job_id: Optional[str] = None
+        # Tracks which Gmail account_ids have already had their token refreshed
+        # this run — prevents duplicate refresh logs when called from multiple steps.
+        self._refreshed_accounts: set[str] = set()
         logger.info(f"Created temp directory: {self.temp_dir}", extra=self._log_extra())
         logger.info(f"Initialized email clients for accounts: {self.account_ids}", extra=self._log_extra())
         logger.info(f"Secondary account enabled: {self.enable_secondary_account}", extra=self._log_extra())
@@ -187,22 +245,44 @@ class StatementWorkflow:
         self.event_callback(event)
 
     async def _refresh_all_tokens(self) -> bool:
-        """Refresh Gmail tokens for all accounts before starting workflow."""
+        """Refresh Gmail tokens for all accounts before starting workflow.
+
+        Each account_id is refreshed at most once per workflow instance (success path only).
+        Failed accounts — where credentials returned None or raised an exception — are NOT
+        added to _refreshed_accounts and will be retried on the next call.
+        """
+        pending = [a for a in self.account_ids if a not in self._refreshed_accounts]
+        if not pending:
+            logger.debug("All tokens already refreshed this run — skipping", extra=self._log_extra())
+            return True
         logger.info("Refreshing Gmail tokens for all accounts...", extra=self._log_extra())
-        self._emit("token_refresh_started", "token_refresh", f"Refreshing Gmail tokens for accounts: {', '.join(self.account_ids)}")
+        self._emit(
+            "token_refresh_started", "token_refresh",
+            f"Refreshing Gmail tokens for accounts: {', '.join(pending)}"
+        )
         all_success = True
         for account_id in self.account_ids:
+            if account_id in self._refreshed_accounts:
+                logger.debug(
+                    f"Token for {account_id} already refreshed this run — skipping",
+                    extra=self._log_extra(),
+                )
+                continue
             try:
                 token_manager = TokenManager(account_id)
                 credentials = token_manager.get_valid_credentials()
                 if credentials:
-                    logger.info(f"Successfully refreshed token for {account_id} account", extra=self._log_extra())
+                    logger.info(
+                        f"Successfully refreshed token for {account_id} account",
+                        extra=self._log_extra(),
+                    )
+                    self._refreshed_accounts.add(account_id)
                     if account_id in self.email_clients:
                         self.email_clients[account_id].creds = credentials
                         self.email_clients[account_id].service = build(
                             "gmail", "v1",
                             credentials=credentials,
-                            cache_discovery=False
+                            cache_discovery=False,
                         )
                     self._emit(
                         "token_refresh_complete", "token_refresh",
@@ -210,7 +290,10 @@ class StatementWorkflow:
                         account=account_id, level="success",
                     )
                 else:
-                    logger.warning(f"Failed to refresh token for {account_id} account", extra=self._log_extra())
+                    logger.warning(
+                        f"Failed to refresh token for {account_id} account",
+                        extra=self._log_extra(),
+                    )
                     self._emit(
                         "token_refresh_failed", "token_refresh",
                         f"Failed to refresh token for {account_id} account",
@@ -218,7 +301,10 @@ class StatementWorkflow:
                     )
                     all_success = False
             except Exception as e:
-                logger.error(f"Error refreshing token for {account_id} account", exc_info=True, extra=self._log_extra())
+                logger.error(
+                    f"Error refreshing token for {account_id} account",
+                    exc_info=True, extra=self._log_extra(),
+                )
                 self._emit(
                     "token_refresh_failed", "token_refresh",
                     f"Error refreshing token for {account_id}: {e}",
@@ -229,8 +315,10 @@ class StatementWorkflow:
         if all_success:
             logger.info("All tokens refreshed successfully", extra=self._log_extra())
         else:
-            logger.warning("Some tokens failed to refresh - workflow may encounter authentication errors", extra=self._log_extra())
-
+            logger.warning(
+                "Some tokens failed to refresh — workflow may encounter auth errors",
+                extra=self._log_extra(),
+            )
         return all_success
     
     def _calculate_date_range(self) -> tuple[str, str]:
@@ -925,7 +1013,7 @@ class StatementWorkflow:
                     "Starting email alert ingestion for all alert-enabled accounts",
                 )
                 try:
-                    ingestion_svc = AlertIngestionService()
+                    ingestion_svc = AlertIngestionService(event_callback=self.event_callback)
                     ingestion_result = await ingestion_svc.run(
                         since_date=email_since_date,
                         until_date=email_until_date,
@@ -1250,21 +1338,9 @@ class StatementWorkflow:
             logger.info(f"Temp directory used: {workflow_results['temp_directory']}", extra=self._log_extra())
             self._emit(
                 "workflow_complete", "workflow",
-                (
-                    f"Workflow complete — {workflow_results.get('database_inserted_count', 0)} inserted, "
-                    f"{workflow_results.get('database_updated_count', 0)} updated, "
-                    f"{workflow_results.get('database_skipped_count', 0)} skipped"
-                ),
+                _build_completion_message(workflow_results),
                 level="success",
-                data={
-                    "statements_downloaded": workflow_results["total_statements_downloaded"],
-                    "statements_processed": workflow_results["total_statements_processed"],
-                    "splitwise_transactions": workflow_results.get("splitwise_transaction_count", 0),
-                    "db_inserted": workflow_results.get("database_inserted_count", 0),
-                    "db_updated": workflow_results.get("database_updated_count", 0),
-                    "db_skipped": workflow_results.get("database_skipped_count", 0),
-                    "errors": workflow_results["errors"],
-                },
+                data=_build_completion_data(workflow_results),
             )
             
             return workflow_results
