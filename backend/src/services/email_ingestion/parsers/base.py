@@ -116,7 +116,8 @@ class BaseAlertParser(ABC):
             mo = month_map.get(mon.upper())
             if mo:
                 return f"{year}-{mo}-{day}", t
-        m = re.search(r"(\d{2})-(\d{2})-(\d{4})\s+(\d{2}:\d{2}:\d{2})", text)
+        # DD-MM-YYYY, HH:MM:SS TZ  (e.g. "06-04-2026, 03:57:49 IST")
+        m = re.search(r"(\d{2})-(\d{2})-(\d{4}),?\s+(\d{2}:\d{2}:\d{2})", text)
         if m:
             day, mo, year, t = m.groups()
             return f"{year}-{mo}-{day}", t
