@@ -64,7 +64,7 @@ export function EmailLinksDrawer({
         include_amount_filter: true,
       };
 
-      const isInstamart = rawDescription.includes("instamart") || rawDescription.includes("pyu*instamart");
+      const isSwiggy = rawDescription.includes("swiggy") || rawDescription.includes("instamart") || rawDescription.includes("pyu*swiggy") || rawDescription.includes("pyu*instamart");
 
       if (isUPI) {
         // UPI: Search for Uber trip emails by keyword + same-day date only.
@@ -76,10 +76,10 @@ export function EmailLinksDrawer({
         filters.include_amount_filter = false;
         filters.date_offset_days = 0; // Same calendar day only; backend treats offset=0 as [date, date+1)
         filters.verify_body_amount = true; // Post-filter: keep only emails where ceil(fare) ∈ [bank-1, bank+5]
-      } else if (isInstamart) {
-        // Instamart: order total in the email often differs from bank debit (delivery fees,
-        // platform fee billed separately), so amount filter misses them. Use keyword only.
-        filters.custom_search_term = "instamart";
+      } else if (isSwiggy) {
+        // Swiggy/Instamart: order confirmation emails don't contain the exact bank debit amount.
+        // Search by keyword (swiggy OR instamart) within a 1-day window instead.
+        filters.custom_search_term = "swiggy OR instamart";
         filters.include_amount_filter = false;
         filters.date_offset_days = 1;
       }
