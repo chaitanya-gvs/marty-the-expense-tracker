@@ -176,6 +176,17 @@ const FINALIZE_EVENTS = new Set([
   "standardization_skipped",
 ]);
 
+const EMAIL_INGESTION_TASK_ID = "email_ingestion";
+
+const EMAIL_INGESTION_EVENTS = new Set([
+  "email_ingestion_started",
+  "email_ingestion_complete",
+  "email_ingestion_skipped",
+  "email_ingestion_error",
+  "email_ingestion_account_started",
+  "email_ingestion_account_complete",
+]);
+
 // ─── buildTaskTree ─────────────────────────────────────────────────────────────
 
 /**
@@ -300,6 +311,37 @@ export function buildTaskTree(events: WorkflowEvent[]): WorkflowTask[] {
       sub.events.push(event);
       sub.status = eventToStatus(event);
       task.status = worstStatus(task.subtasks.map((st) => st.status));
+      continue;
+    }
+
+    // ── Email ingestion task ──
+    if (EMAIL_INGESTION_EVENTS.has(e)) {
+      const task = ensureTask(EMAIL_INGESTION_TASK_ID, "Email Ingestion");
+
+      if (e === "email_ingestion_account_started" || e === "email_ingestion_account_complete") {
+        // Per-account subtask
+        const accountName =
+          event.account ??
+          (event.data as { account?: string }).account ??
+          "unknown";
+        const subtaskId = `account:${accountName}`;
+        let sub = task.subtasks.find((s) => s.id === subtaskId);
+        if (!sub) {
+          sub = {
+            id: subtaskId,
+            label: accountName,
+            status: "pending",
+            events: [],
+          };
+          task.subtasks.push(sub);
+        }
+        sub.events.push(event);
+        sub.status = eventToStatus(event);
+        task.status = worstStatus(task.subtasks.map((st) => st.status));
+      } else {
+        // Task-level event
+        task.status = eventToStatus(event);
+      }
       continue;
     }
 
