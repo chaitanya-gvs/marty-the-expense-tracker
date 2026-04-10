@@ -674,6 +674,7 @@ class EmailClient:
                     amount_patterns = [
                         r'Grand\s*Total[:\s]+₹?\s*(\d+(?:,\d+)*(?:\.\d{2})?)',
                         r'Order Total[:\s]+₹?\s*(\d+(?:,\d+)*(?:\.\d{2})?)',
+                        r'Paid\s+Via\s+[^\n₹]*₹\s*(\d+(?:,\d+)*(?:\.\d{2})?)',  # New layout: "Paid Via Credit/Debit card ₹485.00"
                         r'payment of Rs\.\s*(\d+(?:,\d+)*)',  # Swiggy Dineout pattern
                         r'₹\s*(\d+(?:,\d+)*(?:\.\d{2})?)',
                         r'Rs\.?\s*(\d+(?:,\d+)*(?:\.\d{2})?)'
