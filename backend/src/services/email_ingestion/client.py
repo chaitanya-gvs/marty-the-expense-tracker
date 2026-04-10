@@ -97,13 +97,25 @@ class EmailClient:
         )
 
     def _refresh_credentials(self) -> bool:
-        """Refresh Gmail credentials if needed using advanced token management"""
+        """Refresh Gmail credentials only when the current token is expired or missing.
+
+        TokenManager.get_valid_credentials() always constructs a fresh Credentials
+        object with token=None, which means it always performs a real HTTP round-trip
+        to Google's token endpoint. We avoid that cost by checking whether self.creds
+        already holds a live access token before delegating to the token manager.
+        """
         try:
-            # Use the token manager for proactive refresh
+            # Skip refresh if the current credentials are still valid.
+            if (
+                self.creds
+                and getattr(self.creds, "token", None)
+                and not self.creds.expired
+            ):
+                return True
+
             new_creds = self.token_manager.get_valid_credentials()
             if new_creds:
                 self.creds = new_creds
-                # Rebuild the service with new credentials
                 self.service = build("gmail", "v1", credentials=self.creds, cache_discovery=False)
                 logger.info(f"Gmail credentials refreshed successfully for {self.account_id} account")
                 return True
