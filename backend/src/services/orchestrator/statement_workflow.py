@@ -129,6 +129,9 @@ class StatementWorkflow:
         # Create temp directory for processing
         self.temp_dir = Path(tempfile.mkdtemp(prefix="statement_processing_"))
         self.job_id: Optional[str] = None
+        # Tracks which Gmail account_ids have already had their token refreshed
+        # this run — prevents duplicate refresh logs when called from multiple steps.
+        self._refreshed_accounts: set[str] = set()
         logger.info(f"Created temp directory: {self.temp_dir}", extra=self._log_extra())
         logger.info(f"Initialized email clients for accounts: {self.account_ids}", extra=self._log_extra())
         logger.info(f"Secondary account enabled: {self.enable_secondary_account}", extra=self._log_extra())
@@ -187,22 +190,37 @@ class StatementWorkflow:
         self.event_callback(event)
 
     async def _refresh_all_tokens(self) -> bool:
-        """Refresh Gmail tokens for all accounts before starting workflow."""
+        """Refresh Gmail tokens for all accounts before starting workflow.
+        Each account_id is refreshed at most once per workflow instance.
+        """
         logger.info("Refreshing Gmail tokens for all accounts...", extra=self._log_extra())
-        self._emit("token_refresh_started", "token_refresh", f"Refreshing Gmail tokens for accounts: {', '.join(self.account_ids)}")
+        self._emit(
+            "token_refresh_started", "token_refresh",
+            f"Refreshing Gmail tokens for accounts: {', '.join(self.account_ids)}"
+        )
         all_success = True
         for account_id in self.account_ids:
+            if account_id in self._refreshed_accounts:
+                logger.debug(
+                    f"Token for {account_id} already refreshed this run — skipping",
+                    extra=self._log_extra(),
+                )
+                continue
             try:
                 token_manager = TokenManager(account_id)
                 credentials = token_manager.get_valid_credentials()
                 if credentials:
-                    logger.info(f"Successfully refreshed token for {account_id} account", extra=self._log_extra())
+                    logger.info(
+                        f"Successfully refreshed token for {account_id} account",
+                        extra=self._log_extra(),
+                    )
+                    self._refreshed_accounts.add(account_id)
                     if account_id in self.email_clients:
                         self.email_clients[account_id].creds = credentials
                         self.email_clients[account_id].service = build(
                             "gmail", "v1",
                             credentials=credentials,
-                            cache_discovery=False
+                            cache_discovery=False,
                         )
                     self._emit(
                         "token_refresh_complete", "token_refresh",
@@ -210,7 +228,10 @@ class StatementWorkflow:
                         account=account_id, level="success",
                     )
                 else:
-                    logger.warning(f"Failed to refresh token for {account_id} account", extra=self._log_extra())
+                    logger.warning(
+                        f"Failed to refresh token for {account_id} account",
+                        extra=self._log_extra(),
+                    )
                     self._emit(
                         "token_refresh_failed", "token_refresh",
                         f"Failed to refresh token for {account_id} account",
@@ -218,7 +239,10 @@ class StatementWorkflow:
                     )
                     all_success = False
             except Exception as e:
-                logger.error(f"Error refreshing token for {account_id} account", exc_info=True, extra=self._log_extra())
+                logger.error(
+                    f"Error refreshing token for {account_id} account",
+                    exc_info=True, extra=self._log_extra(),
+                )
                 self._emit(
                     "token_refresh_failed", "token_refresh",
                     f"Error refreshing token for {account_id}: {e}",
@@ -229,8 +253,10 @@ class StatementWorkflow:
         if all_success:
             logger.info("All tokens refreshed successfully", extra=self._log_extra())
         else:
-            logger.warning("Some tokens failed to refresh - workflow may encounter authentication errors", extra=self._log_extra())
-
+            logger.warning(
+                "Some tokens failed to refresh — workflow may encounter auth errors",
+                extra=self._log_extra(),
+            )
         return all_success
     
     def _calculate_date_range(self) -> tuple[str, str]:
