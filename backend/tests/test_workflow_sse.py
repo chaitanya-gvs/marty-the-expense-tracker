@@ -160,3 +160,66 @@ async def test_alert_ingestion_service_emits_per_account_events():
     complete_evt = next(e for e in emitted if e["event"] == "email_ingestion_account_complete")
     assert complete_evt["data"]["inserted"] == 2
     assert complete_evt["data"]["account"] == "Test Bank CC"
+
+
+# ---------------------------------------------------------------------------
+# Task 3 — Richer workflow_complete SSE summary
+# ---------------------------------------------------------------------------
+
+def _make_workflow_results(**overrides):
+    """Minimal workflow_results dict with sensible defaults."""
+    base = {
+        "total_statements_downloaded": 2,
+        "total_statements_processed": 2,
+        "total_statements_skipped": 0,
+        "splitwise_transaction_count": 3,
+        "database_inserted_count": 5,
+        "database_updated_count": 1,
+        "database_skipped_count": 0,
+        "database_error_count": 0,
+        "dedup_confirmed": 4,
+        "dedup_review_queued": 2,
+        "email_reconciliation_queued": 1,
+        "email_ingestion": {"inserted": 30, "skipped": 5, "errors": 0, "processed": 35, "accounts": []},
+        "errors": [],
+    }
+    base.update(overrides)
+    return base
+
+
+def test_workflow_complete_event_contains_all_summary_fields():
+    """workflow_complete SSE data must include email_inserted, statement_inserted,
+    dedup_confirmed, dedup_review_queued, email_reconciliation_queued, review_queue_total."""
+    from src.services.orchestrator.statement_workflow import _build_completion_data
+
+    results = _make_workflow_results()
+    data = _build_completion_data(results)
+
+    assert data["email_inserted"] == 30
+    assert data["statement_inserted"] == 5
+    assert data["dedup_confirmed"] == 4
+    assert data["dedup_review_queued"] == 2
+    assert data["email_reconciliation_queued"] == 1
+    assert data["review_queue_total"] == 3   # 2 + 1
+    assert data["db_inserted"] == 5          # backward compat key preserved
+
+
+def test_workflow_complete_event_handles_skipped_email_ingestion():
+    """When email ingestion was skipped (email_ingestion=None), email_inserted must be 0."""
+    from src.services.orchestrator.statement_workflow import _build_completion_data
+
+    results = _make_workflow_results(email_ingestion=None)
+    data = _build_completion_data(results)
+
+    assert data["email_inserted"] == 0
+
+
+def test_workflow_complete_message_mentions_review_queue():
+    """Human-readable message must mention review queue when items are queued."""
+    from src.services.orchestrator.statement_workflow import _build_completion_message
+
+    results = _make_workflow_results()
+    msg = _build_completion_message(results)
+
+    assert "review" in msg.lower()
+    assert "3" in msg   # review_queue_total == 3

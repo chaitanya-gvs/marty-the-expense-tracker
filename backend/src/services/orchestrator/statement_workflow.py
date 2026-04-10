@@ -79,6 +79,61 @@ def extract_search_pattern_from_csv_filename(csv_filename: str) -> str:
         return csv_filename.replace('.csv', '').replace('_extracted', '')
 
 
+def _build_completion_data(workflow_results: dict) -> dict:
+    """Build the data payload for the workflow_complete SSE event.
+
+    Extracts all meaningful pipeline metrics from workflow_results into a flat
+    dict suitable for SSE serialisation. Keeps db_inserted as a backward-compat
+    alias for statement_inserted.
+    """
+    email_ing = workflow_results.get("email_ingestion") or {}
+    email_inserted = email_ing.get("inserted", 0)
+    statement_inserted = workflow_results.get("database_inserted_count", 0)
+    dedup_review = workflow_results.get("dedup_review_queued", 0)
+    email_recon = workflow_results.get("email_reconciliation_queued", 0)
+
+    return {
+        # Statement pipeline
+        "statements_downloaded": workflow_results.get("total_statements_downloaded", 0),
+        "statements_processed": workflow_results.get("total_statements_processed", 0),
+        "splitwise_transactions": workflow_results.get("splitwise_transaction_count", 0),
+        # Insertions breakdown
+        "email_inserted": email_inserted,
+        "statement_inserted": statement_inserted,
+        "db_inserted": statement_inserted,       # backward-compat alias
+        "db_updated": workflow_results.get("database_updated_count", 0),
+        "db_skipped": workflow_results.get("database_skipped_count", 0),
+        # Dedup summary
+        "dedup_confirmed": workflow_results.get("dedup_confirmed", 0),
+        "dedup_review_queued": dedup_review,
+        "email_reconciliation_queued": email_recon,
+        "review_queue_total": dedup_review + email_recon,
+        # Errors
+        "errors": workflow_results.get("errors", []),
+    }
+
+
+def _build_completion_message(workflow_results: dict) -> str:
+    """Build the human-readable message string for the workflow_complete SSE event."""
+    email_ing = workflow_results.get("email_ingestion") or {}
+    email_inserted = email_ing.get("inserted", 0)
+    stmt_inserted = workflow_results.get("database_inserted_count", 0)
+    dedup_review = workflow_results.get("dedup_review_queued", 0)
+    email_recon = workflow_results.get("email_reconciliation_queued", 0)
+    review_total = dedup_review + email_recon
+
+    parts = [
+        f"{email_inserted} from email",
+        f"{stmt_inserted} from statements",
+    ]
+    if workflow_results.get("dedup_confirmed", 0):
+        parts.append(f"{workflow_results['dedup_confirmed']} dedup confirmed")
+    if review_total:
+        parts.append(f"{review_total} sent to review queue")
+
+    return "Workflow complete — " + ", ".join(parts)
+
+
 class StatementWorkflow:
     """Orchestrates the complete statement processing workflow"""
     
@@ -1283,21 +1338,9 @@ class StatementWorkflow:
             logger.info(f"Temp directory used: {workflow_results['temp_directory']}", extra=self._log_extra())
             self._emit(
                 "workflow_complete", "workflow",
-                (
-                    f"Workflow complete — {workflow_results.get('database_inserted_count', 0)} inserted, "
-                    f"{workflow_results.get('database_updated_count', 0)} updated, "
-                    f"{workflow_results.get('database_skipped_count', 0)} skipped"
-                ),
+                _build_completion_message(workflow_results),
                 level="success",
-                data={
-                    "statements_downloaded": workflow_results["total_statements_downloaded"],
-                    "statements_processed": workflow_results["total_statements_processed"],
-                    "splitwise_transactions": workflow_results.get("splitwise_transaction_count", 0),
-                    "db_inserted": workflow_results.get("database_inserted_count", 0),
-                    "db_updated": workflow_results.get("database_updated_count", 0),
-                    "db_skipped": workflow_results.get("database_skipped_count", 0),
-                    "errors": workflow_results["errors"],
-                },
+                data=_build_completion_data(workflow_results),
             )
             
             return workflow_results
