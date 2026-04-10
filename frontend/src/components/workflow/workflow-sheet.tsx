@@ -819,6 +819,7 @@ function ConfigFormFields({
           Checking period status…
         </div>
       )}
+      {/* TODO: replace STUB_LAST_RUN with real API data once endpoint exists */}
       <LastRunCard
         run={STUB_LAST_RUN}
         periodCheck={!periodLoading && periodCheck && periodCheck.total > 0 ? periodCheck : undefined}
@@ -964,6 +965,7 @@ export function WorkflowSheet({
   const { data: periodCheck, isLoading: periodLoading } = useWorkflowPeriodCheck();
 
   const isTerminal = ["completed", "failed", "cancelled"].includes(jobStatus);
+  const noSubsystemSelected = !includeEmail && !includeStatement && !includeSplitwise;
 
   const handleStart = () => {
     startWorkflow(
@@ -1165,7 +1167,7 @@ export function WorkflowSheet({
               >
                 <Button
                   onClick={handleStart}
-                  disabled={isPending}
+                  disabled={isPending || noSubsystemSelected}
                   className="w-full gap-2 bg-emerald-600 hover:bg-emerald-500 text-white"
                 >
                   {isPending ? (
