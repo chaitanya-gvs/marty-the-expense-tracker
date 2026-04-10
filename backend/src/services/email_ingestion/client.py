@@ -30,6 +30,10 @@ except ImportError:
 
 
 class EmailClient:
+    # Class-level credentials cache shared across all instances / requests.
+    # Keyed by account_id so primary and secondary are cached independently.
+    _credentials_cache: dict = {}
+
     def __init__(self, account_id: str = "primary"):
         self.settings = get_settings()
         self.account_id = account_id
@@ -97,25 +101,23 @@ class EmailClient:
         )
 
     def _refresh_credentials(self) -> bool:
-        """Refresh Gmail credentials only when the current token is expired or missing.
-
-        TokenManager.get_valid_credentials() always constructs a fresh Credentials
-        object with token=None, which means it always performs a real HTTP round-trip
-        to Google's token endpoint. We avoid that cost by checking whether self.creds
-        already holds a live access token before delegating to the token manager.
-        """
+        """Refresh Gmail credentials if needed. Uses a class-level cache so that
+        a valid access token is reused across requests and only refreshed when
+        it is actually expired (or within the 5-minute proactive window)."""
         try:
-            # Skip refresh if the current credentials are still valid.
-            if (
-                self.creds
-                and getattr(self.creds, "token", None)
-                and not self.creds.expired
-            ):
+            cached = EmailClient._credentials_cache.get(self.account_id)
+            if cached and not self.token_manager._is_token_expired(cached):
+                # Cached credentials are still valid — reuse them without a network call.
+                if self.creds is not cached:
+                    self.creds = cached
+                    self.service = build("gmail", "v1", credentials=self.creds, cache_discovery=False)
                 return True
 
+            # No valid cache — do the actual refresh.
             new_creds = self.token_manager.get_valid_credentials()
             if new_creds:
                 self.creds = new_creds
+                EmailClient._credentials_cache[self.account_id] = new_creds
                 self.service = build("gmail", "v1", credentials=self.creds, cache_discovery=False)
                 logger.info(f"Gmail credentials refreshed successfully for {self.account_id} account")
                 return True
