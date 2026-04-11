@@ -9,7 +9,9 @@ import {
   ChevronUp,
   Clock,
   FileSearch,
+  FileText,
   Loader2,
+  Mail,
   Maximize2,
   Minimize2,
   Play,
@@ -19,6 +21,7 @@ import {
   TriangleAlert,
   List,
   ListTree,
+  Users,
   X,
   Settings2,
 } from "lucide-react";
@@ -580,6 +583,38 @@ function TaskTreeView({
   );
 }
 
+// ─── Subsystem definitions ───────────────────────────────────────────────────
+
+const SUBSYSTEMS = [
+  {
+    key: "email" as const,
+    icon: Mail,
+    label: "Email ingestion",
+    description: "Parse bank alert emails for new transactions",
+    activeIcon: "text-sky-400",
+    activeBg: "bg-sky-500/10",
+    activeRow: "bg-sky-500/[0.04]",
+  },
+  {
+    key: "statement" as const,
+    icon: FileText,
+    label: "Statement processing",
+    description: "Download PDFs, extract and standardize transactions",
+    activeIcon: "text-violet-400",
+    activeBg: "bg-violet-500/10",
+    activeRow: "bg-violet-500/[0.04]",
+  },
+  {
+    key: "splitwise" as const,
+    icon: Users,
+    label: "Splitwise sync",
+    description: "Pull shared expenses from Splitwise",
+    activeIcon: "text-emerald-400",
+    activeBg: "bg-emerald-500/10",
+    activeRow: "bg-emerald-500/[0.04]",
+  },
+] as const;
+
 // ─── Config form fields (controlled) ─────────────────────────────────────────
 
 interface ConfigFormFieldsProps {
@@ -636,49 +671,57 @@ function ConfigFormFields({
     <div className="flex flex-col gap-5">
       {/* ── Subsystem toggles ──────────────────────────────────── */}
       <div className="space-y-2">
-        <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-          What to run
-        </Label>
-        <div className="flex flex-col rounded-xl border border-border/40 bg-muted/20 divide-y divide-border/30">
-          <div className="flex items-center justify-between px-4 py-3">
-            <div>
-              <p className="text-sm font-medium text-foreground">Email ingestion</p>
-              <p className="text-xs text-muted-foreground/60 mt-0.5">
-                Parse bank alert emails for new transactions
-              </p>
-            </div>
-            <Switch
-              checked={includeEmail}
-              onCheckedChange={onIncludeEmailChange}
-              className="data-[state=checked]:bg-primary"
-            />
-          </div>
-          <div className="flex items-center justify-between px-4 py-3">
-            <div>
-              <p className="text-sm font-medium text-foreground">Statement processing</p>
-              <p className="text-xs text-muted-foreground/60 mt-0.5">
-                Download PDFs, extract and standardize transactions
-              </p>
-            </div>
-            <Switch
-              checked={includeStatement}
-              onCheckedChange={onIncludeStatementChange}
-              className="data-[state=checked]:bg-primary"
-            />
-          </div>
-          <div className="flex items-center justify-between px-4 py-3">
-            <div>
-              <p className="text-sm font-medium text-foreground">Splitwise sync</p>
-              <p className="text-xs text-muted-foreground/60 mt-0.5">
-                Pull shared expenses from Splitwise
-              </p>
-            </div>
-            <Switch
-              checked={includeSplitwise}
-              onCheckedChange={onIncludeSplitwiseChange}
-              className="data-[state=checked]:bg-primary"
-            />
-          </div>
+        <div className="flex items-center justify-between">
+          <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+            What to run
+          </Label>
+          <span className="text-[10px] font-medium tabular-nums text-muted-foreground/40">
+            {[includeEmail, includeStatement, includeSplitwise].filter(Boolean).length} / 3
+          </span>
+        </div>
+        <div className="flex flex-col rounded-xl border border-border/40 overflow-hidden divide-y divide-border/30">
+          {SUBSYSTEMS.map(({ key, icon: Icon, label, description, activeIcon, activeBg, activeRow }) => {
+            const checked =
+              key === "email" ? includeEmail :
+              key === "statement" ? includeStatement :
+              includeSplitwise;
+            const onChange =
+              key === "email" ? onIncludeEmailChange :
+              key === "statement" ? onIncludeStatementChange :
+              onIncludeSplitwiseChange;
+            return (
+              <div
+                key={key}
+                className={cn(
+                  "flex items-center justify-between px-4 py-3 transition-colors duration-200",
+                  checked ? activeRow : "bg-muted/20"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-200",
+                    checked ? cn(activeBg, activeIcon) : "bg-muted/40 text-muted-foreground/25"
+                  )}>
+                    <Icon className="h-3.5 w-3.5" />
+                  </div>
+                  <div>
+                    <p className={cn(
+                      "text-sm font-medium transition-colors duration-200",
+                      checked ? "text-foreground" : "text-muted-foreground/60"
+                    )}>
+                      {label}
+                    </p>
+                    <p className="text-xs text-muted-foreground/50 mt-0.5">{description}</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={checked}
+                  onCheckedChange={onChange}
+                  className="data-[state=checked]:bg-primary"
+                />
+              </div>
+            );
+          })}
         </div>
         {noSubsystemSelected && (
           <p className="text-xs text-amber-400 px-1 pt-1">
