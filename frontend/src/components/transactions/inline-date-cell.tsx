@@ -28,11 +28,21 @@ export function InlineDateCell({ transaction }: { transaction: Transaction }) {
     setOpen(false);
   };
 
+  // Format HH:MM:SS → HH:MM (24-hr)
+  const timeLabel = transaction.transaction_time
+    ? transaction.transaction_time.slice(0, 5)
+    : null;
+
   return (
     <div className="flex items-center gap-1">
       {transaction.original_date && (
         <span title={`Original: ${transaction.original_date}`} className="inline-flex items-center">
           <History className="h-3 w-3 text-amber-400/70" />
+        </span>
+      )}
+      {timeLabel && (
+        <span className="text-[11px] tabular-nums text-muted-foreground/50 font-mono">
+          {timeLabel}
         </span>
       )}
       <Popover open={open} onOpenChange={setOpen}>

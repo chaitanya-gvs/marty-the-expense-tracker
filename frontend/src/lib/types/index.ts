@@ -1,6 +1,7 @@
 export interface Transaction {
   id: string;
   date: string;
+  transaction_time?: string | null; // HH:MM:SS from backend, null when not captured
   account: string;
   description: string;
   original_description?: string; // Raw bank narration, before any user edits
