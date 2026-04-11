@@ -1,4 +1,4 @@
-export type WorkflowMode = "full" | "resume" | "splitwise_only";
+export type WorkflowMode = "full" | "splitwise_only";
 
 export type WorkflowJobStatus =
   | "pending"
@@ -27,6 +27,9 @@ export interface WorkflowRunRequest {
   splitwise_end_date?: string | null;
   enable_secondary_account?: boolean | null;
   override?: boolean;
+  include_email_ingestion?: boolean | null;
+  include_statement?: boolean | null;
+  include_splitwise?: boolean | null;
 }
 
 export interface WorkflowRunResponse {

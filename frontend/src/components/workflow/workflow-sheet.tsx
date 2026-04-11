@@ -3,13 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   ChevronUp,
   Clock,
   FileSearch,
+  FileText,
   Loader2,
+  Mail,
   Maximize2,
   Minimize2,
   Play,
@@ -19,6 +22,7 @@ import {
   TriangleAlert,
   List,
   ListTree,
+  Users,
   X,
   Settings2,
 } from "lucide-react";
@@ -46,7 +50,6 @@ import {
 import type {
   WorkflowEvent,
   WorkflowJobStatus,
-  WorkflowMode,
   WorkflowPeriodCheck,
 } from "@/lib/api/types/workflow";
 import {
@@ -56,40 +59,10 @@ import {
   type WorkflowTask,
 } from "@/lib/workflow-tasks";
 
-// ─── Mode options ─────────────────────────────────────────────────────────────
-
-const MODE_OPTIONS: Array<{
-  value: WorkflowMode;
-  label: string;
-  description: string;
-}> = [
-  {
-    value: "full",
-    label: "Full",
-    description: "Fetch emails, extract transactions and sync Splitwise",
-  },
-  {
-    value: "resume",
-    label: "Resume",
-    description: "Skip re-extraction, re-standardize existing data",
-  },
-  {
-    value: "splitwise_only",
-    label: "Splitwise",
-    description: "Sync only Splitwise expenses, skip email processing",
-  },
-];
-
-const MODE_LABEL: Record<WorkflowMode, string> = {
-  full: "Full run",
-  resume: "Resume",
-  splitwise_only: "Splitwise only",
-};
-
 // ─── Last-run stub (replace with API data when endpoint exists) ───────────────
 
 interface LastRunSummary {
-  mode: WorkflowMode;
+  mode: string;
   status: WorkflowJobStatus;
   startedAt: string;         // ISO string
   durationSeconds: number;
@@ -102,7 +75,7 @@ interface LastRunSummary {
 
 // TODO: replace with real API call (GET /api/workflow/last-run or similar)
 const STUB_LAST_RUN: LastRunSummary = {
-  mode: "full",
+  mode: "Full run",
   status: "completed",
   startedAt: "2026-03-31T14:32:00.000Z",
   durationSeconds: 187,
@@ -165,7 +138,7 @@ function LastRunCard({
 
       {/* Stats grid — row 1 */}
       <div className="grid grid-cols-3 divide-x divide-border/30 border-b border-border/30">
-        <StatCell label="Mode"     value={MODE_LABEL[run.mode]} />
+        <StatCell label="Mode"     value={run.mode} />
         <StatCell label="Date"     value={dateLabel} />
         <StatCell label="Duration" value={durationLabel} mono />
       </div>
@@ -611,11 +584,56 @@ function TaskTreeView({
   );
 }
 
+// ─── Subsystem definitions ───────────────────────────────────────────────────
+
+const SUBSYSTEMS = [
+  {
+    key: "email" as const,
+    icon: Mail,
+    label: "Email Ingestion",
+    shortLabel: "Email",
+    description: "Bank alert emails",
+    activeIcon: "text-sky-400",
+    activeBg: "bg-sky-500/15",
+    activeRow: "bg-sky-500/[0.04]",
+    activeBorder: "border-sky-500/40",
+    activeGlow: "[box-shadow:0_0_24px_rgba(14,165,233,0.18)]",
+  },
+  {
+    key: "statement" as const,
+    icon: FileText,
+    label: "Statement Processing",
+    shortLabel: "Statements",
+    description: "PDFs & extraction",
+    activeIcon: "text-violet-400",
+    activeBg: "bg-violet-500/15",
+    activeRow: "bg-violet-500/[0.04]",
+    activeBorder: "border-violet-500/40",
+    activeGlow: "[box-shadow:0_0_24px_rgba(139,92,246,0.18)]",
+  },
+  {
+    key: "splitwise" as const,
+    icon: Users,
+    label: "Splitwise Sync",
+    shortLabel: "Splitwise",
+    description: "Shared expenses",
+    activeIcon: "text-emerald-400",
+    activeBg: "bg-emerald-500/15",
+    activeRow: "bg-emerald-500/[0.04]",
+    activeBorder: "border-emerald-500/40",
+    activeGlow: "[box-shadow:0_0_24px_rgba(16,185,129,0.18)]",
+  },
+] as const;
+
 // ─── Config form fields (controlled) ─────────────────────────────────────────
 
 interface ConfigFormFieldsProps {
-  mode: WorkflowMode;
-  onModeChange: (m: WorkflowMode) => void;
+  includeEmail: boolean;
+  onIncludeEmailChange: (v: boolean) => void;
+  includeStatement: boolean;
+  onIncludeStatementChange: (v: boolean) => void;
+  includeSplitwise: boolean;
+  onIncludeSplitwiseChange: (v: boolean) => void;
   startDate: string;
   onStartDateChange: (v: string) => void;
   endDate: string;
@@ -633,8 +651,12 @@ interface ConfigFormFieldsProps {
 }
 
 function ConfigFormFields({
-  mode,
-  onModeChange,
+  includeEmail,
+  onIncludeEmailChange,
+  includeStatement,
+  onIncludeStatementChange,
+  includeSplitwise,
+  onIncludeSplitwiseChange,
   startDate,
   onStartDateChange,
   endDate,
@@ -651,51 +673,99 @@ function ConfigFormFields({
   periodCheck,
 }: ConfigFormFieldsProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const selectedMode = MODE_OPTIONS.find((m) => m.value === mode)!;
+  const noSubsystemSelected = !includeEmail && !includeStatement && !includeSplitwise;
+  const showEmailDates = includeEmail || includeStatement;
+  const showSplitwiseDates = includeSplitwise;
 
   return (
     <div className="flex flex-col gap-5">
-      {/* ── Mode segmented control ─────────────────────────────────── */}
-      <div className="space-y-3">
-        <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-          Mode
-        </Label>
+      {/* ── Subsystem tiles ────────────────────────────────────── */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+            What to run
+          </Label>
+          <span className="text-[10px] font-medium tabular-nums text-muted-foreground/40">
+            {[includeEmail, includeStatement, includeSplitwise].filter(Boolean).length} / 3
+          </span>
+        </div>
 
-        {/* Tab strip */}
-        <div className="flex rounded-xl bg-muted/40 border border-border/40 p-1 gap-1">
-          {MODE_OPTIONS.map(({ value, label }) => {
-            const isActive = mode === value;
+        <div className="grid grid-cols-3 gap-2">
+          {SUBSYSTEMS.map(({ key, icon: Icon, shortLabel, description, activeIcon, activeBg, activeBorder, activeGlow }) => {
+            const checked =
+              key === "email" ? includeEmail :
+              key === "statement" ? includeStatement :
+              includeSplitwise;
+            const onChange =
+              key === "email" ? onIncludeEmailChange :
+              key === "statement" ? onIncludeStatementChange :
+              onIncludeSplitwiseChange;
             return (
-              <button
-                key={value}
+              <motion.button
+                key={key}
                 type="button"
-                onClick={() => onModeChange(value)}
+                onClick={() => onChange(!checked)}
+                whileTap={{ scale: 0.95 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
                 className={cn(
-                  "flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
-                  isActive
-                    ? "bg-card text-foreground shadow-sm border border-border/60"
-                    : "text-muted-foreground hover:text-foreground"
+                  "relative flex flex-col items-center gap-2.5 rounded-xl border p-4 pb-3.5 text-center cursor-pointer select-none transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
+                  checked
+                    ? cn("bg-card", activeBorder, activeGlow)
+                    : "border-border/25 bg-muted/10 hover:bg-muted/20 hover:border-border/40"
                 )}
               >
-                {label}
-              </button>
+                {/* Spring-in checkmark badge */}
+                <AnimatePresence>
+                  {checked && (
+                    <motion.div
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0, opacity: 0 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 22 }}
+                      className="absolute top-2 right-2 flex h-4 w-4 items-center justify-center rounded-full bg-primary"
+                    >
+                      <Check className="h-2.5 w-2.5 text-primary-foreground" strokeWidth={3} />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Icon */}
+                <div className={cn(
+                  "flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-200",
+                  checked ? cn(activeBg, activeIcon) : "bg-muted/40 text-muted-foreground/20"
+                )}>
+                  <Icon className="h-5 w-5" />
+                </div>
+
+                {/* Label + description */}
+                <div className="space-y-0.5">
+                  <p className={cn(
+                    "text-[11px] font-semibold leading-tight transition-colors duration-200",
+                    checked ? "text-foreground" : "text-muted-foreground/40"
+                  )}>
+                    {shortLabel}
+                  </p>
+                  <p className={cn(
+                    "text-[10px] leading-tight transition-colors duration-200",
+                    checked ? "text-muted-foreground/55" : "text-muted-foreground/25"
+                  )}>
+                    {description}
+                  </p>
+                </div>
+              </motion.button>
             );
           })}
         </div>
 
-        {/* Selected mode description */}
-        <AnimatePresence mode="wait" initial={false}>
+        {noSubsystemSelected && (
           <motion.p
-            key={mode}
-            initial={{ opacity: 0, y: 3 }}
+            initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -3 }}
-            transition={{ duration: 0.14 }}
-            className="text-xs text-muted-foreground/60 leading-relaxed"
+            className="text-xs text-amber-400 px-1 pt-1"
           >
-            {selectedMode.description}
+            Select at least one subsystem to run.
           </motion.p>
-        </AnimatePresence>
+        )}
       </div>
 
       {/* ── Advanced toggle ────────────────────────────────────────── */}
@@ -757,7 +827,7 @@ function ConfigFormFields({
 
               {/* Date ranges */}
               <div className="flex flex-col gap-4 px-4 pb-4">
-                {mode !== "splitwise_only" && (
+                {showEmailDates && (
                   <div className="space-y-2">
                     <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
                       Email date range
@@ -788,7 +858,7 @@ function ConfigFormFields({
                   </div>
                 )}
 
-                {mode !== "resume" && (
+                {showSplitwiseDates && (
                   <div className="space-y-2">
                     <div>
                       <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
@@ -830,17 +900,106 @@ function ConfigFormFields({
       </AnimatePresence>
 
       {/* ── Last run summary ───────────────────────────────────────── */}
-      {/* TODO: replace STUB_LAST_RUN with real API data once endpoint exists */}
       {periodLoading && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           Checking period status…
         </div>
       )}
+      {/* TODO: replace STUB_LAST_RUN with real API data once endpoint exists */}
       <LastRunCard
         run={STUB_LAST_RUN}
         periodCheck={!periodLoading && periodCheck && periodCheck.total > 0 ? periodCheck : undefined}
       />
+    </div>
+  );
+}
+
+// ─── Completion summary ───────────────────────────────────────────────────────
+
+interface CompletionData {
+  email_inserted?: number;
+  statement_inserted?: number;
+  splitwise_transactions?: number;
+  review_queue_total?: number;
+  dedup_confirmed?: number;
+  errors?: number;
+}
+
+function CompletionSummary({ data, status }: { data: CompletionData; status: WorkflowJobStatus }) {
+  const items: Array<{ label: string; value: number; highlight?: boolean }> = [
+    { label: "From email", value: data.email_inserted ?? 0 },
+    { label: "From statements", value: data.statement_inserted ?? 0 },
+    { label: "Splitwise synced", value: data.splitwise_transactions ?? 0 },
+    { label: "Dedup confirmed", value: data.dedup_confirmed ?? 0 },
+    {
+      label: "Needs review",
+      value: data.review_queue_total ?? 0,
+      highlight: (data.review_queue_total ?? 0) > 0,
+    },
+  ];
+  const hasErrors = (data.errors ?? 0) > 0;
+  const visibleItems = items.filter(({ value }) => value > 0);
+  const hasAnyData = visibleItems.length > 0 || hasErrors;
+
+  const borderColor =
+    status === "completed"
+      ? "border-emerald-500/30 bg-emerald-500/5"
+      : status === "failed"
+      ? "border-[#F44D4D]/30 bg-[#F44D4D]/5"
+      : "border-amber-400/30 bg-amber-400/5";
+
+  const titleColor =
+    status === "completed"
+      ? "text-emerald-400"
+      : status === "failed"
+      ? "text-[#F44D4D]"
+      : "text-amber-400";
+
+  const titleText =
+    status === "completed"
+      ? "Run complete"
+      : status === "failed"
+      ? "Run failed"
+      : "Run cancelled";
+
+  return (
+    <div className={cn("rounded-xl border p-4 mb-3", borderColor)}>
+      <div className="flex items-center gap-2 mb-3">
+        {status === "completed" ? (
+          <CheckCircle2 className={cn("h-4 w-4 shrink-0", titleColor)} />
+        ) : status === "failed" ? (
+          <AlertCircle className={cn("h-4 w-4 shrink-0", titleColor)} />
+        ) : (
+          <TriangleAlert className={cn("h-4 w-4 shrink-0", titleColor)} />
+        )}
+        <span className={cn("text-sm font-medium", titleColor)}>{titleText}</span>
+      </div>
+      {hasAnyData && (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+          {visibleItems.map(({ label, value, highlight }) => (
+            <div key={label} className="flex items-baseline justify-between gap-2">
+              <span className="text-xs text-muted-foreground/70">{label}</span>
+              <span
+                className={cn(
+                  "text-sm font-semibold tabular-nums",
+                  highlight ? "text-amber-400" : "text-foreground"
+                )}
+              >
+                {value}
+              </span>
+            </div>
+          ))}
+          {hasErrors && (
+            <div className="flex items-baseline justify-between gap-2 col-span-2">
+              <span className="text-xs text-muted-foreground/70">Errors</span>
+              <span className="text-sm font-semibold tabular-nums text-[#F44D4D]">
+                {data.errors ?? 0}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -856,19 +1015,39 @@ interface LiveLogProps {
 function LiveLog({ jobId, onStatusChange, onProgressChange }: LiveLogProps) {
   const [events, setEvents] = useState<WorkflowEvent[]>([]);
   const [view, setView] = useState<"tasks" | "log">("tasks");
+  const [jobStatus, setJobStatus] = useState<WorkflowJobStatus>("pending");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const handleEvent = useCallback((event: WorkflowEvent) => {
     setEvents((prev) => [...prev, event]);
-    if (event.event === "workflow_complete") onStatusChange("completed");
-    else if (event.event === "workflow_error") onStatusChange("failed");
-    else if (event.event === "workflow_cancelled") onStatusChange("cancelled");
-    else if (event.event === "workflow_started") onStatusChange("running");
+    if (event.event === "workflow_complete") {
+      onStatusChange("completed");
+      setJobStatus("completed");
+    } else if (event.event === "workflow_error") {
+      onStatusChange("failed");
+      setJobStatus("failed");
+    } else if (event.event === "workflow_cancelled") {
+      onStatusChange("cancelled");
+      setJobStatus("cancelled");
+    } else if (event.event === "workflow_started") {
+      onStatusChange("running");
+      setJobStatus("running");
+    }
   }, [onStatusChange]);
 
   useWorkflowStream(jobId, handleEvent);
 
   const tasks = useMemo(() => buildTaskTree(events), [events]);
+
+  const isTerminalLocal = ["completed", "failed", "cancelled"].includes(jobStatus);
+
+  const completionData = useMemo<CompletionData | null>(() => {
+    if (!isTerminalLocal) return null;
+    const completeEvent = [...events].reverse().find((e) => e.event === "workflow_complete");
+    // For failed/cancelled runs there is no workflow_complete event — render the
+    // summary card with empty counts so the status header still shows.
+    return (completeEvent?.data ?? {}) as CompletionData;
+  }, [events, isTerminalLocal]);
 
   // Report progress to parent
   useEffect(() => {
@@ -926,7 +1105,22 @@ function LiveLog({ jobId, onStatusChange, onProgressChange }: LiveLogProps) {
       {/* Content area */}
       <div className="flex-1 overflow-y-auto">
         {view === "tasks" ? (
-          <TaskTreeView tasks={tasks} bottomRef={bottomRef} />
+          <div className="flex flex-col">
+            <AnimatePresence>
+              {completionData && (
+                <motion.div
+                  key="completion-summary"
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <CompletionSummary data={completionData} status={jobStatus} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <TaskTreeView tasks={tasks} bottomRef={bottomRef} />
+          </div>
         ) : (
           <div className="rounded-md border border-border bg-card text-xs">
             {events.length === 0 ? (
@@ -949,7 +1143,6 @@ function LiveLog({ jobId, onStatusChange, onProgressChange }: LiveLogProps) {
 
 interface ActiveJob {
   jobId: string;
-  mode: WorkflowMode;
   startedAt: string;
 }
 
@@ -963,7 +1156,9 @@ export function WorkflowSheet({
   const [expanded, setExpanded] = useState(false);
 
   // Config state
-  const [mode, setMode] = useState<WorkflowMode>("full");
+  const [includeEmail, setIncludeEmail] = useState(true);
+  const [includeStatement, setIncludeStatement] = useState(true);
+  const [includeSplitwise, setIncludeSplitwise] = useState(true);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [swStartDate, setSwStartDate] = useState("");
@@ -981,17 +1176,21 @@ export function WorkflowSheet({
   const { data: periodCheck, isLoading: periodLoading } = useWorkflowPeriodCheck();
 
   const isTerminal = ["completed", "failed", "cancelled"].includes(jobStatus);
+  const noSubsystemSelected = !includeEmail && !includeStatement && !includeSplitwise;
 
   const handleStart = () => {
     startWorkflow(
       {
-        mode,
+        mode: "full",
         start_date: startDate || null,
         end_date: endDate || null,
         splitwise_start_date: swStartDate || null,
         splitwise_end_date: swEndDate || null,
         enable_secondary_account: secondaryAccount || null,
         override,
+        include_email_ingestion: includeEmail,
+        include_statement: includeStatement,
+        include_splitwise: includeSplitwise,
       },
       {
         onSuccess: (data) => {
@@ -999,7 +1198,6 @@ export function WorkflowSheet({
           setProgressPct(0);
           setActiveJob({
             jobId: data.job_id,
-            mode,
             startedAt: new Date().toISOString(),
           });
         },
@@ -1037,7 +1235,7 @@ export function WorkflowSheet({
 
   // Subtitle text
   const subtitle = activeJob
-    ? `${MODE_LABEL[activeJob.mode]} · started ${format(new Date(activeJob.startedAt), "HH:mm")}`
+    ? `Started ${format(new Date(activeJob.startedAt), "HH:mm")}`
     : "Configure and start a statement processing run";
 
   // Progress bar width: when terminal, go to 100%
@@ -1125,8 +1323,12 @@ export function WorkflowSheet({
                 transition={{ duration: 0.18 }}
               >
                 <ConfigFormFields
-                  mode={mode}
-                  onModeChange={setMode}
+                  includeEmail={includeEmail}
+                  onIncludeEmailChange={setIncludeEmail}
+                  includeStatement={includeStatement}
+                  onIncludeStatementChange={setIncludeStatement}
+                  includeSplitwise={includeSplitwise}
+                  onIncludeSplitwiseChange={setIncludeSplitwise}
                   startDate={startDate}
                   onStartDateChange={setStartDate}
                   endDate={endDate}
@@ -1176,7 +1378,7 @@ export function WorkflowSheet({
               >
                 <Button
                   onClick={handleStart}
-                  disabled={isPending}
+                  disabled={isPending || noSubsystemSelected}
                   className="w-full gap-2 bg-emerald-600 hover:bg-emerald-500 text-white"
                 >
                   {isPending ? (
