@@ -1463,37 +1463,10 @@ class StatementWorkflow:
                     continue
                 stats["review_queued"] += 1
 
-            elif has_alert:
-                # Unmatched but account has alert_sender — send to review queue
-                logger.info(
-                    "Dedup: unmatched tx for alert-enabled account %s — sending to review queue",
-                    account_name, extra=self._log_extra(),
-                )
-                try:
-                    await ReviewQueueOperations.add_item(
-                        review_type="statement_only",
-                        transaction_date=tx["transaction_date"],
-                        amount=tx["amount"],
-                        description=tx.get("description", ""),
-                        account=account_name,
-                        direction=tx.get("direction", "debit"),
-                        transaction_type=tx.get("transaction_type", ""),
-                        reference_number=tx.get("reference_number"),
-                        raw_data=tx,
-                    )
-                except Exception:
-                    logger.warning(
-                        "Failed to add statement-only tx to review queue — inserting normally",
-                        exc_info=True, extra=self._log_extra(),
-                    )
-                    filtered.append(tx)
-                    stats["insert_ready"] += 1
-                    stats["dedup_errors"] += 1
-                    continue
-                stats["review_queued"] += 1
-
             else:
-                # Unmatched, no alert sender — insert normally
+                # Unmatched (with or without alert sender) — statement is source of truth,
+                # insert normally. Email-only transactions that have no statement match
+                # are handled separately in the email reconciliation pass.
                 filtered.append(tx)
                 stats["insert_ready"] += 1
 
