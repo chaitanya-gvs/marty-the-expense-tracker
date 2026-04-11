@@ -167,7 +167,7 @@ export interface TransactionFilters {
     max: number;
   };
   direction?: "debit" | "credit";
-  transaction_type?: "all" | "shared" | "refunds" | "transfers" | "needs_review";
+  transaction_type?: "all" | "shared" | "refunds" | "transfers";
   search?: string;
   include_uncategorized?: boolean;
   /**

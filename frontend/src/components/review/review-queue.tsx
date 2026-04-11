@@ -14,9 +14,7 @@ import { StatementReviewQueue } from "./statement-review-queue";
 export function ReviewQueue() {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   
-  const { data: transactionsData, isLoading } = useTransactions({
-    transaction_type: "needs_review"
-  });
+  const { data: transactionsData, isLoading } = useTransactions({});
   
   const updateTransaction = useUpdateTransaction();
   

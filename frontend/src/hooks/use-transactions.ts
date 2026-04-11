@@ -365,17 +365,3 @@ export function useBulkDeleteTransactions() {
   });
 }
 
-export function useReviewCount() {
-  return useQuery({
-    queryKey: ["transactions", "review-count"],
-    queryFn: async () => {
-      const result = await apiClient.getTransactions(
-        { transaction_type: "needs_review" },
-        undefined,
-        { page: 0, limit: 1 }
-      );
-      return result.pagination?.total ?? 0;
-    },
-    staleTime: 5 * 60_000,
-  });
-}
