@@ -78,9 +78,14 @@ def _convert_db_transaction_to_response(transaction: Dict[str, Any]) -> Transact
         # Use stored split_share_amount if not shared or no split_breakdown
         split_share_amount = float(transaction.get('split_share_amount')) if transaction.get('split_share_amount') else None
 
+    # Format transaction_time as HH:MM:SS string if present
+    raw_time = transaction.get('transaction_time')
+    transaction_time_str = str(raw_time) if raw_time is not None else None
+
     return TransactionResponse(
         id=str(transaction.get('id', '')),
         date=transaction.get('transaction_date', '').isoformat() if transaction.get('transaction_date') else '',
+        transaction_time=transaction_time_str,
         account=transaction.get('account', ''),
         description=transaction.get('description', ''),
         category=transaction.get('category', ''),  # This now comes from the JOIN with categories table

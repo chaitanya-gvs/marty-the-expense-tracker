@@ -34,7 +34,7 @@ export function InlineDateCell({ transaction }: { transaction: Transaction }) {
     : null;
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center justify-center gap-1">
       {transaction.original_date && (
         <span title={`Original: ${transaction.original_date}`} className="inline-flex items-center">
           <History className="h-3 w-3 text-amber-400/70" />

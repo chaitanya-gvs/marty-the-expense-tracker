@@ -86,6 +86,7 @@ class TransactionResponse(BaseModel):
 
     id: str
     date: str
+    transaction_time: Optional[str] = None  # HH:MM:SS, only present when captured (e.g. email ingestion)
     account: str
     description: str
     category: Optional[str] = None
