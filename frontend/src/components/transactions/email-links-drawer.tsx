@@ -122,6 +122,10 @@ export function EmailLinksDrawer({
 
   useEffect(() => {
     if (isOpen && transaction.related_mails && transaction.related_mails.length > 0) {
+      // Lock out auto-search for the whole session — transaction already has linked emails.
+      // This also covers the case where the user unlinks during the session (related_mails
+      // becomes empty) so the auto-search doesn't fire unexpectedly mid-session.
+      setHasSearched(true);
       fetchLinkedEmails();
     } else if (!isOpen) {
       setLinkedEmails([]);
