@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -589,29 +590,38 @@ const SUBSYSTEMS = [
   {
     key: "email" as const,
     icon: Mail,
-    label: "Email ingestion",
-    description: "Parse bank alert emails for new transactions",
+    label: "Email Ingestion",
+    shortLabel: "Email",
+    description: "Bank alert emails",
     activeIcon: "text-sky-400",
-    activeBg: "bg-sky-500/10",
+    activeBg: "bg-sky-500/15",
     activeRow: "bg-sky-500/[0.04]",
+    activeBorder: "border-sky-500/40",
+    activeGlow: "[box-shadow:0_0_24px_rgba(14,165,233,0.18)]",
   },
   {
     key: "statement" as const,
     icon: FileText,
-    label: "Statement processing",
-    description: "Download PDFs, extract and standardize transactions",
+    label: "Statement Processing",
+    shortLabel: "Statements",
+    description: "PDFs & extraction",
     activeIcon: "text-violet-400",
-    activeBg: "bg-violet-500/10",
+    activeBg: "bg-violet-500/15",
     activeRow: "bg-violet-500/[0.04]",
+    activeBorder: "border-violet-500/40",
+    activeGlow: "[box-shadow:0_0_24px_rgba(139,92,246,0.18)]",
   },
   {
     key: "splitwise" as const,
     icon: Users,
-    label: "Splitwise sync",
-    description: "Pull shared expenses from Splitwise",
+    label: "Splitwise Sync",
+    shortLabel: "Splitwise",
+    description: "Shared expenses",
     activeIcon: "text-emerald-400",
-    activeBg: "bg-emerald-500/10",
+    activeBg: "bg-emerald-500/15",
     activeRow: "bg-emerald-500/[0.04]",
+    activeBorder: "border-emerald-500/40",
+    activeGlow: "[box-shadow:0_0_24px_rgba(16,185,129,0.18)]",
   },
 ] as const;
 
@@ -669,7 +679,7 @@ function ConfigFormFields({
 
   return (
     <div className="flex flex-col gap-5">
-      {/* ── Subsystem toggles ──────────────────────────────────── */}
+      {/* ── Subsystem tiles ────────────────────────────────────── */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
@@ -679,8 +689,9 @@ function ConfigFormFields({
             {[includeEmail, includeStatement, includeSplitwise].filter(Boolean).length} / 3
           </span>
         </div>
-        <div className="flex flex-col rounded-xl border border-border/40 overflow-hidden divide-y divide-border/30">
-          {SUBSYSTEMS.map(({ key, icon: Icon, label, description, activeIcon, activeBg, activeRow }) => {
+
+        <div className="grid grid-cols-3 gap-2">
+          {SUBSYSTEMS.map(({ key, icon: Icon, shortLabel, description, activeIcon, activeBg, activeBorder, activeGlow }) => {
             const checked =
               key === "email" ? includeEmail :
               key === "statement" ? includeStatement :
@@ -690,43 +701,70 @@ function ConfigFormFields({
               key === "statement" ? onIncludeStatementChange :
               onIncludeSplitwiseChange;
             return (
-              <div
+              <motion.button
                 key={key}
+                type="button"
+                onClick={() => onChange(!checked)}
+                whileTap={{ scale: 0.95 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
                 className={cn(
-                  "flex items-center justify-between px-4 py-3 transition-colors duration-200",
-                  checked ? activeRow : "bg-muted/20"
+                  "relative flex flex-col items-center gap-2.5 rounded-xl border p-4 pb-3.5 text-center cursor-pointer select-none transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
+                  checked
+                    ? cn("bg-card", activeBorder, activeGlow)
+                    : "border-border/25 bg-muted/10 hover:bg-muted/20 hover:border-border/40"
                 )}
               >
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-200",
-                    checked ? cn(activeBg, activeIcon) : "bg-muted/40 text-muted-foreground/25"
-                  )}>
-                    <Icon className="h-3.5 w-3.5" />
-                  </div>
-                  <div>
-                    <p className={cn(
-                      "text-sm font-medium transition-colors duration-200",
-                      checked ? "text-foreground" : "text-muted-foreground/60"
-                    )}>
-                      {label}
-                    </p>
-                    <p className="text-xs text-muted-foreground/50 mt-0.5">{description}</p>
-                  </div>
+                {/* Spring-in checkmark badge */}
+                <AnimatePresence>
+                  {checked && (
+                    <motion.div
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0, opacity: 0 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 22 }}
+                      className="absolute top-2 right-2 flex h-4 w-4 items-center justify-center rounded-full bg-primary"
+                    >
+                      <Check className="h-2.5 w-2.5 text-primary-foreground" strokeWidth={3} />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Icon */}
+                <div className={cn(
+                  "flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-200",
+                  checked ? cn(activeBg, activeIcon) : "bg-muted/40 text-muted-foreground/20"
+                )}>
+                  <Icon className="h-5 w-5" />
                 </div>
-                <Switch
-                  checked={checked}
-                  onCheckedChange={onChange}
-                  className="data-[state=checked]:bg-primary"
-                />
-              </div>
+
+                {/* Label + description */}
+                <div className="space-y-0.5">
+                  <p className={cn(
+                    "text-[11px] font-semibold leading-tight transition-colors duration-200",
+                    checked ? "text-foreground" : "text-muted-foreground/40"
+                  )}>
+                    {shortLabel}
+                  </p>
+                  <p className={cn(
+                    "text-[10px] leading-tight transition-colors duration-200",
+                    checked ? "text-muted-foreground/55" : "text-muted-foreground/25"
+                  )}>
+                    {description}
+                  </p>
+                </div>
+              </motion.button>
             );
           })}
         </div>
+
         {noSubsystemSelected && (
-          <p className="text-xs text-amber-400 px-1 pt-1">
+          <motion.p
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-xs text-amber-400 px-1 pt-1"
+          >
             Select at least one subsystem to run.
-          </p>
+          </motion.p>
         )}
       </div>
 
