@@ -418,7 +418,7 @@ function EventRow({ event, compact }: { event: WorkflowEvent; compact?: boolean 
 
 // ─── SubTaskItem ──────────────────────────────────────────────────────────────
 
-function SubTaskItem({ subtask }: { subtask: WorkflowSubTask }) {
+function SubTaskItem({ subtask, depth = 0 }: { subtask: WorkflowSubTask; depth?: number }) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -427,24 +427,29 @@ function SubTaskItem({ subtask }: { subtask: WorkflowSubTask }) {
     }
   }, [subtask.status]);
 
+  const hasChildren = (subtask.subtasks?.length ?? 0) > 0;
   const hasEvents = subtask.events.length > 0;
+  const isExpandable = hasChildren || hasEvents;
 
+  // Only show row_count on leaf extract steps (no children)
   const rowCount =
-    subtask.id === "extract" && subtask.status === "done"
+    !hasChildren && subtask.id === "extract" && subtask.status === "done"
       ? (subtask.events
           .map((ev) => (ev.data as { row_count?: number }).row_count)
           .filter((n): n is number => typeof n === "number")
           .at(-1) ?? null)
       : null;
 
+  const indentClass = depth === 0 ? "ml-7" : "ml-5";
+
   return (
-    <div className="ml-7">
+    <div className={indentClass}>
       <button
-        onClick={() => hasEvents && setOpen((v) => !v)}
+        onClick={() => isExpandable && setOpen((v) => !v)}
         className={cn(
           "w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left",
           "hover:bg-muted/30 transition-colors",
-          !hasEvents && "cursor-default"
+          !isExpandable && "cursor-default"
         )}
       >
         <TaskStatusIcon status={subtask.status} size="sm" />
@@ -465,12 +470,19 @@ function SubTaskItem({ subtask }: { subtask: WorkflowSubTask }) {
             </span>
           )}
         </span>
-        {hasEvents && (
+        {/* Account-level subtasks show N/N pipeline badge; leaf steps show event count */}
+        {hasChildren && (
+          <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+            {subtask.subtasks!.filter((s) => s.status === "done" || s.status === "skipped").length}/
+            {subtask.subtasks!.length}
+          </span>
+        )}
+        {!hasChildren && hasEvents && (
           <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
             {subtask.events.length}
           </span>
         )}
-        {hasEvents &&
+        {isExpandable &&
           (open ? (
             <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
           ) : (
@@ -478,7 +490,17 @@ function SubTaskItem({ subtask }: { subtask: WorkflowSubTask }) {
           ))}
       </button>
 
-      {open && hasEvents && (
+      {/* 3rd level: pipeline steps nested under a statement account */}
+      {open && hasChildren && (
+        <div className="border-t border-border/40">
+          {subtask.subtasks!.map((child) => (
+            <SubTaskItem key={child.id} subtask={child} depth={depth + 1} />
+          ))}
+        </div>
+      )}
+
+      {/* Leaf node: raw event log */}
+      {open && !hasChildren && hasEvents && (
         <div className="ml-5 mb-1 rounded-md border border-border overflow-hidden">
           {subtask.events.map((ev, i) => (
             <EventRow key={i} event={ev} compact />

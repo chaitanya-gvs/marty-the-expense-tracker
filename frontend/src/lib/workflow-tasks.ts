@@ -9,6 +9,8 @@ export interface WorkflowSubTask {
   label: string;
   status: TaskStatus;
   events: WorkflowEvent[];
+  /** 3rd level: pipeline steps nested inside a statement account subtask */
+  subtasks?: WorkflowSubTask[];
 }
 
 export interface WorkflowTask {
@@ -179,6 +181,7 @@ const FINALIZE_EVENTS = new Set([
 ]);
 
 const EMAIL_INGESTION_TASK_ID = "email_ingestion";
+const STATEMENT_TASK_ID = "statement_processing";
 
 const EMAIL_INGESTION_EVENTS = new Set([
   "email_ingestion_started",
@@ -201,8 +204,8 @@ export function buildTaskTree(events: WorkflowEvent[]): WorkflowTask[] {
   const taskOrder: string[] = [];
   const taskMap: Map<string, WorkflowTask> = new Map();
 
-  // Mutable helpers — current sender task we are routing into
-  let currentSenderTaskId: string | null = null;
+  // Mutable helpers — subtask key of the statement account currently being processed
+  let currentSenderSubtaskId: string | null = null;
 
   function ensureTask(id: string, label: string): WorkflowTask {
     if (!taskMap.has(id)) {
@@ -210,6 +213,31 @@ export function buildTaskTree(events: WorkflowEvent[]): WorkflowTask[] {
       taskOrder.push(id);
     }
     return taskMap.get(id)!;
+  }
+
+  /** Ensure an account subtask exists under the "Statement Processing" parent. */
+  function ensureStatementAccount(taskKey: string, nickname: string): WorkflowSubTask {
+    const parent = ensureTask(STATEMENT_TASK_ID, "Statement Processing");
+    let sub = parent.subtasks.find((s) => s.id === taskKey);
+    if (!sub) {
+      sub = { id: taskKey, label: nickname, status: "pending", events: [], subtasks: [] };
+      parent.subtasks.push(sub);
+    }
+    return sub;
+  }
+
+  /** Ensure a pipeline step (download/unlock/…) inside a statement account subtask. */
+  function ensureAccountPipelineStep(accountSub: WorkflowSubTask, stepId: string): WorkflowSubTask {
+    accountSub.subtasks = accountSub.subtasks ?? [];
+    let step = accountSub.subtasks.find((s) => s.id === stepId);
+    if (!step) {
+      step = { id: stepId, label: SUBTASK_LABELS[stepId] ?? stepId, status: "pending", events: [] };
+      const pos = SUBTASK_ORDER.indexOf(stepId);
+      const insertAt = accountSub.subtasks.findIndex((s) => SUBTASK_ORDER.indexOf(s.id) > pos);
+      if (insertAt === -1) accountSub.subtasks.push(step);
+      else accountSub.subtasks.splice(insertAt, 0, step);
+    }
+    return step;
   }
 
   function ensureSubTask(task: WorkflowTask, subtaskId: string): WorkflowSubTask {
@@ -255,39 +283,42 @@ export function buildTaskTree(events: WorkflowEvent[]): WorkflowTask[] {
       continue;
     }
 
-    // ── Account already fully complete — skip the whole task ──
+    // ── Account already fully complete — add as done under Statement Processing ──
     if (e === "account_already_complete") {
       const sender = (event.data as { sender?: string }).sender ?? "unknown";
       const nickname =
         (event.data as { account_nickname?: string | null }).account_nickname ??
         sender;
       const taskKey = nickname !== sender ? `account:${nickname}` : `sender:${sender}`;
-      const task = ensureTask(taskKey, nickname);
-      task.status = "done";
-      // Mark all subtasks as done so the badge shows correctly
-      for (const subtaskId of SUBTASK_ORDER) {
-        const sub = ensureSubTask(task, subtaskId);
-        sub.status = "done";
-        sub.events.push(event);
-      }
+      const accountSub = ensureStatementAccount(taskKey, nickname);
+      accountSub.status = "done";
+      accountSub.subtasks = SUBTASK_ORDER.map((id) => ({
+        id,
+        label: SUBTASK_LABELS[id] ?? id,
+        status: "done" as TaskStatus,
+        events: [event],
+      }));
+      const parent = taskMap.get(STATEMENT_TASK_ID)!;
+      parent.status = worstStatus(parent.subtasks.map((s) => s.status));
       continue;
     }
 
-    // ── Start of a new sender's processing ──
+    // ── Start of a new sender's statement processing ──
     if (e === "email_search_started") {
       const sender = (event.data as { sender?: string }).sender ?? "unknown";
       const nickname =
         (event.data as { account_nickname?: string | null }).account_nickname ??
         sender;
-      // Key by nickname so two sender emails for the same account merge into one task
+      // Key by nickname so two sender emails for the same account merge into one subtask
       const taskKey = nickname !== sender ? `account:${nickname}` : `sender:${sender}`;
-      currentSenderTaskId = taskKey;
-      const task = ensureTask(taskKey, nickname);
-      // Route to download subtask
-      const sub = ensureSubTask(task, "download");
-      sub.events.push(event);
-      sub.status = eventToStatus(event);
-      task.status = "running";
+      currentSenderSubtaskId = taskKey;
+      const accountSub = ensureStatementAccount(taskKey, nickname);
+      const step = ensureAccountPipelineStep(accountSub, "download");
+      step.events.push(event);
+      step.status = eventToStatus(event);
+      accountSub.status = "running";
+      const parent = taskMap.get(STATEMENT_TASK_ID)!;
+      parent.status = "running";
       continue;
     }
 
@@ -348,18 +379,23 @@ export function buildTaskTree(events: WorkflowEvent[]): WorkflowTask[] {
       continue;
     }
 
-    // ── Per-sender subtask events ──
-    if (currentSenderTaskId) {
-      const task = taskMap.get(currentSenderTaskId);
-      if (task) {
-        const subtaskId = getSubTaskId(event);
-        if (subtaskId) {
-          const sub = ensureSubTask(task, subtaskId);
-          sub.events.push(event);
-          sub.status = eventToStatus(event);
-          task.status = worstStatus(task.subtasks.map((st) => st.status));
+    // ── Per-sender pipeline step events (routed into Statement Processing → account → step) ──
+    if (currentSenderSubtaskId) {
+      const parent = taskMap.get(STATEMENT_TASK_ID);
+      if (parent) {
+        const accountSub = parent.subtasks.find((s) => s.id === currentSenderSubtaskId);
+        if (accountSub) {
+          const stepId = getSubTaskId(event);
+          if (stepId) {
+            const step = ensureAccountPipelineStep(accountSub, stepId);
+            step.events.push(event);
+            step.status = eventToStatus(event);
+            accountSub.subtasks = accountSub.subtasks ?? [];
+            accountSub.status = worstStatus(accountSub.subtasks.map((s) => s.status));
+            parent.status = worstStatus(parent.subtasks.map((s) => s.status));
+          }
+          continue;
         }
-        continue;
       }
     }
   }
