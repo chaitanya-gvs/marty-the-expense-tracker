@@ -80,18 +80,27 @@ effective_limit = override.monthly_limit  (if override exists for this period)
 ```
 
 ### Committed spend
-1. Find all `is_recurring=true, is_deleted=false, direction='debit'` transactions in this category
-2. Deduplicate using `DISTINCT ON (recurring_key)`, ordered by `transaction_date DESC` → one row per unique recurring item, using most recent known amount
-3. Amortise by period:
-   - `monthly` → amount × 1
-   - `quarterly` → amount ÷ 3
-   - `yearly` → amount ÷ 12
-   - `custom` → amount × 1 (treated as monthly equivalent)
-4. Sum all amortised amounts = `committed_spend`
 
-**Before this month's charge arrives:** the most recent past transaction's amount is used as a projection (shown with a subtle "projected" indicator in the UI).
+No amortisation. Committed spend reflects only **actual recurring transactions that landed in the current period**. If a quarterly charge hasn't arrived yet this month, it contributes ₹0 to committed — it will show in full in the month it actually charges.
 
-**After this month's charge arrives and is marked recurring:** the projection is replaced by the actual amount automatically.
+```
+committed_spend = SUM(amount)
+  WHERE is_recurring = true
+    AND is_deleted = false
+    AND direction = 'debit'
+    AND category_id = budget.category_id
+    AND transaction_date BETWEEN start_of_period AND end_of_period
+```
+
+Deduplication within the same period: if multiple transactions share the same `recurring_key` in the same period (e.g. a charge and a partial refund both marked recurring), sum them — do not deduplicate within a period, only across periods. The `DISTINCT ON (recurring_key)` deduplication only applies when computing the **projected** view (see below).
+
+**Projected view (before a recurring charge arrives this month):**
+When the budget page loads for the current month and a known recurring item (seen in a previous month) has not yet transacted, it is shown in the committed block as a **projection** — using the most recent past transaction's amount with a "projected" label. Projections use `DISTINCT ON (recurring_key) ORDER BY transaction_date DESC` across all historical periods.
+
+This means:
+- Monthly Netflix: arrives every month → always shows as actual committed
+- Quarterly AWS (Jan, Apr, Jul, Oct): in February and March → shown as ₹0 actual committed (no charge that month). In April → actual ₹3,200. Optionally surfaced as an upcoming projection with a warning indicator.
+- The `recurrence_period` field drives the period badge (↻ Quarterly) and future "upcoming charges" warnings — it does **not** affect the committed spend calculation itself.
 
 ### Variable spend
 ```
@@ -295,10 +304,9 @@ interface BudgetSummary extends Budget {
 interface CommittedItem {
   recurring_key: string
   description: string        // most recent transaction description
-  amount: number             // most recent transaction amount
-  recurrence_period: string
-  amortised_monthly: number
-  is_projected: boolean      // true if no transaction yet this month
+  amount: number             // actual transaction amount this period (or projected amount if is_projected)
+  recurrence_period: string  // informational only — drives badge, not calculation
+  is_projected: boolean      // true if no transaction yet this month (amount = last known)
 }
 
 // Transaction type additions:
@@ -325,5 +333,7 @@ interface CommittedItem {
 - `budget_committed_items` table: declare future committed spend for subscriptions not yet transacted (e.g. a new plan starting next month)
 - Budget rollover with a configurable cap
 - Per-account budget filtering (e.g. "only count HDFC CC transactions toward this budget")
+- "Upcoming charges" warning panel — use `recurrence_period` to predict when the next quarterly/yearly charge is due and surface it as a heads-up before the month arrives
+- Amortisation view as an opt-in toggle — show smoothed monthly equivalent alongside actual committed spend for users who prefer that planning model
 - Recurring transaction auto-detection on ingestion (flag during statement processing if description matches a known `recurring_key`)
 - Push/email notifications when thresholds are crossed
