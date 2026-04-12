@@ -94,8 +94,8 @@ export function TransactionEditModal({
         id: transactionId,
         updates: { ...formData, tags: selectedTags.map(tag => tag.name) },
       });
-      if (formData.is_recurring !== transaction.is_recurring ||
-          formData.recurrence_period !== transaction.recurrence_period) {
+      if (transaction && (formData.is_recurring !== transaction.is_recurring ||
+          formData.recurrence_period !== transaction.recurrence_period)) {
         await apiClient.setRecurring(transaction.id, {
           is_recurring: !!formData.is_recurring,
           recurrence_period: formData.is_recurring ? (formData.recurrence_period ?? null) : null,
