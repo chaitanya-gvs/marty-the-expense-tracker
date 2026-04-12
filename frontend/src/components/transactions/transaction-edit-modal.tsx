@@ -22,6 +22,7 @@ import { Transaction, Tag } from "@/lib/types";
 import { Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
+import { cn } from "@/lib/utils";
 import { CategorySelector } from "./category-selector";
 import { MultiTagSelector } from "./multi-tag-selector";
 import { TransferGroupSection } from "./transfer-group-section";
@@ -64,6 +65,8 @@ export function TransactionEditModal({
         is_shared: transaction.is_shared,
         is_refund: transaction.is_refund,
         is_transfer: transaction.is_transfer,
+        is_recurring: transaction.is_recurring ?? false,
+        recurrence_period: transaction.recurrence_period ?? null,
       });
 
       if (transaction.tags && transaction.tags.length > 0 && allTags.length > 0) {
@@ -79,7 +82,7 @@ export function TransactionEditModal({
 
   const handleInputChange = (
     field: keyof Transaction,
-    value: string | number | boolean | string[]
+    value: string | number | boolean | string[] | null
   ) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
@@ -91,6 +94,13 @@ export function TransactionEditModal({
         id: transactionId,
         updates: { ...formData, tags: selectedTags.map(tag => tag.name) },
       });
+      if (formData.is_recurring !== transaction.is_recurring ||
+          formData.recurrence_period !== transaction.recurrence_period) {
+        await apiClient.setRecurring(transaction.id, {
+          is_recurring: !!formData.is_recurring,
+          recurrence_period: formData.is_recurring ? (formData.recurrence_period ?? null) : null,
+        });
+      }
       toast.success("Transaction updated successfully");
       onClose();
     } catch {
@@ -266,6 +276,39 @@ export function TransactionEditModal({
                 <Label htmlFor={id} className="text-sm cursor-pointer">{label}</Label>
               </div>
             ))}
+            {/* Recurring */}
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="is_recurring"
+                checked={!!formData.is_recurring}
+                onCheckedChange={(checked) => {
+                  handleInputChange("is_recurring", !!checked);
+                  if (!checked) handleInputChange("recurrence_period", null);
+                }}
+              />
+              <label htmlFor="is_recurring" className={cn(
+                "text-sm cursor-pointer",
+                formData.is_recurring ? "text-indigo-400 font-medium" : "text-muted-foreground"
+              )}>
+                Recurring
+              </label>
+              {formData.is_recurring && (
+                <Select
+                  value={formData.recurrence_period ?? ""}
+                  onValueChange={(v) => handleInputChange("recurrence_period", v)}
+                >
+                  <SelectTrigger className="h-7 w-28 text-xs border-indigo-500/30 text-indigo-400">
+                    <SelectValue placeholder="Period" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="quarterly">Quarterly</SelectItem>
+                    <SelectItem value="yearly">Yearly</SelectItem>
+                    <SelectItem value="custom">Custom</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
           </div>
 
           {/* Transfer Group */}
