@@ -29,6 +29,10 @@ _NON_TRANSACTION_SUBJECTS: list[tuple[str, ...]] = [
     ("transaction declined",),
     ("upcoming autopay",),
     ("autopay txn. reminder",),
+    ("autopay activated",),
+    ("autopay is activated",),
+    ("autopay for",),                    # e.g. "AutoPay for Wispr: ACTIVATED"
+    ("autopay registered",),
     ("confirmation required",),
     ("one time password",),
     (" otp ",),                          # OTP in subject

@@ -177,11 +177,14 @@ class EmailClient:
 
         date_parts = []
         if since:
-            date_parts.append(f"after:{since.strftime('%Y/%m/%d')}")
+            # Use epoch timestamp so Gmail filters by exact time, not just date.
+            # date-only 'after:YYYY/MM/DD' would re-fetch emails from earlier in
+            # the same day that were already processed.
+            date_parts.append(f"after:{int(since.timestamp())}")
         elif days_back:
             date_parts.append(f"newer_than:{days_back}d")
         if until:
-            date_parts.append(f"before:{until.strftime('%Y/%m/%d')}")
+            date_parts.append(f"before:{int(until.timestamp())}")
         date_query = " ".join(date_parts)
 
         query_parts = [p for p in [sender_query, date_query] if p]
