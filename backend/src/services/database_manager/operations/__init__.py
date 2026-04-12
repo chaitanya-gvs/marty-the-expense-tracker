@@ -7,6 +7,7 @@ from .suggestion_operations import SuggestionOperations
 from .statement_log_operations import StatementLogOperations
 from .participant_operations import ParticipantOperations
 from .review_queue_operations import ReviewQueueOperations
+from .budget_operations import BudgetOperations
 
 __all__ = [
     "AccountOperations",
@@ -17,6 +18,7 @@ __all__ = [
     "StatementLogOperations",
     "ParticipantOperations",
     "ReviewQueueOperations",
+    "BudgetOperations",
     "get_all_bank_accounts",
     "get_credit_card_accounts",
     "get_account_by_email",
