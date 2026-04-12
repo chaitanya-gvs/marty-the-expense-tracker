@@ -197,6 +197,31 @@ class AlertIngestionService:
                     "Error processing email %s for %s", msg_id, nickname, exc_info=True
                 )
 
+        # Within-batch dedup — guards against the bank sending the same alert
+        # twice (two different Gmail message IDs, identical transaction content).
+        # Keep the first occurrence; log and skip any duplicate within the batch.
+        seen: set[tuple] = set()
+        deduped: List[Dict[str, Any]] = []
+        for tx in transactions_to_insert:
+            key = (
+                str(tx.get("amount")),
+                tx.get("account", ""),
+                tx.get("transaction_date", ""),
+                tx.get("transaction_time", ""),
+            )
+            if key in seen:
+                logger.warning(
+                    "Within-batch duplicate suppressed for %s: amount=%s date=%s time=%s (msg=%s)",
+                    tx.get("account"), tx.get("amount"),
+                    tx.get("transaction_date"), tx.get("transaction_time"),
+                    tx.get("email_message_id"),
+                )
+                skipped += 1
+            else:
+                seen.add(key)
+                deduped.append(tx)
+        transactions_to_insert = deduped
+
         # Bulk insert
         if transactions_to_insert:
             try:

@@ -1,5 +1,6 @@
 import uvicorn
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -46,16 +47,21 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.error("Scheduled email ingestion failed", exc_info=True)
 
+    interval_hours = settings.EMAIL_INGESTION_INTERVAL_HOURS
     _scheduler.add_job(
         _scheduled_ingestion,
         "interval",
-        hours=settings.EMAIL_INGESTION_INTERVAL_HOURS,
+        hours=interval_hours,
         id="email_ingestion",
         replace_existing=True,
+        # Delay first fire by the full interval so a container restart
+        # doesn't immediately re-run ingestion that just completed.
+        next_run_time=datetime.now() + timedelta(hours=interval_hours),
     )
     _scheduler.start()
     logger.info(
-        "APScheduler started (interval: %dh)", settings.EMAIL_INGESTION_INTERVAL_HOURS
+        "APScheduler started — first run in %dh, then every %dh",
+        interval_hours, interval_hours,
     )
 
     yield
