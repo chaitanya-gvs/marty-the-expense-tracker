@@ -4,6 +4,7 @@ Write (POST/PATCH/DELETE) routes for transactions, categories, tags, and email l
 
 from __future__ import annotations
 
+import re
 import random
 from datetime import datetime
 from typing import Any, Dict, List
@@ -11,6 +12,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 
+from src.apis.schemas.budgets import SetRecurringRequest
 from src.apis.schemas.common import ApiResponse
 from src.apis.schemas.transactions import (
     BulkTransactionUpdate,
@@ -37,6 +39,17 @@ _TAG_COLORS: List[str] = [
     "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef",
     "#ec4899", "#f43f5e",
 ]
+
+
+def _generate_recurring_key(description: str) -> str:
+    """Normalise a transaction description into a stable recurring_key slug."""
+    s = description.lower()
+    s = re.sub(r'\b\d{4,}\b', '', s)
+    s = re.sub(r'upi[:/]?\S*', '', s)
+    s = re.sub(r'[^a-z0-9\s-]', ' ', s)
+    s = re.sub(r'\s+', '-', s.strip())
+    s = re.sub(r'-{2,}', '-', s).strip('-')
+    return s[:60] or 'recurring'
 
 
 @router.post("", response_model=ApiResponse, status_code=201)
@@ -674,4 +687,37 @@ async def upsert_tag(tag_data: TagCreate):
 
     except Exception:
         logger.error("Failed to upsert tag", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.patch("/{transaction_id}/recurring", response_model=ApiResponse)
+async def set_transaction_recurring(transaction_id: str, body: SetRecurringRequest):
+    """Set or clear the recurring flag and period on a transaction."""
+    logger.info("Setting recurring on transaction id=%s is_recurring=%s", transaction_id, body.is_recurring)
+    try:
+        recurring_key = body.recurring_key
+        if body.is_recurring and not recurring_key:
+            tx = await handle_database_operation(TransactionOperations.get_transaction_by_id, transaction_id)
+            if not tx:
+                raise HTTPException(status_code=404, detail="Transaction not found")
+            description = tx.get("user_description") or tx.get("description", "")
+            recurring_key = _generate_recurring_key(description)
+
+        updated = await handle_database_operation(
+            TransactionOperations.set_recurring,
+            transaction_id=transaction_id,
+            is_recurring=body.is_recurring,
+            recurrence_period=body.recurrence_period,
+            recurring_key=recurring_key,
+        )
+        if not updated:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+
+        logger.info("Set recurring on transaction id=%s recurring_key=%s", transaction_id, recurring_key)
+        return ApiResponse(data={"updated": True, "recurring_key": recurring_key})
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.error("Failed to set recurring on transaction id=%s", transaction_id, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
