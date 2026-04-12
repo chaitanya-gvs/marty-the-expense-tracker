@@ -50,7 +50,10 @@ class Transaction(Base):
     email_message_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     statement_confirmed: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
     tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text), nullable=True, server_default="{}")
-    
+    is_recurring: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
+    recurrence_period: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # monthly | quarterly | yearly | custom
+    recurring_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # normalised slug e.g. 'netflix'
+
     # Relationships
     category_rel: Mapped[Optional["Category"]] = relationship("Category")
     tags_rel: Mapped[List["Tag"]] = relationship("Tag", secondary="transaction_tags", back_populates="transactions")
@@ -64,4 +67,6 @@ class Transaction(Base):
         Index('idx_transactions_type', 'transaction_type'),
         Index('idx_transactions_email_message_id', 'email_message_id'),
         Index('idx_transactions_reference_number', 'reference_number'),
+        Index('idx_transactions_recurring_key', 'recurring_key'),
+        Index('idx_transactions_is_recurring', 'is_recurring'),
     )
