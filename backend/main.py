@@ -18,6 +18,7 @@ from src.apis.routes.workflow_routes import router as workflow_router
 from src.apis.routes.splitwise_routes import router as splitwise_router
 from src.apis.routes.email_ingestion_routes import router as email_ingestion_router
 from src.apis.routes.review_queue_routes import router as review_queue_router
+from src.apis.routes.budget_routes import router as budget_router
 from src.utils.auth_deps import get_current_user
 from src.utils.logger import get_logger, setup_logging
 from src.utils.settings import get_settings
@@ -102,6 +103,7 @@ app.include_router(workflow_router, prefix="/api", dependencies=_auth)
 app.include_router(splitwise_router, prefix="/api/splitwise", dependencies=_auth)
 app.include_router(email_ingestion_router, prefix="/api", dependencies=_auth)
 app.include_router(review_queue_router, prefix="/api", dependencies=_auth)
+app.include_router(budget_router, prefix="/api", dependencies=_auth)
 
 
 if __name__ == "__main__":
