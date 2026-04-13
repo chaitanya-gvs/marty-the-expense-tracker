@@ -69,6 +69,8 @@ class BaseAlertParser(ABC):
 
     def parse(self, email_content: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         subject = email_content.get("subject", "") or ""
+        if self.is_non_transaction_subject(subject):
+            return None
         body = email_content.get("body", "") or ""
         combined = f"{subject}\n{body}"
         if self.is_emandate(combined):
