@@ -13,6 +13,8 @@ Committed items NOT yet transacted this month are shown as projections
 (last known amount from any previous month, labelled is_projected=True).
 """
 
+import calendar
+from datetime import date
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
@@ -54,13 +56,10 @@ async def compute_budget_summary(budget_id: str, period: str) -> Dict[str, Any]:
 
         category_id = budget_row["category_id"]
         effective_limit = Decimal(str(budget_row["effective_limit"]))
-        period_start = f"{period}-01"
-        # Last day: let Postgres compute it
-        period_end_row = (await session.execute(
-            text("SELECT (date_trunc('month', :period_start::date) + interval '1 month - 1 day')::text AS period_end"),
-            {"period_start": period_start}
-        )).scalar_one()
-        period_end = period_end_row
+        year, month = int(period[:4]), int(period[5:7])
+        last_day = calendar.monthrange(year, month)[1]
+        period_start = date(year, month, 1)
+        period_end = date(year, month, last_day)
 
         # 2. Committed spend — recurring transactions that landed this month
         committed_rows = (await session.execute(text("""
