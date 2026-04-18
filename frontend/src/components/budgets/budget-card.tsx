@@ -40,7 +40,7 @@ export function BudgetCard({ budget, onEdit, onDelete, onOverride }: BudgetCardP
 
   // Progress bar widths
   const committedPct = budget.effective_limit > 0
-    ? (budget.committed_spend / budget.effective_limit) * 100
+    ? Math.min((budget.committed_spend / budget.effective_limit) * 100, 100)
     : 0;
   const variablePct = budget.effective_limit > 0
     ? (Math.min(budget.variable_spend, Math.max(0, budget.effective_limit - budget.committed_spend))

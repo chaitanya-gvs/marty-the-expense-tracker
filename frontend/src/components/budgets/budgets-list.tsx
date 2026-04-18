@@ -14,7 +14,6 @@ interface BudgetsListProps {
   budgets: BudgetSummary[];
   isLoading: boolean;
   period: string;
-  onCreateWithCategory?: (categoryId: string) => void;
 }
 
 export function BudgetsList({ budgets, isLoading, period }: BudgetsListProps) {
