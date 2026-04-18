@@ -37,6 +37,7 @@ import { InlineCategoryDropdown } from "./inline-category-dropdown";
 import { InlineTagDropdown } from "./inline-tag-dropdown";
 import { TagPill } from "./tag-pill";
 import { InlineDateCell } from "./inline-date-cell";
+import { RecurringModalTrigger } from "@/components/transactions/recurring-modal";
 
 const columnHelper = createColumnHelper<Transaction>();
 
@@ -948,9 +949,10 @@ export function buildTransactionColumns(
         const isSharedActive = !!transaction.is_shared;
         const isGroupActive = !!(transaction.transaction_group_id && !transaction.is_split);
         const isSplitActive = isSplitGroup;
+        const isRecurringActive = transaction.is_recurring === true;
         const isEmailActive = !!(transaction.related_mails && transaction.related_mails.length > 0);
         const isFlagActive = transaction.is_flagged === true;
-        const hasAnyActive = isSharedActive || isGroupActive || isSplitActive || isEmailActive || isFlagActive;
+        const hasAnyActive = isSharedActive || isGroupActive || isSplitActive || isRecurringActive || isEmailActive || isFlagActive;
 
         // Collapsible wrapper: active badges always shown; inactive buttons collapse to w-0
         // and expand on row hover (group-hover). Keyboard focus also forces expansion.
@@ -1056,8 +1058,13 @@ export function buildTransactionColumns(
               </Button>
             </div>
 
-            {/* 4. Email links */}
-            <div className={btnWrap(isEmailActive, isFocusedActionsColumn && focusedActionButton === 3)}>
+            {/* 4. Recurring period */}
+            <div className={btnWrap(isRecurringActive, isFocusedActionsColumn && focusedActionButton === 3)}>
+              <RecurringModalTrigger transaction={transaction} />
+            </div>
+
+            {/* 5. Email links */}
+            <div className={btnWrap(isEmailActive, isFocusedActionsColumn && focusedActionButton === 4)}>
               <Button
                 variant="ghost"
                 size="sm"
@@ -1066,7 +1073,7 @@ export function buildTransactionColumns(
                   isEmailActive
                     ? "bg-amber-400/15 text-amber-300 hover:bg-amber-400/20 shadow-[0_0_12px_rgba(251,191,36,0.2)]"
                     : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                  isFocusedActionsColumn && focusedActionButton === 3 && "ring-2 ring-blue-500 ring-inset"
+                  isFocusedActionsColumn && focusedActionButton === 4 && "ring-2 ring-blue-500 ring-inset"
                 )}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1079,8 +1086,8 @@ export function buildTransactionColumns(
               </Button>
             </div>
 
-            {/* 5. Flag */}
-            <div className={btnWrap(isFlagActive, isFocusedActionsColumn && focusedActionButton === 4)}>
+            {/* 6. Flag */}
+            <div className={btnWrap(isFlagActive, isFocusedActionsColumn && focusedActionButton === 5)}>
               <Button
                 variant="ghost"
                 size="sm"
@@ -1089,7 +1096,7 @@ export function buildTransactionColumns(
                   isFlagActive
                     ? "bg-[#F44D4D]/15 text-[#F44D4D] hover:bg-[#F44D4D]/20 shadow-[0_0_12px_rgba(244,77,77,0.2)]"
                     : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                  isFocusedActionsColumn && focusedActionButton === 4 && "ring-2 ring-blue-500 ring-inset"
+                  isFocusedActionsColumn && focusedActionButton === 5 && "ring-2 ring-blue-500 ring-inset"
                 )}
                 onClick={async (e) => {
                   e.stopPropagation();
@@ -1109,14 +1116,14 @@ export function buildTransactionColumns(
               </Button>
             </div>
 
-            {/* 6. Delete — always inactive (hover-reveal only) */}
-            <div className={btnWrap(false, isFocusedActionsColumn && focusedActionButton === 5)}>
+            {/* 7. Delete — always inactive (hover-reveal only) */}
+            <div className={btnWrap(false, isFocusedActionsColumn && focusedActionButton === 6)}>
               <Button
                 variant="ghost"
                 size="sm"
                 className={cn(
                   "h-7 w-7 p-0 rounded-full transition-all duration-200 bg-muted/40 text-muted-foreground hover:bg-[#F44D4D]/15 hover:text-[#F44D4D]",
-                  isFocusedActionsColumn && focusedActionButton === 5 && "ring-2 ring-blue-500 ring-inset"
+                  isFocusedActionsColumn && focusedActionButton === 6 && "ring-2 ring-blue-500 ring-inset"
                 )}
                 onClick={(e) => {
                   e.stopPropagation();

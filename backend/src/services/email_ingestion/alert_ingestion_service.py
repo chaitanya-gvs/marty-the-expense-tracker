@@ -197,28 +197,35 @@ class AlertIngestionService:
                     "Error processing email %s for %s", msg_id, nickname, exc_info=True
                 )
 
-        # Within-batch dedup — guards against the bank sending the same alert
-        # twice (two different Gmail message IDs, identical transaction content).
+        # Within-batch dedup — guards against two failure modes:
+        # 1. Gmail returning the same message ID twice in a single list response
+        #    (same email_message_id → guaranteed duplicate).
+        # 2. Bank sending the same alert twice with different message IDs but
+        #    identical transaction content (same amount/account/date/time).
         # Keep the first occurrence; log and skip any duplicate within the batch.
-        seen: set[tuple] = set()
+        seen_msg_ids: set[str] = set()
+        seen_content: set[tuple] = set()
         deduped: List[Dict[str, Any]] = []
         for tx in transactions_to_insert:
-            key = (
+            msg_id = tx.get("email_message_id") or ""
+            content_key = (
                 str(tx.get("amount")),
                 tx.get("account", ""),
                 tx.get("transaction_date", ""),
                 tx.get("transaction_time", ""),
             )
-            if key in seen:
+            if (msg_id and msg_id in seen_msg_ids) or content_key in seen_content:
                 logger.warning(
                     "Within-batch duplicate suppressed for %s: amount=%s date=%s time=%s (msg=%s)",
                     tx.get("account"), tx.get("amount"),
                     tx.get("transaction_date"), tx.get("transaction_time"),
-                    tx.get("email_message_id"),
+                    msg_id,
                 )
                 skipped += 1
             else:
-                seen.add(key)
+                if msg_id:
+                    seen_msg_ids.add(msg_id)
+                seen_content.add(content_key)
                 deduped.append(tx)
         transactions_to_insert = deduped
 

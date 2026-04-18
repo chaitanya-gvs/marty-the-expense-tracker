@@ -19,6 +19,9 @@ export interface Transaction {
   is_transfer: boolean;
   is_flagged?: boolean;
   is_grouped_expense?: boolean;
+  is_recurring?: boolean;
+  recurrence_period?: 'monthly' | 'quarterly' | 'yearly' | 'custom' | null;
+  recurring_key?: string | null;
   split_breakdown?: SplitBreakdown;
   paid_by?: string;
   transaction_group_id?: string | null;
@@ -59,13 +62,50 @@ export interface RelatedMail {
 
 export interface Budget {
   id: string;
-  category: string;
-  subcategory?: string;
+  category_id: string;
+  category_name: string;
   monthly_limit: number;
-  current_spend: number;
-  period: string; // YYYY-MM format
+  name?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface BudgetOverride {
+  id: string;
+  budget_id: string;
+  period: string; // 'YYYY-MM'
+  monthly_limit: number;
+}
+
+export interface CommittedItem {
+  recurring_key?: string | null;
+  description: string;
+  amount: number;
+  recurrence_period?: string | null;
+  is_projected: boolean;
+}
+
+export interface BudgetSummary extends Budget {
+  effective_limit: number;
+  has_override: boolean;
+  committed_spend: number;
+  variable_spend: number;
+  headroom: number;
+  utilisation_pct: number; // 0-100+
+  committed_items: CommittedItem[];
+}
+
+export interface BudgetsSummaryResponse {
+  budgets: BudgetSummary[];
+  unbudgeted_categories: UnbudgetedCategory[];
+  period: string;
+}
+
+export interface UnbudgetedCategory {
+  id: string;
+  name: string;
+  color?: string | null;
+  recurring_count: number;
 }
 
 export interface Category {

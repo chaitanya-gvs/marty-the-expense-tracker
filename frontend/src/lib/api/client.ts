@@ -1,4 +1,4 @@
-import { ApiResponse, Transaction, Budget, Category, Tag, TransactionFilters, TransactionSort, PaginationParams, TransferSuggestion, RefundSuggestion, SplitBreakdown, EmailMetadata, EmailDetails, EmailSearchFilters, ExpenseAnalytics, ExpenseAnalyticsFilters, SplitwiseFriend, SplitwiseFriendExpense, SettlementSummary, SettlementDetail, ReviewQueueResponse, EmailIngestionRunResponse } from "@/lib/types";
+import { ApiResponse, Transaction, Budget, BudgetOverride, BudgetSummary, BudgetsSummaryResponse, Category, Tag, TransactionFilters, TransactionSort, PaginationParams, TransferSuggestion, RefundSuggestion, SplitBreakdown, EmailMetadata, EmailDetails, EmailSearchFilters, ExpenseAnalytics, ExpenseAnalyticsFilters, SplitwiseFriend, SplitwiseFriendExpense, SettlementSummary, SettlementDetail, ReviewQueueResponse, EmailIngestionRunResponse } from "@/lib/types";
 import type {
   WorkflowRunRequest,
   WorkflowRunResponse,
@@ -352,26 +352,52 @@ class ApiClient {
     return this.request<Budget[]>("/budgets");
   }
 
-  async createBudget(budget: Omit<Budget, "id" | "created_at" | "updated_at">): Promise<ApiResponse<Budget>> {
+  async getBudgetsSummary(period?: string): Promise<ApiResponse<BudgetsSummaryResponse>> {
+    const params = period ? `?period=${period}` : "";
+    return this.request<BudgetsSummaryResponse>(`/budgets/summary${params}`);
+  }
+
+  async getBudgetSummary(id: string, period?: string): Promise<ApiResponse<BudgetSummary>> {
+    const params = period ? `?period=${period}` : "";
+    return this.request<BudgetSummary>(`/budgets/${id}/summary${params}`);
+  }
+
+  async createBudget(budget: { category_id: string; monthly_limit: number; name?: string }): Promise<ApiResponse<Budget>> {
     return this.request<Budget>("/budgets", {
       method: "POST",
       body: JSON.stringify(budget),
     });
   }
 
-  async updateBudget(
-    id: string,
-    updates: Partial<Budget>
-  ): Promise<ApiResponse<Budget>> {
+  async updateBudget(id: string, updates: { monthly_limit?: number; name?: string }): Promise<ApiResponse<Budget>> {
     return this.request<Budget>(`/budgets/${id}`, {
-      method: "PATCH",
+      method: "PUT",
       body: JSON.stringify(updates),
     });
   }
 
   async deleteBudget(id: string): Promise<ApiResponse<void>> {
-    return this.request<void>(`/budgets/${id}`, {
-      method: "DELETE",
+    return this.request<void>(`/budgets/${id}`, { method: "DELETE" });
+  }
+
+  async upsertBudgetOverride(budgetId: string, period: string, monthlyLimit: number): Promise<ApiResponse<BudgetOverride>> {
+    return this.request<BudgetOverride>(`/budgets/${budgetId}/overrides?period=${period}`, {
+      method: "POST",
+      body: JSON.stringify({ monthly_limit: monthlyLimit }),
+    });
+  }
+
+  async deleteBudgetOverride(budgetId: string, period: string): Promise<ApiResponse<void>> {
+    return this.request<void>(`/budgets/${budgetId}/overrides/${period}`, { method: "DELETE" });
+  }
+
+  async setRecurring(
+    transactionId: string,
+    payload: { is_recurring: boolean; recurrence_period?: string | null; recurring_key?: string | null }
+  ): Promise<ApiResponse<{ updated: boolean; recurring_key: string | null }>> {
+    return this.request(`/transactions/${transactionId}/recurring`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
     });
   }
 

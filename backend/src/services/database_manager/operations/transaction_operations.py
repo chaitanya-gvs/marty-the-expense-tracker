@@ -2079,3 +2079,30 @@ class TransactionOperations:
                 {"id": transaction_id}
             )
             await session.commit()
+
+    @staticmethod
+    async def set_recurring(
+        transaction_id: str,
+        is_recurring: bool,
+        recurrence_period: Optional[str],
+        recurring_key: Optional[str],
+    ) -> bool:
+        """Set recurring fields on a transaction. Returns True if updated."""
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            result = await session.execute(text("""
+                UPDATE transactions
+                SET is_recurring = :is_recurring,
+                    recurrence_period = :recurrence_period,
+                    recurring_key = :recurring_key,
+                    updated_at = now()
+                WHERE id = :transaction_id
+                  AND is_deleted = false
+            """), {
+                "transaction_id": transaction_id,
+                "is_recurring": is_recurring,
+                "recurrence_period": recurrence_period if is_recurring else None,
+                "recurring_key": recurring_key if is_recurring else None,
+            })
+            await session.commit()
+            return result.rowcount > 0
