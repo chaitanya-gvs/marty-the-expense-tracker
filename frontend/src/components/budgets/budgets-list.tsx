@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Plus, PiggyBank } from "lucide-react";
 import { BudgetCard } from "@/components/budgets/budget-card";
 import { BudgetCreateModal } from "@/components/budgets/budget-create-modal";
 import { BudgetOverrideModal } from "@/components/budgets/budget-override-modal";
@@ -50,7 +50,7 @@ export function BudgetsList({ budgets, isLoading, period }: BudgetsListProps) {
     <>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-          Monthly Budgets
+          Monthly Budgets · {budgets.length} active
         </h2>
         <Button size="sm" onClick={() => { setEditingBudget(null); setCreateOpen(true); }}>
           <Plus className="h-3.5 w-3.5 mr-1" /> Add Budget
@@ -58,8 +58,21 @@ export function BudgetsList({ budgets, isLoading, period }: BudgetsListProps) {
       </div>
 
       {budgets.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground text-sm border rounded-lg">
-          No budgets set up yet. Create your first budget to start tracking spending.
+        <div className="flex flex-col items-center justify-center py-16 gap-3 rounded-xl border border-border/50 bg-card/30">
+          <PiggyBank className="h-10 w-10 text-muted-foreground/40" aria-hidden="true" />
+          <div className="text-center space-y-1">
+            <h3 className="font-semibold text-foreground">No budgets yet</h3>
+            <p className="text-sm text-muted-foreground">
+              Create your first budget to start tracking spending limits.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            className="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+            onClick={() => { setEditingBudget(null); setCreateOpen(true); }}
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add Budget
+          </Button>
         </div>
       ) : (
         <div className="space-y-4">
