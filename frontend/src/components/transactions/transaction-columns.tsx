@@ -37,7 +37,7 @@ import { InlineCategoryDropdown } from "./inline-category-dropdown";
 import { InlineTagDropdown } from "./inline-tag-dropdown";
 import { TagPill } from "./tag-pill";
 import { InlineDateCell } from "./inline-date-cell";
-import { RecurringPeriodPopover } from "@/components/transactions/recurring-period-popover";
+import { RecurringModalTrigger } from "@/components/transactions/recurring-modal";
 
 const columnHelper = createColumnHelper<Transaction>();
 
@@ -1060,7 +1060,7 @@ export function buildTransactionColumns(
 
             {/* 4. Recurring period */}
             <div className={btnWrap(isRecurringActive, isFocusedActionsColumn && focusedActionButton === 3)}>
-              <RecurringPeriodPopover transaction={transaction} />
+              <RecurringModalTrigger transaction={transaction} />
             </div>
 
             {/* 5. Email links */}
