@@ -105,7 +105,13 @@ class AlertIngestionService:
     async def _run_for_account(
         self, account: Dict[str, Any], since_date: Optional[datetime], until_date: Optional[datetime] = None,
     ) -> Dict[str, Any]:
-        alert_sender = account["alert_sender"]
+        # alert_sender may be comma-separated to handle senders that change
+        # over time (e.g. ICICI migrated from credit_cards@icicibank.com to
+        # credit_cards@icici.bank.in). All listed senders are ORed in the
+        # Gmail query so historical and new emails are both fetched.
+        alert_sender_raw = account["alert_sender"]
+        alert_senders = [s.strip() for s in alert_sender_raw.split(",") if s.strip()]
+        alert_sender = alert_senders[0]  # primary sender used for logging/parser lookup
         nickname = account.get("nickname", alert_sender)
 
         # Prefer the nickname-specific parser so that accounts sharing the same
@@ -132,7 +138,7 @@ class AlertIngestionService:
             messages = email_client.list_recent_alert_emails(
                 max_results=200,
                 days_back=days_back,
-                alert_senders=[alert_sender],
+                alert_senders=alert_senders,
                 since=watermark,
                 until=until_date,
             )

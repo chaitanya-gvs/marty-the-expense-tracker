@@ -41,6 +41,7 @@ class BankParserRegistry:
             "emandates@sbicard.com": [CashbackSBIParser()],
             "alerts@hdfcbank.bank.in": [SwiggyHDFCParser()],
             "credit_cards@icicibank.com": [AmazonICICIParser()],
+            "credit_cards@icici.bank.in": [AmazonICICIParser()],
             "alerts@axis.bank.in": [axis_atlas, axis_savings],
             "alerts@yes.bank.in": [YesBankSavingsParser()],
         }
