@@ -883,7 +883,7 @@ export function TransactionsTable({ filters, sort }: TransactionsTableProps) {
         {/* Sticky Header */}
         <div
           ref={headerScrollRef}
-          className="flex-shrink-0 w-full overflow-x-auto bg-card border-b border-border z-50 scrollbar-none"
+          className="flex-shrink-0 w-full overflow-x-auto bg-card border-b border-border z-10 scrollbar-none"
           onScroll={handleHeaderScroll}
         >
           <table
