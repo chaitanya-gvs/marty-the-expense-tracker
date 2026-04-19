@@ -107,7 +107,7 @@ export function Modal({
     <AnimatePresence>
       {open && (
         <div
-          className="fixed inset-0 z-[100] flex items-start justify-center"
+          className="fixed inset-0 z-40 flex items-start justify-center"
           role={role}
           aria-modal="true"
         >
