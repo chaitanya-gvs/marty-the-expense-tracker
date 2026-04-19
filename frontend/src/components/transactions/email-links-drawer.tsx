@@ -64,7 +64,10 @@ export function EmailLinksDrawer({
         include_amount_filter: true,
       };
 
-      const isSwiggy = rawDescription.includes("swiggy") || rawDescription.includes("instamart") || rawDescription.includes("pyu*swiggy") || rawDescription.includes("pyu*instamart");
+      const accountLower = (transaction.account || "").toLowerCase();
+      const isSwiggy = rawDescription.includes("swiggy") || rawDescription.includes("instamart") || rawDescription.includes("pyu*swiggy") || rawDescription.includes("pyu*instamart")
+        || accountLower.includes("swiggy") // catches BUNDL TECHNOLOGIES and other Swiggy merchant names on the co-branded HDFC card
+        || rawDescription.includes("bundl"); // Bundl Technologies = Swiggy's registered entity
 
       if (isUPI) {
         // UPI: Search for Uber trip emails by keyword + same-day date only.
