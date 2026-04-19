@@ -324,13 +324,14 @@ class StatementWorkflow:
     def _calculate_date_range(self) -> tuple[str, str]:
         """
         Calculate date range for statement retrieval:
-        From 13th of previous month to 13th of current month.
-        SBI Savings statement arrives on the 12th, so the 13th window captures it.
+        From 13th of previous month to today.
+
+        Using today as the end date (rather than a fixed day) ensures late-arriving
+        statements are always captured regardless of when the bank sends them.
+        The normalized_filename unique key in the processing log prevents
+        re-processing anything already inserted.
         """
         now = datetime.now()
-
-        # Current month 13th
-        current_month_13th = now.replace(day=13)
 
         # Previous month 13th
         if now.month == 1:
@@ -340,7 +341,7 @@ class StatementWorkflow:
 
         # Format dates for Gmail API (YYYY/MM/DD)
         start_date = previous_month_13th.strftime("%Y/%m/%d")
-        end_date = current_month_13th.strftime("%Y/%m/%d")
+        end_date = now.strftime("%Y/%m/%d")
 
         logger.info(f"Date range for statement retrieval: {start_date} to {end_date}", extra=self._log_extra())
         return start_date, end_date
