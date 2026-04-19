@@ -549,10 +549,6 @@ class TransactionStandardizer:
             if amount <= 0 or transaction_type is None:
                 continue
 
-            ref_col = row.get("Ref No./Chq. No.") or row.get("Ref.No./Chq.No.") or row.get("Ref.No./Chq.No")
-            ref_val = str(ref_col).strip() if ref_col is not None and pd.notna(ref_col) else ""
-            reference_number = ref_val if ref_val and ref_val.lower() not in ('', '0', '0.0', 'nan', 'none', '-') else None
-            
             standardized_data.append({
                 'transaction_date': self.parse_date(date_value),
                 'transaction_time': None,
@@ -561,13 +557,13 @@ class TransactionStandardizer:
                 'transaction_type': transaction_type,
                 'account': account_name or "SBI Savings Account",
                 'category': None,
-                'reference_number': reference_number,
+                'reference_number': None,
                 'source_file': filename,
                 'raw_data': row.to_dict()
             })
-        
+
         return pd.DataFrame(standardized_data)
-    
+
     
     def process_axis_bank_savings(self, df: pd.DataFrame, filename: str, account_name: str = None) -> pd.DataFrame:
         """Process Axis Bank Savings Account data"""
