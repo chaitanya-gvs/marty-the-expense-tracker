@@ -34,6 +34,7 @@ from src.services.statement_processor.pdf_unlocker import PDFUnlocker
 from src.services.splitwise_processor.service import SplitwiseService
 from src.utils.logger import get_logger
 from src.utils.password_manager import BankPasswordManager
+from src.utils.settings import get_settings
 from .statement_extractor_helper import StatementExtractorHelper
 from .splitwise_processor_helper import SplitwiseProcessorHelper
 from .data_standardizer_helper import DataStandardizerHelper
@@ -324,24 +325,24 @@ class StatementWorkflow:
     def _calculate_date_range(self) -> tuple[str, str]:
         """
         Calculate date range for statement retrieval:
-        From 13th of previous month to today.
+        From STATEMENT_SEARCH_DAY of the previous month to STATEMENT_SEARCH_DAY
+        of the current month (configurable via env var, default 25).
 
-        Using today as the end date (rather than a fixed day) ensures late-arriving
-        statements are always captured regardless of when the bank sends them.
         The normalized_filename unique key in the processing log prevents
-        re-processing anything already inserted.
+        re-processing anything already inserted within this window.
         """
         now = datetime.now()
+        day = get_settings().STATEMENT_SEARCH_DAY
 
-        # Previous month 13th
+        current_month_nth = now.replace(day=day)
+
         if now.month == 1:
-            previous_month_13th = now.replace(year=now.year - 1, month=12, day=13)
+            previous_month_nth = now.replace(year=now.year - 1, month=12, day=day)
         else:
-            previous_month_13th = now.replace(month=now.month - 1, day=13)
+            previous_month_nth = now.replace(month=now.month - 1, day=day)
 
-        # Format dates for Gmail API (YYYY/MM/DD)
-        start_date = previous_month_13th.strftime("%Y/%m/%d")
-        end_date = now.strftime("%Y/%m/%d")
+        start_date = previous_month_nth.strftime("%Y/%m/%d")
+        end_date = current_month_nth.strftime("%Y/%m/%d")
 
         logger.info(f"Date range for statement retrieval: {start_date} to {end_date}", extra=self._log_extra())
         return start_date, end_date

@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     # Email ingestion scheduler
     EMAIL_INGESTION_INTERVAL_HOURS: int = 4
 
+    # Statement search window: emails are fetched from the Nth of the previous
+    # month to the Nth of the current month. Set to a day that's safely after
+    # the latest bank delivers statements (default: 25).
+    STATEMENT_SEARCH_DAY: int = 25
+
     @computed_field
     @property
     def DATABASE_URL(self) -> str:  # noqa: N802 (FastAPI convention)
