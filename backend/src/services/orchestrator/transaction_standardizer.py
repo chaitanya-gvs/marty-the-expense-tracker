@@ -496,8 +496,10 @@ class TransactionStandardizer:
             if pd.isna(date_value) or str(date_value).strip() == "" or str(date_value).strip() == "-":
                 continue
             
-            # Get transaction description from "Transaction Reference" column
-            description = str(row.get("Transaction Reference", "")).strip()
+            # Description may be in "Transaction Reference" (old extraction) or "Description" (new)
+            description = str(
+                row.get("Transaction Reference") or row.get("Description") or ""
+            ).strip()
             if not description or description == "-" or description.lower() in ['nan', 'none']:
                 continue
             
@@ -506,11 +508,6 @@ class TransactionStandardizer:
                 logger.info(f"Skipping summary row: {description}")
                 continue
             
-            # The LLM consistently extracts SBI savings columns as:
-            #   Ref.No./Chq.No. → deposit/credit amount
-            #   Credit          → withdrawal/debit amount
-            #   Debit           → account balance (not the transaction amount)
-            # This is the opposite of what the column names suggest; handle it explicitly.
             def _parse_amount(val) -> float:
                 if val is None or (isinstance(val, float) and pd.isna(val)):
                     return 0.0
@@ -522,8 +519,22 @@ class TransactionStandardizer:
                 except (ValueError, AttributeError):
                     return 0.0
 
-            credit_amount = _parse_amount(row.get("Ref.No./Chq.No.") or row.get("Ref.No./Chq.No"))
-            debit_amount = _parse_amount(row.get("Credit"))
+            # Detect extraction format via Balance column:
+            # - Correct LLM extraction: Balance is populated, Debit=withdrawal, Credit=deposit
+            # - Old/fallback extraction: Balance is empty, Ref.No.=credit amount, Credit=debit amount
+            balance_raw = row.get("Balance")
+            balance_empty = balance_raw is None or (
+                isinstance(balance_raw, float) and pd.isna(balance_raw)
+            ) or str(balance_raw).strip() in ('', 'nan', 'none')
+
+            if balance_empty:
+                # Fallback: LLM shifted columns — Ref.No. holds credit, Credit holds debit
+                credit_amount = _parse_amount(row.get("Ref.No./Chq.No.") or row.get("Ref.No./Chq.No"))
+                debit_amount = _parse_amount(row.get("Credit"))
+            else:
+                # Correct format: standard banking convention
+                credit_amount = _parse_amount(row.get("Credit") or row.get("Deposit (Cr)") or row.get("Deposit"))
+                debit_amount = _parse_amount(row.get("Debit") or row.get("Withdrawal (Dr)") or row.get("Withdrawal"))
 
             amount = 0.0
             transaction_type = None
@@ -538,7 +549,9 @@ class TransactionStandardizer:
             if amount <= 0 or transaction_type is None:
                 continue
 
-            reference_number = None
+            ref_col = row.get("Ref No./Chq. No.") or row.get("Ref.No./Chq.No.") or row.get("Ref.No./Chq.No")
+            ref_val = str(ref_col).strip() if ref_col is not None and pd.notna(ref_col) else ""
+            reference_number = ref_val if ref_val and ref_val.lower() not in ('', '0', '0.0', 'nan', 'none', '-') else None
             
             standardized_data.append({
                 'transaction_date': self.parse_date(date_value),
