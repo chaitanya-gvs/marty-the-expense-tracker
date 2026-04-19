@@ -506,50 +506,39 @@ class TransactionStandardizer:
                 logger.info(f"Skipping summary row: {description}")
                 continue
             
-            # For savings account, determine amount from Debit/Credit columns
-            debit_str = str(row.get("Debit", "")).strip() if pd.notna(row.get("Debit")) else ""
-            credit_str = str(row.get("Credit", "")).strip() if pd.notna(row.get("Credit")) else ""
-            
-            # Handle hyphen (-) as empty value
-            if debit_str == "-":
-                debit_str = ""
-            if credit_str == "-":
-                credit_str = ""
-            
-            # Clean and parse amounts (remove commas, CR suffix, etc.)
+            # The LLM consistently extracts SBI savings columns as:
+            #   Ref.No./Chq.No. → deposit/credit amount
+            #   Credit          → withdrawal/debit amount
+            #   Debit           → account balance (not the transaction amount)
+            # This is the opposite of what the column names suggest; handle it explicitly.
+            def _parse_amount(val) -> float:
+                if val is None or (isinstance(val, float) and pd.isna(val)):
+                    return 0.0
+                s = str(val).strip().replace(',', '').replace('CR', '').replace('DR', '').strip()
+                if not s or s.lower() in ('nan', 'none', '-', ''):
+                    return 0.0
+                try:
+                    return float(s)
+                except (ValueError, AttributeError):
+                    return 0.0
+
+            credit_amount = _parse_amount(row.get("Ref.No./Chq.No.") or row.get("Ref.No./Chq.No"))
+            debit_amount = _parse_amount(row.get("Credit"))
+
             amount = 0.0
             transaction_type = None
-            
-            if debit_str and debit_str.lower() not in ['', 'nan', 'none', '-']:
-                try:
-                    # Remove commas and any suffixes
-                    debit_clean = debit_str.replace(',', '').replace('CR', '').replace('DR', '').strip()
-                    if debit_clean:
-                        amount = float(debit_clean)
-                        transaction_type = "debit"
-                except (ValueError, AttributeError):
-                    pass
-            
-            if credit_str and credit_str.lower() not in ['', 'nan', 'none', '-'] and amount == 0:
-                try:
-                    # Remove commas and any suffixes
-                    credit_clean = credit_str.replace(',', '').replace('CR', '').replace('DR', '').strip()
-                    if credit_clean:
-                        amount = float(credit_clean)
-                        transaction_type = "credit"
-                except (ValueError, AttributeError):
-                    pass
-            
+            if credit_amount > 0:
+                amount = credit_amount
+                transaction_type = "credit"
+            elif debit_amount > 0:
+                amount = debit_amount
+                transaction_type = "debit"
+
             # Skip if no valid amount found
             if amount <= 0 or transaction_type is None:
                 continue
-            
-            # Get reference number from "Ref.No./Chq.No." column
-            ref_no = row.get("Ref.No./Chq.No.") or row.get("Ref.No./Chq.No")
-            if pd.notna(ref_no) and str(ref_no).strip() not in ['', '-', 'nan', 'none']:
-                reference_number = str(ref_no).strip()
-            else:
-                reference_number = None
+
+            reference_number = None
             
             standardized_data.append({
                 'transaction_date': self.parse_date(date_value),
