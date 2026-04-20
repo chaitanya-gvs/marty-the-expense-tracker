@@ -519,34 +519,35 @@ class TransactionStandardizer:
                 except (ValueError, AttributeError):
                     return 0.0
 
-            # Detect extraction format via Balance column:
-            # - Correct LLM extraction: Balance is populated, Debit=withdrawal, Credit=deposit
-            # - Old/fallback extraction: Balance is empty, Ref.No.=credit amount, Credit=debit amount
-            balance_raw = row.get("Balance")
-            balance_empty = balance_raw is None or (
-                isinstance(balance_raw, float) and pd.isna(balance_raw)
-            ) or str(balance_raw).strip() in ('', 'nan', 'none')
-
-            if balance_empty:
-                # Fallback: LLM shifted columns — Ref.No. holds credit, Credit holds debit
-                credit_amount = _parse_amount(row.get("Ref.No./Chq.No.") or row.get("Ref.No./Chq.No"))
-                debit_amount = _parse_amount(row.get("Credit"))
+            # Determine direction from description — UPI narrations always contain /CR/ or /DR/.
+            # This is more reliable than column names because the LLM shifts columns unpredictably.
+            desc_upper = description.upper()
+            if '/CR/' in desc_upper or (
+                ('CREDIT' in desc_upper or 'INTEREST' in desc_upper) and '/DR/' not in desc_upper
+            ):
+                transaction_type = 'credit'
+            elif '/DR/' in desc_upper or ('DEBIT' in desc_upper and '/CR/' not in desc_upper):
+                transaction_type = 'debit'
             else:
-                # Correct format: standard banking convention
-                credit_amount = _parse_amount(row.get("Credit") or row.get("Deposit (Cr)") or row.get("Deposit"))
-                debit_amount = _parse_amount(row.get("Debit") or row.get("Withdrawal (Dr)") or row.get("Withdrawal"))
+                continue  # can't determine direction, skip
 
-            amount = 0.0
-            transaction_type = None
-            if credit_amount > 0:
-                amount = credit_amount
-                transaction_type = "credit"
-            elif debit_amount > 0:
-                amount = debit_amount
-                transaction_type = "debit"
+            # Collect all non-zero numeric values across every possible amount column.
+            # The LLM may put the transaction amount in any of these depending on the run.
+            # The running balance is always the larger value; the transaction amount is the smaller.
+            candidate_cols = [
+                'Debit', 'Credit', 'Withdrawal (Dr)', 'Deposit (Cr)',
+                'Withdrawal', 'Deposit',
+                'Ref No./Chq. No.', 'Ref.No./Chq.No.', 'Ref.No./Chq.No',
+            ]
+            non_zero = [_parse_amount(row.get(c)) for c in candidate_cols]
+            non_zero = [v for v in non_zero if v > 0]
 
-            # Skip if no valid amount found
-            if amount <= 0 or transaction_type is None:
+            if not non_zero:
+                continue
+
+            amount = min(non_zero)  # balance is always larger than the individual transaction
+
+            if amount <= 0:
                 continue
 
             standardized_data.append({
