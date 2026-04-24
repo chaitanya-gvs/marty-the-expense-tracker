@@ -79,6 +79,7 @@ export function BudgetsList({ budgets, isLoading, period }: BudgetsListProps) {
             <BudgetCard
               key={b.id}
               budget={b}
+              period={period}
               onEdit={handleEdit}
               onDelete={handleDelete}
               onOverride={(b) => setOverrideBudget(b)}
