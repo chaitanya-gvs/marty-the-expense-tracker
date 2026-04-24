@@ -305,7 +305,7 @@ export function BudgetCard({ budget, period, onEdit, onDelete, onOverride }: Bud
                             : "text-foreground",
                       )}
                     >
-                      {formatCurrency(tx.amount)}
+                      {formatCurrency(tx.split_share_amount ?? tx.amount)}
                     </span>
                   </div>
                 );

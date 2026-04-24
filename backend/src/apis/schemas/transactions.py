@@ -102,6 +102,9 @@ class TransactionResponse(BaseModel):
     is_transfer: bool
     is_flagged: Optional[bool] = False
     is_grouped_expense: Optional[bool] = False
+    is_recurring: Optional[bool] = False
+    recurring_key: Optional[str] = None
+    recurrence_period: Optional[str] = None
     split_breakdown: Optional[Dict[str, Any]] = None
     paid_by: Optional[str] = None
     transaction_group_id: Optional[str] = None
