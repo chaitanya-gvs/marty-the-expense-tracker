@@ -1,13 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Replace, Edit2, Trash2, Repeat } from "lucide-react";
+import { Replace, Edit2, Trash2, ChevronDown } from "lucide-react";
 import { BudgetSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format-utils";
+import { useTransactions } from "@/hooks/use-transactions";
 
 interface BudgetCardProps {
   budget: BudgetSummary;
+  period: string; // "YYYY-MM"
   onEdit: (budget: BudgetSummary) => void;
   onDelete: (id: string) => void;
   onOverride: (budget: BudgetSummary) => void;
@@ -34,7 +37,25 @@ function getUtilisationBorderColor(pct: number): string {
   return "border-l-green-500";
 }
 
-export function BudgetCard({ budget, onEdit, onDelete, onOverride }: BudgetCardProps) {
+function shortDate(dateString: string): string {
+  try {
+    const d = new Date(dateString);
+    return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  } catch {
+    return dateString;
+  }
+}
+
+function periodToDateRange(period: string) {
+  const [year, month] = period.split("-").map(Number);
+  const start = `${period}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const end = `${period}-${String(lastDay).padStart(2, "0")}`;
+  return { start, end };
+}
+
+export function BudgetCard({ budget, period, onEdit, onDelete, onOverride }: BudgetCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const isOverBudget = budget.headroom < 0;
   const totalSpend = budget.committed_spend + budget.variable_spend;
 
@@ -42,8 +63,14 @@ export function BudgetCard({ budget, onEdit, onDelete, onOverride }: BudgetCardP
   const committedPct = budget.effective_limit > 0
     ? Math.min((budget.committed_spend / budget.effective_limit) * 100, 100)
     : 0;
+  const projectedAmt = budget.committed_items
+    .filter(item => item.is_projected)
+    .reduce((sum, item) => sum + item.amount, 0);
+  const projectedPct = budget.effective_limit > 0
+    ? (Math.min(projectedAmt, Math.max(0, budget.effective_limit - budget.committed_spend)) / budget.effective_limit) * 100
+    : 0;
   const variablePct = budget.effective_limit > 0
-    ? (Math.min(budget.variable_spend, Math.max(0, budget.effective_limit - budget.committed_spend))
+    ? (Math.min(budget.variable_spend, Math.max(0, budget.effective_limit - budget.committed_spend - projectedAmt))
         / budget.effective_limit) * 100
     : 0;
 
@@ -51,197 +78,283 @@ export function BudgetCard({ budget, onEdit, onDelete, onOverride }: BudgetCardP
   const healthText   = getUtilisationTextColor(budget.utilisation_pct);
   const healthBorder = getUtilisationBorderColor(budget.utilisation_pct);
 
+  // Transactions — fetched lazily on first expand
+  const dateRange = periodToDateRange(period);
+  const { data: txData, isLoading: txLoading } = useTransactions(
+    isExpanded
+      ? { categories: [budget.category_name], date_range: dateRange }
+      : undefined,
+    { field: "date", direction: "desc" },
+    { page: 0, limit: 200 },
+  );
+  const transactions = txData?.data ?? [];
+  const upcomingItems = budget.committed_items.filter(item => item.is_projected);
+
   return (
     <div
       className={cn(
-        "rounded-xl border border-border bg-card border-l-[3px] p-4 space-y-3",
+        "rounded-xl border border-border bg-card border-l-[3px] space-y-3",
         healthBorder,
         isOverBudget && "border-t border-t-red-500/20",
       )}
     >
-      {/* Card header */}
-      <div>
-        <div className="flex items-center gap-2">
+      {/* Clickable card body */}
+      <div
+        className="p-4 space-y-3 cursor-pointer hover:bg-accent/20 transition-colors rounded-xl"
+        onClick={() => setIsExpanded(prev => !prev)}
+      >
+        {/* Card header */}
+        <div>
+          <div className="flex items-center gap-2">
 
-          {/* Name + Override badge */}
-          <div className="flex items-center gap-1.5 min-w-0 flex-1">
-            <span className="font-semibold text-foreground truncate">
-              {budget.name ?? budget.category_name}
-            </span>
-            {budget.has_override && (
-              <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded border border-indigo-500/30 text-indigo-400">
-                Override
+            {/* Name + Override badge */}
+            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+              <span className="font-semibold text-foreground truncate">
+                {budget.name ?? budget.category_name}
               </span>
-            )}
+              {budget.has_override && (
+                <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded border border-indigo-500/30 text-indigo-400">
+                  Override
+                </span>
+              )}
+            </div>
+
+            {/* Spent amount + headroom badge */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className={cn("text-base font-bold font-mono", healthText)}>
+                {formatCurrency(totalSpend)}
+              </span>
+              {isOverBudget ? (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-500/15 text-red-400">
+                  Over {formatCurrency(Math.abs(budget.headroom))}
+                </span>
+              ) : (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                  {formatCurrency(budget.headroom)} left
+                </span>
+              )}
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center gap-0.5 shrink-0">
+              <Button
+                variant="ghost" size="sm"
+                className="h-7 w-7 p-0 rounded-md"
+                onClick={(e) => { e.stopPropagation(); onOverride(budget); }}
+                title="Set monthly override"
+              >
+                <Replace className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost" size="sm"
+                className="h-7 w-7 p-0 rounded-md"
+                onClick={(e) => { e.stopPropagation(); onEdit(budget); }}
+                title="Edit budget"
+              >
+                <Edit2 className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost" size="sm"
+                className="h-7 w-7 p-0 rounded-md text-destructive/60 hover:text-destructive"
+                onClick={(e) => { e.stopPropagation(); onDelete(budget.id); }}
+                title="Delete budget"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+              <ChevronDown
+                className={cn(
+                  "h-3.5 w-3.5 text-muted-foreground/50 transition-transform ml-0.5",
+                  isExpanded && "rotate-180",
+                )}
+              />
+            </div>
+
           </div>
 
-          {/* Spent amount + headroom badge */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <span className={cn("text-base font-bold font-mono", healthText)}>
-              {formatCurrency(totalSpend)}
-            </span>
-            {isOverBudget ? (
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-500/15 text-red-400">
-                Over {formatCurrency(Math.abs(budget.headroom))}
-              </span>
-            ) : (
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                {formatCurrency(budget.headroom)} left
-              </span>
-            )}
+          {/* Limit subtitle */}
+          <div className="text-xs text-muted-foreground mt-0.5">
+            Limit: {formatCurrency(budget.effective_limit)} / month
           </div>
-
-          {/* Action buttons — always visible */}
-          <div className="flex items-center gap-0.5 shrink-0">
-            <Button
-              variant="ghost" size="sm"
-              className="h-7 w-7 p-0 rounded-md"
-              onClick={() => onOverride(budget)}
-              title="Set monthly override"
-            >
-              <Replace className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost" size="sm"
-              className="h-7 w-7 p-0 rounded-md"
-              onClick={() => onEdit(budget)}
-              title="Edit budget"
-            >
-              <Edit2 className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost" size="sm"
-              className="h-7 w-7 p-0 rounded-md text-destructive/60 hover:text-destructive"
-              onClick={() => onDelete(budget.id)}
-              title="Delete budget"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-
         </div>
 
-        {/* Limit subtitle */}
-        <div className="text-xs text-muted-foreground mt-0.5">
-          Limit: {formatCurrency(budget.effective_limit)} / month
+        {/* Stacked progress bar */}
+        <div className="h-[10px] rounded-full bg-muted overflow-hidden flex">
+          {isOverBudget ? (
+            <div className="h-full w-full bg-gradient-to-r from-orange-500 to-red-500" />
+          ) : (
+            <>
+              {committedPct > 0 && (
+                <div
+                  className="h-full bg-indigo-500 transition-all"
+                  style={{ width: `${committedPct}%` }}
+                />
+              )}
+              {projectedPct > 0 && (
+                <div
+                  className="h-full bg-indigo-500/30 transition-all"
+                  style={{ width: `${projectedPct}%` }}
+                />
+              )}
+              {variablePct > 0 && (
+                <div
+                  className={cn("h-full transition-all", healthBg)}
+                  style={{ width: `${variablePct}%` }}
+                />
+              )}
+            </>
+          )}
         </div>
-      </div>
 
-      {/* Stacked progress bar */}
-      <div className="h-[10px] rounded-full bg-muted overflow-hidden flex">
-        {isOverBudget ? (
-          <div className="h-full w-full bg-gradient-to-r from-orange-500 to-red-500" />
-        ) : (
-          <>
-            {committedPct > 0 && (
-              <div
-                className="h-full bg-indigo-500 transition-all"
-                style={{ width: `${committedPct}%` }}
-              />
-            )}
-            {variablePct > 0 && (
-              <div
-                className={cn("h-full transition-all", healthBg)}
-                style={{ width: `${variablePct}%` }}
-              />
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Legend row */}
-      <div className="flex items-center gap-4 flex-wrap">
-        <span
-          className={cn(
-            "flex items-center gap-1 text-[10px] text-indigo-400",
-            budget.committed_spend === 0 && "opacity-40",
-          )}
-        >
-          <span className="inline-block h-[7px] w-[7px] rounded-full bg-indigo-500 shrink-0" />
-          Committed {formatCurrency(budget.committed_spend)}
-        </span>
-
-        <span
-          className={cn(
-            "flex items-center gap-1 text-[10px]",
-            healthText,
-            budget.variable_spend === 0 && "opacity-40",
-          )}
-        >
-          <span className={cn("inline-block h-[7px] w-[7px] rounded-full shrink-0", healthBg)} />
-          Variable {formatCurrency(budget.variable_spend)}
-        </span>
-
-        {isOverBudget ? (
-          <span className="flex items-center gap-1 text-[10px] text-red-400 ml-auto">
-            <span className="inline-block h-[7px] w-[7px] rounded-full bg-muted-foreground/30 shrink-0" />
-            −{formatCurrency(Math.abs(budget.headroom))} over
-          </span>
-        ) : (
+        {/* Legend row */}
+        <div className="flex items-center gap-4 flex-wrap">
           <span
             className={cn(
-              "flex items-center gap-1 text-[10px] text-muted-foreground ml-auto",
-              budget.headroom === 0 && "opacity-40",
+              "flex items-center gap-1 text-[10px] text-indigo-400",
+              budget.committed_spend === 0 && "opacity-40",
             )}
           >
-            <span className="inline-block h-[7px] w-[7px] rounded-full bg-muted-foreground/30 shrink-0" />
-            {formatCurrency(budget.headroom)} free
+            <span className="inline-block h-[7px] w-[7px] rounded-full bg-indigo-500 shrink-0" />
+            Committed {formatCurrency(budget.committed_spend)}
           </span>
-        )}
+
+          {projectedAmt > 0 && (
+            <span className="flex items-center gap-1 text-[10px] text-indigo-400/60">
+              <span className="inline-block h-[7px] w-[7px] rounded-full bg-indigo-500/30 shrink-0" />
+              Projected {formatCurrency(projectedAmt)}
+            </span>
+          )}
+
+          <span
+            className={cn(
+              "flex items-center gap-1 text-[10px]",
+              healthText,
+              budget.variable_spend === 0 && "opacity-40",
+            )}
+          >
+            <span className={cn("inline-block h-[7px] w-[7px] rounded-full shrink-0", healthBg)} />
+            Variable {formatCurrency(budget.variable_spend)}
+          </span>
+
+          {isOverBudget ? (
+            <span className="flex items-center gap-1 text-[10px] text-red-400 ml-auto">
+              <span className="inline-block h-[7px] w-[7px] rounded-full bg-muted-foreground/30 shrink-0" />
+              −{formatCurrency(Math.abs(budget.headroom))} over
+            </span>
+          ) : (
+            <span
+              className={cn(
+                "flex items-center gap-1 text-[10px] text-muted-foreground ml-auto",
+                budget.headroom === 0 && "opacity-40",
+              )}
+            >
+              <span className="inline-block h-[7px] w-[7px] rounded-full bg-muted-foreground/30 shrink-0" />
+              {formatCurrency(budget.headroom)} free
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* Committed items block — only when recurring items exist */}
-      {budget.committed_items.length > 0 && (
-        <div className="bg-background/60 rounded-lg border border-border/50 p-3 space-y-2">
-
-          <div className="flex items-center gap-1.5">
-            <Repeat className="h-3 w-3 text-indigo-400 shrink-0" />
-            <span className="text-[8px] uppercase tracking-wider text-muted-foreground font-medium">
-              Recurring · {budget.committed_items.length} item{budget.committed_items.length !== 1 ? "s" : ""}
-            </span>
-          </div>
-
-          <div className="h-px bg-border/50" />
-
-          <div className="space-y-1.5">
-            {budget.committed_items.map((item, i) => (
-              <div key={item.recurring_key ?? i} className="flex items-center justify-between gap-2">
-
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span
-                    className={cn(
-                      "text-xs truncate",
-                      item.is_projected
-                        ? "text-muted-foreground italic"
-                        : "text-foreground/80",
-                    )}
+      {/* Unified timeline — shown when expanded */}
+      {isExpanded && (
+        <div className="border-t border-border/60 mx-4 pb-4">
+          {txLoading ? (
+            <div className="space-y-2 pt-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-8 rounded bg-muted animate-pulse" />
+              ))}
+            </div>
+          ) : transactions.length === 0 && upcomingItems.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-6">
+              No transactions this period.
+            </p>
+          ) : (
+            <div className="pt-2">
+              {/* Actual transactions — recurring and variable interleaved by date */}
+              {transactions.map((tx) => {
+                const isRecurring = tx.is_recurring === true;
+                const isCredit = tx.direction === "credit";
+                return (
+                  <div
+                    key={tx.id}
+                    className="flex items-center gap-3 py-2 border-b border-border/30 last:border-0"
                   >
-                    {item.description}
-                  </span>
-                  {item.recurrence_period && (
-                    <span className="shrink-0 text-[8px] bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 px-1 rounded capitalize">
-                      {item.recurrence_period}
+                    <span
+                      className={cn(
+                        "shrink-0 text-[9px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap",
+                        isRecurring
+                          ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/40"
+                          : "bg-muted text-muted-foreground border-border",
+                      )}
+                    >
+                      {isRecurring ? "Recurring" : "Variable"}
                     </span>
-                  )}
-                  {item.is_projected && (
-                    <span className="shrink-0 text-[8px] text-muted-foreground/60 bg-muted/50 px-1 rounded">
-                      projected
+                    <span className="shrink-0 text-xs text-muted-foreground w-12 tabular-nums">
+                      {shortDate(tx.date)}
                     </span>
-                  )}
-                </div>
+                    <span className="flex-1 text-sm text-foreground/80 truncate">
+                      {tx.description}
+                    </span>
+                    <span
+                      className={cn(
+                        "shrink-0 text-sm font-mono tabular-nums",
+                        isCredit
+                          ? "text-green-400"
+                          : isRecurring
+                            ? "text-indigo-400"
+                            : "text-foreground",
+                      )}
+                    >
+                      {formatCurrency(tx.amount)}
+                    </span>
+                  </div>
+                );
+              })}
 
-                <span
-                  className={cn(
-                    "shrink-0 text-xs font-mono",
-                    item.is_projected ? "text-muted-foreground" : "text-indigo-400",
+              {/* Dashed divider + upcoming projected items */}
+              {upcomingItems.length > 0 && (
+                <>
+                  {transactions.length > 0 && (
+                    <div className="border-t border-dashed border-border/40 my-1" />
                   )}
-                >
-                  {formatCurrency(item.amount)}
-                </span>
+                  {upcomingItems.map((item, i) => (
+                    <div
+                      key={item.recurring_key ?? i}
+                      className="flex items-center gap-3 py-2 opacity-50 border-b border-border/20 last:border-0"
+                    >
+                      <span className="shrink-0 text-[9px] font-semibold px-2 py-0.5 rounded-full border bg-muted text-muted-foreground border-border whitespace-nowrap">
+                        Upcoming
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground w-12 tabular-nums">
+                        —
+                      </span>
+                      <span className="flex-1 text-sm text-muted-foreground italic truncate">
+                        {item.description}
+                      </span>
+                      <span className="shrink-0 text-sm font-mono tabular-nums text-muted-foreground">
+                        {formatCurrency(item.amount)}
+                      </span>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
 
-              </div>
-            ))}
-          </div>
+          {/* Footer: count + total debit spend */}
+          {!txLoading && transactions.length > 0 && (
+            <div className="pt-3 border-t border-border flex items-center justify-between mt-1">
+              <span className="text-xs text-muted-foreground">
+                {transactions.length} transaction{transactions.length !== 1 ? "s" : ""}
+              </span>
+              <span className="text-sm font-mono font-semibold text-foreground">
+                {formatCurrency(
+                  transactions
+                    .filter(t => t.direction !== "credit")
+                    .reduce((sum, t) => sum + t.amount, 0),
+                )}
+              </span>
+            </div>
+          )}
         </div>
       )}
     </div>
