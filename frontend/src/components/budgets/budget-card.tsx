@@ -351,7 +351,7 @@ export function BudgetCard({ budget, period, onEdit, onDelete, onOverride }: Bud
                 {formatCurrency(
                   transactions
                     .filter(t => t.direction !== "credit")
-                    .reduce((sum, t) => sum + t.amount, 0),
+                    .reduce((sum, t) => sum + (t.split_share_amount ?? t.amount), 0),
                 )}
               </span>
             </div>
