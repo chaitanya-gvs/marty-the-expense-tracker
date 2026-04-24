@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Replace, Edit2, Trash2, ChevronDown } from "lucide-react";
 import { BudgetSummary } from "@/lib/types";
@@ -79,13 +79,14 @@ export function BudgetCard({ budget, period, onEdit, onDelete, onOverride }: Bud
   const healthBorder = getUtilisationBorderColor(budget.utilisation_pct);
 
   // Transactions — fetched lazily on first expand
-  const dateRange = periodToDateRange(period);
+  const dateRange = useMemo(() => periodToDateRange(period), [period]);
   const { data: txData, isLoading: txLoading } = useTransactions(
     isExpanded
       ? { categories: [budget.category_name], date_range: dateRange }
       : undefined,
     { field: "date", direction: "desc" },
     { page: 0, limit: 200 },
+    { enabled: isExpanded },
   );
   const transactions = txData?.data ?? [];
   const upcomingItems = budget.committed_items.filter(item => item.is_projected);

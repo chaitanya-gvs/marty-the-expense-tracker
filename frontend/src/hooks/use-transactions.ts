@@ -7,11 +7,13 @@ import { Transaction, TransactionFilters, TransactionSort, PaginationParams, Spl
 export function useTransactions(
   filters?: TransactionFilters,
   sort?: TransactionSort,
-  pagination?: PaginationParams
+  pagination?: PaginationParams,
+  options?: { enabled?: boolean }
 ) {
   return useQuery({
     queryKey: ["transactions", filters, sort, pagination],
     queryFn: () => apiClient.getTransactions(filters, sort, pagination),
+    enabled: options?.enabled !== false,
   });
 }
 
