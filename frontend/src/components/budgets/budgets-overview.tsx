@@ -35,7 +35,10 @@ export function BudgetsOverview({ data, isLoading }: BudgetsOverviewProps) {
 
   const budgets = data?.budgets ?? [];
   const totalLimit = budgets.reduce((s, b) => s + b.effective_limit, 0);
-  const totalCommitted = budgets.reduce((s, b) => s + b.committed_spend, 0);
+  const totalActualCommitted = budgets.reduce((s, b) => s + b.committed_spend, 0);
+  const totalProjected = budgets.reduce((s, b) =>
+    s + b.committed_items.filter(i => i.is_projected).reduce((ps, i) => ps + i.amount, 0), 0);
+  const totalCommitted = totalActualCommitted + totalProjected;
   const totalVariable = budgets.reduce((s, b) => s + b.variable_spend, 0);
   const totalHeadroom = totalLimit - totalCommitted - totalVariable;
   const overCount = budgets.filter(b => b.headroom < 0).length;
