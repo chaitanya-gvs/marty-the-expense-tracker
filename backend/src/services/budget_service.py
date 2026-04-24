@@ -18,6 +18,25 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
+
+def _is_due_this_period(last_date: date, period_start: date, recurrence_period: Optional[str]) -> bool:
+    """
+    Return True if a recurring item is expected to recur in the month of period_start,
+    given its last known transaction date and recurrence cadence.
+    """
+    if recurrence_period in (None, "monthly"):
+        return True
+    if recurrence_period == "yearly":
+        return last_date.month == period_start.month
+    if recurrence_period == "quarterly":
+        months_since = (
+            (period_start.year - last_date.year) * 12
+            + (period_start.month - last_date.month)
+        )
+        return months_since % 3 == 0
+    # "custom" or any unknown cadence — include to avoid silent omissions
+    return True
+
 from sqlalchemy import text
 
 from src.services.database_manager.connection import get_session_factory
@@ -100,7 +119,8 @@ async def compute_budget_summary(budget_id: str, period: str) -> Dict[str, Any]:
                    t.user_description,
                    t.description,
                    t.amount,
-                   t.recurrence_period
+                   t.recurrence_period,
+                   t.transaction_date AS last_date
             FROM transactions t
             WHERE t.category_id = :category_id
               AND t.is_recurring = true
@@ -115,6 +135,9 @@ async def compute_budget_summary(budget_id: str, period: str) -> Dict[str, Any]:
             key = row["key"]
             if key not in committed_by_key:
                 # Only add projection if this recurring item hasn't landed yet this month
+                # and is actually due in this period (e.g. yearly items only project in their month)
+                if not _is_due_this_period(row["last_date"], period_start, row["recurrence_period"]):
+                    continue
                 desc = row["user_description"] or row["description"]
                 committed_by_key[key] = {
                     "recurring_key": key,
