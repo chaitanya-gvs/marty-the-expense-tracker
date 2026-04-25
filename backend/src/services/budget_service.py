@@ -18,6 +18,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import text
+
 
 def _is_due_this_period(last_date: date, period_start: date, recurrence_period: Optional[str]) -> bool:
     """
@@ -36,8 +38,6 @@ def _is_due_this_period(last_date: date, period_start: date, recurrence_period: 
         return months_since % 3 == 0
     # "custom" or any unknown cadence — include to avoid silent omissions
     return True
-
-from sqlalchemy import text
 
 from src.services.database_manager.connection import get_session_factory
 from src.utils.logger import get_logger
@@ -85,7 +85,7 @@ async def compute_budget_summary(budget_id: str, period: str) -> Dict[str, Any]:
             SELECT t.recurring_key,
                    t.description,
                    t.user_description,
-                   t.amount,
+                   COALESCE(t.split_share_amount, t.amount) AS amount,
                    t.recurrence_period
             FROM transactions t
             WHERE t.category_id = :category_id
@@ -93,6 +93,7 @@ async def compute_budget_summary(budget_id: str, period: str) -> Dict[str, Any]:
               AND t.is_deleted = false
               AND t.direction = 'debit'
               AND t.transaction_date BETWEEN :period_start AND :period_end
+              AND (t.transaction_group_id IS NULL OR t.is_split = true OR t.is_grouped_expense = true)
         """), {"category_id": category_id, "period_start": period_start, "period_end": period_end})).mappings().all()
 
         # Build committed items from actual this-month transactions
@@ -118,7 +119,7 @@ async def compute_budget_summary(budget_id: str, period: str) -> Dict[str, Any]:
                    COALESCE(t.recurring_key, t.user_description, t.description) AS key,
                    t.user_description,
                    t.description,
-                   t.amount,
+                   COALESCE(t.split_share_amount, t.amount) AS amount,
                    t.recurrence_period,
                    t.transaction_date AS last_date
             FROM transactions t
@@ -127,6 +128,7 @@ async def compute_budget_summary(budget_id: str, period: str) -> Dict[str, Any]:
               AND t.is_deleted = false
               AND t.direction = 'debit'
               AND t.transaction_date < :period_start
+              AND (t.transaction_group_id IS NULL OR t.is_split = true OR t.is_grouped_expense = true)
             ORDER BY COALESCE(t.recurring_key, t.user_description, t.description),
                      t.transaction_date DESC
         """), {"category_id": category_id, "period_start": period_start})).mappings().all()
@@ -154,13 +156,14 @@ async def compute_budget_summary(budget_id: str, period: str) -> Dict[str, Any]:
 
         # 4. Variable spend — non-recurring debit transactions this month
         variable_row = (await session.execute(text("""
-            SELECT COALESCE(SUM(t.amount), 0) AS total
+            SELECT COALESCE(SUM(COALESCE(t.split_share_amount, t.amount)), 0) AS total
             FROM transactions t
             WHERE t.category_id = :category_id
               AND (t.is_recurring = false OR t.is_recurring IS NULL)
               AND t.is_deleted = false
               AND t.direction = 'debit'
               AND t.transaction_date BETWEEN :period_start AND :period_end
+              AND (t.transaction_group_id IS NULL OR t.is_split = true OR t.is_grouped_expense = true)
         """), {"category_id": category_id, "period_start": period_start, "period_end": period_end})).mappings().first()
 
         variable_spend = Decimal(str(variable_row["total"]))
