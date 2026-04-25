@@ -4,35 +4,61 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus, PiggyBank } from "lucide-react";
 import { BudgetCard } from "@/components/budgets/budget-card";
-import { BudgetCreateModal } from "@/components/budgets/budget-create-modal";
 import { BudgetOverrideModal } from "@/components/budgets/budget-override-modal";
 import { useDeleteBudget } from "@/hooks/use-budgets";
 import { BudgetSummary } from "@/lib/types";
 import { toast } from "sonner";
 
+type SortKey = "utilisation_desc" | "name_asc" | "spend_desc" | "headroom_asc";
+
+function sortBudgets(budgets: BudgetSummary[], sortKey: SortKey): BudgetSummary[] {
+  const sorted = [...budgets];
+  switch (sortKey) {
+    case "utilisation_desc":
+      return sorted.sort((a, b) => b.utilisation_pct - a.utilisation_pct);
+    case "name_asc":
+      return sorted.sort((a, b) =>
+        (a.name ?? a.category_name).localeCompare(b.name ?? b.category_name),
+      );
+    case "spend_desc":
+      return sorted.sort(
+        (a, b) =>
+          b.committed_spend + b.variable_spend - (a.committed_spend + a.variable_spend),
+      );
+    case "headroom_asc":
+      return sorted.sort((a, b) => a.headroom - b.headroom);
+  }
+}
+
 interface BudgetsListProps {
   budgets: BudgetSummary[];
   isLoading: boolean;
   period: string;
+  onAddBudget: () => void;
+  onEditBudget: (budget: BudgetSummary) => void;
 }
 
-export function BudgetsList({ budgets, isLoading, period }: BudgetsListProps) {
-  const [createOpen, setCreateOpen] = useState(false);
-  const [editingBudget, setEditingBudget] = useState<BudgetSummary | null>(null);
+export function BudgetsList({
+  budgets,
+  isLoading,
+  period,
+  onAddBudget,
+  onEditBudget,
+}: BudgetsListProps) {
+  const [sortKey, setSortKey] = useState<SortKey>("utilisation_desc");
   const [overrideBudget, setOverrideBudget] = useState<BudgetSummary | null>(null);
   const deleteBudget = useDeleteBudget();
+
+  const sortedBudgets = sortBudgets(budgets, sortKey);
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this budget and all its overrides?")) return;
     try {
       await deleteBudget.mutateAsync(id);
       toast.success("Budget deleted");
-    } catch { toast.error("Failed to delete budget"); }
-  };
-
-  const handleEdit = (budget: BudgetSummary) => {
-    setEditingBudget(budget);
-    setCreateOpen(true);
+    } catch {
+      toast.error("Failed to delete budget");
+    }
   };
 
   if (isLoading) {
@@ -47,11 +73,22 @@ export function BudgetsList({ budgets, isLoading, period }: BudgetsListProps) {
 
   return (
     <>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+      <div className="flex items-center justify-between mb-4 gap-3">
+        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex-1">
           Monthly Budgets · {budgets.length} active
         </h2>
-        <Button size="sm" onClick={() => { setEditingBudget(null); setCreateOpen(true); }}>
+        <select
+          value={sortKey}
+          onChange={(e) => setSortKey(e.target.value as SortKey)}
+          className="text-xs bg-transparent text-muted-foreground border border-border rounded-md px-2 py-1 cursor-pointer hover:border-border/80 focus:outline-none"
+          aria-label="Sort budgets"
+        >
+          <option value="utilisation_desc">↓ Utilisation %</option>
+          <option value="name_asc">A → Z</option>
+          <option value="spend_desc">↓ Amount spent</option>
+          <option value="headroom_asc">↑ Headroom</option>
+        </select>
+        <Button size="sm" onClick={onAddBudget}>
           <Plus className="h-3.5 w-3.5 mr-1" /> Add Budget
         </Button>
       </div>
@@ -68,19 +105,19 @@ export function BudgetsList({ budgets, isLoading, period }: BudgetsListProps) {
           <Button
             size="sm"
             className="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white"
-            onClick={() => { setEditingBudget(null); setCreateOpen(true); }}
+            onClick={onAddBudget}
           >
             <Plus className="h-3.5 w-3.5 mr-1" /> Add Budget
           </Button>
         </div>
       ) : (
         <div className="space-y-4">
-          {budgets.map(b => (
+          {sortedBudgets.map((b) => (
             <BudgetCard
               key={b.id}
               budget={b}
               period={period}
-              onEdit={handleEdit}
+              onEdit={onEditBudget}
               onDelete={handleDelete}
               onOverride={(b) => setOverrideBudget(b)}
             />
@@ -88,11 +125,6 @@ export function BudgetsList({ budgets, isLoading, period }: BudgetsListProps) {
         </div>
       )}
 
-      <BudgetCreateModal
-        isOpen={createOpen}
-        onClose={() => { setCreateOpen(false); setEditingBudget(null); }}
-        editingBudget={editingBudget}
-      />
       <BudgetOverrideModal
         isOpen={!!overrideBudget}
         onClose={() => setOverrideBudget(null)}
