@@ -52,7 +52,8 @@ def test_budget_summary_default_period(client):
     assert "data" in body
     assert "period" in body["data"]
     assert "budgets" in body["data"]
-    assert "unbudgeted_categories" in body["data"]
+    assert "coverage_gaps" in body["data"]          # was: unbudgeted_categories
+    assert "unbudgeted_categories" not in body["data"]  # confirm old key is gone
 
 
 def test_budget_summary_period_format_validation(client):

@@ -42,10 +42,15 @@ async def get_budgets_summary(
     period = period or _current_period()
     summaries = await compute_all_budgets_summary(period)
 
-    # Also include categories with recurring but no budget (for warnings)
-    unbudgeted = await BudgetOperations.get_categories_with_recurring_but_no_budget()
+    # Coverage gaps: recurring without a budget + variable spend without a budget
+    # Errors here are non-fatal — budgets still load, warnings just won't show
+    try:
+        coverage_gaps = await BudgetOperations.get_budget_coverage_gaps(period)
+    except Exception as e:
+        logger.error("Failed to compute coverage gaps for period %s: %s", period, e)
+        coverage_gaps = {"recurring_gaps": [], "variable_gaps": []}
 
-    return ApiResponse(data={"budgets": summaries, "unbudgeted_categories": unbudgeted, "period": period})
+    return ApiResponse(data={"budgets": summaries, "coverage_gaps": coverage_gaps, "period": period})
 
 
 @router.get("/{budget_id}/summary", response_model=ApiResponse)
