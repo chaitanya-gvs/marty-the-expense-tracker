@@ -106,3 +106,23 @@ export function useSetRecurring() {
     },
   });
 }
+
+export function useRecurringCount(recurringKey: string | null) {
+  return useQuery({
+    queryKey: ["recurring-count", recurringKey],
+    queryFn: () => apiClient.getRecurringCount(recurringKey!),
+    enabled: recurringKey !== null,
+    staleTime: 0,
+  });
+}
+
+export function useCancelRecurring() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (recurringKey: string) => apiClient.cancelRecurring(recurringKey),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["budgets"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    },
+  });
+}
