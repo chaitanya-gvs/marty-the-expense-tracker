@@ -2106,3 +2106,38 @@ class TransactionOperations:
             })
             await session.commit()
             return result.rowcount > 0
+
+    @staticmethod
+    async def count_recurring_by_key(recurring_key: str) -> int:
+        """Return count of non-deleted transactions with the given recurring_key."""
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            result = await session.execute(text("""
+                SELECT COUNT(*) AS cnt
+                FROM transactions
+                WHERE recurring_key = :recurring_key
+                  AND is_deleted = false
+            """), {"recurring_key": recurring_key})
+            row = result.mappings().first()
+            return int(row["cnt"]) if row else 0
+
+    @staticmethod
+    async def cancel_recurring_by_key(recurring_key: str) -> int:
+        """
+        Unmark all non-deleted transactions with the given recurring_key as recurring.
+        Sets is_recurring=false, recurring_key=null, recurrence_period=null.
+        Returns the number of rows updated.
+        """
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            result = await session.execute(text("""
+                UPDATE transactions
+                SET is_recurring = false,
+                    recurring_key = NULL,
+                    recurrence_period = NULL,
+                    updated_at = now()
+                WHERE recurring_key = :recurring_key
+                  AND is_deleted = false
+            """), {"recurring_key": recurring_key})
+            await session.commit()
+            return result.rowcount
