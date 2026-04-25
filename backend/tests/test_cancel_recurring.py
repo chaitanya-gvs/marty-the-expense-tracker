@@ -4,7 +4,6 @@ Run from backend/ with: poetry run pytest tests/test_cancel_recurring.py -v
 """
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, AsyncMock
 
 from main import app
 from src.utils.auth_deps import get_current_user
