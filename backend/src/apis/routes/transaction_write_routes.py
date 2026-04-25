@@ -731,6 +731,7 @@ async def get_recurring_count(recurring_key: str):
             TransactionOperations.count_recurring_by_key,
             recurring_key=recurring_key,
         )
+        logger.info("Counted recurring key=%s count=%d", recurring_key, count)
         return ApiResponse(data={"count": count})
     except Exception:
         logger.error("Failed to count recurring key=%s", recurring_key, exc_info=True)
