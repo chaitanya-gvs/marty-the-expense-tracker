@@ -16,9 +16,15 @@ interface BudgetCreateModalProps {
   isOpen: boolean;
   onClose: () => void;
   editingBudget?: BudgetSummary | null;
+  defaultCategoryId?: string | null;
 }
 
-export function BudgetCreateModal({ isOpen, onClose, editingBudget }: BudgetCreateModalProps) {
+export function BudgetCreateModal({
+  isOpen,
+  onClose,
+  editingBudget,
+  defaultCategoryId,
+}: BudgetCreateModalProps) {
   const [categoryId, setCategoryId] = useState("");
   const [monthlyLimit, setMonthlyLimit] = useState("");
   const [name, setName] = useState("");
@@ -36,12 +42,16 @@ export function BudgetCreateModal({ isOpen, onClose, editingBudget }: BudgetCrea
       setCategoryId(editingBudget.category_id);
       setMonthlyLimit(String(editingBudget.monthly_limit));
       setName(editingBudget.name ?? "");
+    } else if (defaultCategoryId) {
+      setCategoryId(defaultCategoryId);
+      setMonthlyLimit("");
+      setName("");
     } else {
       setCategoryId("");
       setMonthlyLimit("");
       setName("");
     }
-  }, [editingBudget, isOpen]);
+  }, [editingBudget, defaultCategoryId, isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
