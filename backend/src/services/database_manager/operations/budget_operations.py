@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+import calendar
+from datetime import date
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
-from uuid import UUID
-
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.services.database_manager.connection import get_session_factory
 from src.utils.logger import get_logger
@@ -161,9 +160,6 @@ class BudgetOperations:
           - variable_gaps: categories with non-recurring debit spend this period but no budget
                            (categories already in recurring_gaps are excluded)
         """
-        import calendar
-        from datetime import date
-
         year, month = int(period[:4]), int(period[5:7])
         last_day = calendar.monthrange(year, month)[1]
         period_start = date(year, month, 1)
@@ -199,7 +195,7 @@ class BudgetOperations:
                        c.name,
                        COUNT(DISTINCT COALESCE(t.recurring_key, t.user_description, t.description))
                            AS recurring_count,
-                       COALESCE(p.projected_amount, 0) AS projected_amount
+                       COALESCE(MAX(p.projected_amount), 0) AS projected_amount
                 FROM transactions t
                 JOIN categories c ON c.id = t.category_id
                 LEFT JOIN projected p ON p.category_id = t.category_id
@@ -210,7 +206,7 @@ class BudgetOperations:
                        OR t.is_split = true
                        OR t.is_grouped_expense = true)
                   AND NOT EXISTS (SELECT 1 FROM budgets b WHERE b.category_id = t.category_id)
-                GROUP BY c.id, c.name, p.projected_amount
+                GROUP BY c.id, c.name
                 ORDER BY c.name
             """))).mappings().all()
 
@@ -236,6 +232,7 @@ class BudgetOperations:
                       WHERE t2.category_id = t.category_id
                         AND t2.is_recurring = true
                         AND t2.is_deleted = false
+                        AND t2.direction = 'debit'
                   )
                 GROUP BY c.id, c.name
                 ORDER BY variable_spend DESC
