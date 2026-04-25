@@ -345,8 +345,10 @@ export function BudgetCard({ budget, period, onEdit, onDelete, onOverride }: Bud
                             {formatCurrency(item.amount)}
                           </span>
                           <button
+                            type="button"
                             className="shrink-0 text-muted-foreground/40 hover:text-red-400 transition-colors"
                             title="Stop tracking this subscription"
+                            aria-label="Stop tracking this subscription"
                             onClick={(e) => {
                               e.stopPropagation();
                               setConfirmingKey(isConfirming ? null : key);
@@ -364,19 +366,25 @@ export function BudgetCard({ budget, period, onEdit, onDelete, onOverride }: Bud
                             </span>
                             <div className="flex items-center gap-2 shrink-0">
                               <button
+                                type="button"
                                 className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                                 onClick={(e) => { e.stopPropagation(); setConfirmingKey(null); }}
                               >
                                 Cancel
                               </button>
                               <button
+                                type="button"
                                 className="text-[11px] font-semibold text-white bg-red-500 hover:bg-red-600 px-2 py-0.5 rounded transition-colors disabled:opacity-50"
                                 disabled={cancelRecurring.isPending || countLoading}
                                 onClick={async (e) => {
                                   e.stopPropagation();
                                   if (!item.recurring_key) return;
-                                  await cancelRecurring.mutateAsync(item.recurring_key);
-                                  setConfirmingKey(null);
+                                  try {
+                                    await cancelRecurring.mutateAsync(item.recurring_key);
+                                    setConfirmingKey(null);
+                                  } catch {
+                                    setConfirmingKey(null);
+                                  }
                                 }}
                               >
                                 {cancelRecurring.isPending ? "Stopping…" : "Confirm"}
