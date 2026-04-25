@@ -2,11 +2,12 @@
 
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Replace, Edit2, Trash2, ChevronDown } from "lucide-react";
+import { Replace, Edit2, Trash2, ChevronDown, XCircle } from "lucide-react";
 import { BudgetSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format-utils";
 import { useTransactions } from "@/hooks/use-transactions";
+import { useRecurringCount, useCancelRecurring } from "@/hooks/use-budgets";
 
 interface BudgetCardProps {
   budget: BudgetSummary;
@@ -56,6 +57,9 @@ function periodToDateRange(period: string) {
 
 export function BudgetCard({ budget, period, onEdit, onDelete, onOverride }: BudgetCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [confirmingKey, setConfirmingKey] = useState<string | null>(null);
+  const { data: countData, isLoading: countLoading } = useRecurringCount(confirmingKey);
+  const cancelRecurring = useCancelRecurring();
   const isOverBudget = budget.headroom < 0;
   const totalSpend = budget.committed_spend + budget.variable_spend;
 
@@ -317,25 +321,72 @@ export function BudgetCard({ budget, period, onEdit, onDelete, onOverride }: Bud
                   {transactions.length > 0 && (
                     <div className="border-t border-dashed border-border/40 my-1" />
                   )}
-                  {upcomingItems.map((item, i) => (
-                    <div
-                      key={item.recurring_key ?? i}
-                      className="flex items-center gap-3 py-2 opacity-50 border-b border-border/20 last:border-0"
-                    >
-                      <span className="shrink-0 text-[9px] font-semibold px-2 py-0.5 rounded-full border bg-muted text-muted-foreground border-border whitespace-nowrap">
-                        Upcoming
-                      </span>
-                      <span className="shrink-0 text-xs text-muted-foreground w-12 tabular-nums">
-                        —
-                      </span>
-                      <span className="flex-1 text-sm text-muted-foreground italic truncate">
-                        {item.description}
-                      </span>
-                      <span className="shrink-0 text-sm font-mono tabular-nums text-muted-foreground">
-                        {formatCurrency(item.amount)}
-                      </span>
-                    </div>
-                  ))}
+                  {upcomingItems.map((item, i) => {
+                    const key = item.recurring_key ?? String(i);
+                    const isConfirming = confirmingKey === key;
+                    return (
+                      <div key={key}>
+                        <div
+                          className={cn(
+                            "flex items-center gap-3 py-2 border-b border-border/20 last:border-0",
+                            isConfirming ? "opacity-100" : "opacity-50",
+                          )}
+                        >
+                          <span className="shrink-0 text-[9px] font-semibold px-2 py-0.5 rounded-full border bg-muted text-muted-foreground border-border whitespace-nowrap">
+                            Upcoming
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground w-12 tabular-nums">
+                            —
+                          </span>
+                          <span className="flex-1 text-sm text-muted-foreground italic truncate">
+                            {item.description}
+                          </span>
+                          <span className="shrink-0 text-sm font-mono tabular-nums text-muted-foreground">
+                            {formatCurrency(item.amount)}
+                          </span>
+                          <button
+                            className="shrink-0 text-muted-foreground/40 hover:text-red-400 transition-colors"
+                            title="Stop tracking this subscription"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmingKey(isConfirming ? null : key);
+                            }}
+                          >
+                            <XCircle className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        {isConfirming && (
+                          <div className="flex items-center justify-between gap-3 px-2 py-2 mb-1 rounded-md bg-red-500/10 border border-red-500/20">
+                            <span className="text-[11px] text-red-400">
+                              {countLoading
+                                ? "Loading…"
+                                : `Unmark ${countData?.data.count ?? "?"} past transaction${(countData?.data.count ?? 0) !== 1 ? "s" : ""} as recurring — stops future projections.`}
+                            </span>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                                onClick={(e) => { e.stopPropagation(); setConfirmingKey(null); }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                className="text-[11px] font-semibold text-white bg-red-500 hover:bg-red-600 px-2 py-0.5 rounded transition-colors disabled:opacity-50"
+                                disabled={cancelRecurring.isPending || countLoading}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (!item.recurring_key) return;
+                                  await cancelRecurring.mutateAsync(item.recurring_key);
+                                  setConfirmingKey(null);
+                                }}
+                              >
+                                {cancelRecurring.isPending ? "Stopping…" : "Confirm"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </>
               )}
             </div>
