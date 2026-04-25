@@ -74,7 +74,7 @@ export function BudgetCard({ budget, period, onEdit, onDelete, onOverride }: Bud
     ? (Math.min(projectedAmt, Math.max(0, budget.effective_limit - budget.committed_spend)) / budget.effective_limit) * 100
     : 0;
   const variablePct = budget.effective_limit > 0
-    ? (Math.min(budget.variable_spend, Math.max(0, budget.effective_limit - budget.committed_spend - projectedAmt))
+    ? (Math.min(budget.variable_spend, Math.max(0, budget.effective_limit - budget.committed_spend))
         / budget.effective_limit) * 100
     : 0;
 
