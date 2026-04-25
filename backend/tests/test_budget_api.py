@@ -74,3 +74,16 @@ def test_set_recurring_invalid_period(client):
         json={"is_recurring": True, "recurrence_period": "biweekly"},
     )
     assert resp.status_code == 422
+
+
+def test_budget_summary_has_coverage_gaps_shape(client):
+    """GET /api/budgets/summary returns coverage_gaps with recurring_gaps and variable_gaps arrays."""
+    resp = client.get("/api/budgets/summary")
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert "coverage_gaps" in data, "expected coverage_gaps key (not unbudgeted_categories)"
+    gaps = data["coverage_gaps"]
+    assert "recurring_gaps" in gaps
+    assert "variable_gaps" in gaps
+    assert isinstance(gaps["recurring_gaps"], list)
+    assert isinstance(gaps["variable_gaps"], list)

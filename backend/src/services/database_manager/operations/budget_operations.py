@@ -154,22 +154,110 @@ class BudgetOperations:
             return result.rowcount > 0
 
     @staticmethod
-    async def get_categories_with_recurring_but_no_budget() -> List[Dict[str, Any]]:
-        """Return categories that have recurring transactions but no budget template."""
+    async def get_budget_coverage_gaps(period: str) -> dict:
+        """
+        Return two gap lists for the given period (YYYY-MM):
+          - recurring_gaps: categories with recurring transactions but no budget
+          - variable_gaps: categories with non-recurring debit spend this period but no budget
+                           (categories already in recurring_gaps are excluded)
+        """
+        import calendar
+        from datetime import date
+
+        year, month = int(period[:4]), int(period[5:7])
+        last_day = calendar.monthrange(year, month)[1]
+        period_start = date(year, month, 1)
+        period_end = date(year, month, last_day)
+
         session_factory = get_session_factory()
         async with session_factory() as session:
-            result = await session.execute(text("""
-                SELECT DISTINCT c.id::text, c.name, c.color,
-                       COUNT(t.id) AS recurring_count
+
+            # ── Recurring gaps ──────────────────────────────────────────────────
+            recurring_rows = (await session.execute(text("""
+                WITH latest_per_key AS (
+                    SELECT DISTINCT ON (t.category_id,
+                                        COALESCE(t.recurring_key, t.user_description, t.description))
+                           t.category_id,
+                           COALESCE(t.split_share_amount, t.amount) AS amount
+                    FROM transactions t
+                    WHERE t.is_recurring = true
+                      AND t.is_deleted = false
+                      AND t.direction = 'debit'
+                      AND (t.transaction_group_id IS NULL
+                           OR t.is_split = true
+                           OR t.is_grouped_expense = true)
+                    ORDER BY t.category_id,
+                             COALESCE(t.recurring_key, t.user_description, t.description),
+                             t.transaction_date DESC
+                ),
+                projected AS (
+                    SELECT category_id, SUM(amount) AS projected_amount
+                    FROM latest_per_key
+                    GROUP BY category_id
+                )
+                SELECT c.id::text AS id,
+                       c.name,
+                       COUNT(DISTINCT COALESCE(t.recurring_key, t.user_description, t.description))
+                           AS recurring_count,
+                       COALESCE(p.projected_amount, 0) AS projected_amount
                 FROM transactions t
                 JOIN categories c ON c.id = t.category_id
+                LEFT JOIN projected p ON p.category_id = t.category_id
                 WHERE t.is_recurring = true
                   AND t.is_deleted = false
-                  AND NOT EXISTS (
-                    SELECT 1 FROM budgets b WHERE b.category_id = t.category_id
-                  )
-                GROUP BY c.id, c.name, c.color
+                  AND t.direction = 'debit'
+                  AND (t.transaction_group_id IS NULL
+                       OR t.is_split = true
+                       OR t.is_grouped_expense = true)
+                  AND NOT EXISTS (SELECT 1 FROM budgets b WHERE b.category_id = t.category_id)
+                GROUP BY c.id, c.name, p.projected_amount
                 ORDER BY c.name
-            """))
-            rows = result.mappings().all()
-            return [dict(r) for r in rows]
+            """))).mappings().all()
+
+            # ── Variable gaps ───────────────────────────────────────────────────
+            variable_rows = (await session.execute(text("""
+                SELECT c.id::text AS id,
+                       c.name,
+                       COALESCE(SUM(COALESCE(t.split_share_amount, t.amount)), 0)
+                           AS variable_spend,
+                       COUNT(t.id) AS transaction_count
+                FROM transactions t
+                JOIN categories c ON c.id = t.category_id
+                WHERE (t.is_recurring = false OR t.is_recurring IS NULL)
+                  AND t.is_deleted = false
+                  AND t.direction = 'debit'
+                  AND t.transaction_date BETWEEN :period_start AND :period_end
+                  AND (t.transaction_group_id IS NULL
+                       OR t.is_split = true
+                       OR t.is_grouped_expense = true)
+                  AND NOT EXISTS (SELECT 1 FROM budgets b WHERE b.category_id = t.category_id)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM transactions t2
+                      WHERE t2.category_id = t.category_id
+                        AND t2.is_recurring = true
+                        AND t2.is_deleted = false
+                  )
+                GROUP BY c.id, c.name
+                ORDER BY variable_spend DESC
+            """), {"period_start": period_start, "period_end": period_end})).mappings().all()
+
+            return {
+                "recurring_gaps": [
+                    {
+                        "id": r["id"],
+                        "name": r["name"],
+                        "recurring_count": int(r["recurring_count"]),
+                        "projected_amount": float(r["projected_amount"]),
+                    }
+                    for r in recurring_rows
+                ],
+                "variable_gaps": [
+                    {
+                        "id": r["id"],
+                        "name": r["name"],
+                        "variable_spend": float(r["variable_spend"]),
+                        "transaction_count": int(r["transaction_count"]),
+                    }
+                    for r in variable_rows
+                ],
+            }
