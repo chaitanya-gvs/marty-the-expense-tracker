@@ -95,17 +95,29 @@ export interface BudgetSummary extends Budget {
   committed_items: CommittedItem[];
 }
 
-export interface BudgetsSummaryResponse {
-  budgets: BudgetSummary[];
-  unbudgeted_categories: UnbudgetedCategory[];
-  period: string;
-}
-
-export interface UnbudgetedCategory {
+export interface RecurringGap {
   id: string;
   name: string;
-  color?: string | null;
   recurring_count: number;
+  projected_amount: number;
+}
+
+export interface VariableGap {
+  id: string;
+  name: string;
+  variable_spend: number;
+  transaction_count: number;
+}
+
+export interface BudgetCoverageGaps {
+  recurring_gaps: RecurringGap[];
+  variable_gaps: VariableGap[];
+}
+
+export interface BudgetsSummaryResponse {
+  budgets: BudgetSummary[];
+  coverage_gaps: BudgetCoverageGaps;
+  period: string;
 }
 
 export interface Category {
