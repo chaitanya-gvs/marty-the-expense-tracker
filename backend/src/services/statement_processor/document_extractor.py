@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 backend_path = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(backend_path))
 
-from src.utils.filename_utils import nickname_to_filename_prefix
+from src.utils.filename_utils import nickname_to_schema_key
 from src.services.statement_processor.schemas import BANK_STATEMENT_MODELS
 from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
 from src.services.statement_processor.pdf_page_filter import PDFPageFilter
@@ -130,24 +130,8 @@ class DocumentExtractor:
         return None
 
     def _get_schema_key(self, account_nickname: str) -> Optional[str]:
-        """
-        Return the schema registry key for an account nickname (e.g. 'axis_atlas').
-        Mirrors the transformation in _map_nickname_to_schema without fetching the model.
-        Returns None if no mapping exists.
-        """
-        if not account_nickname:
-            return None
-        key = account_nickname.lower()
-        if key.endswith(" credit card"):
-            key = key[:-12]
-        elif key.endswith(" account"):
-            key = key[:-8]
-        key = key.replace(" ", "_")
-        if key in BANK_STATEMENT_MODELS:
-            return key
-        if key == "sbi":
-            return "sbi_savings"
-        return None
+        """Return the canonical schema key for an account nickname (e.g. 'sbi_savings')."""
+        return nickname_to_schema_key(account_nickname) or None
 
     def _parse_table_to_dataframe(self, table_data: str) -> pd.DataFrame:
         """
@@ -376,7 +360,7 @@ class DocumentExtractor:
             # Generate output filename using account nickname if available
             if account_nickname:
                 # {account}_{date} convention (no savings, credit card, account suffix)
-                nickname_clean = nickname_to_filename_prefix(account_nickname)
+                nickname_clean = nickname_to_schema_key(account_nickname)
                 
                 # Extract date from PDF filename or use current date
                 date_str = self._extract_date_from_pdf_filename(pdf_path)

@@ -81,7 +81,7 @@ try:
     from src.services.statement_processor.pdf_page_filter import PDFPageFilter
     from src.services.orchestrator.transaction_standardizer import TransactionStandardizer
     from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
-    from src.utils.filename_utils import nickname_to_filename_prefix
+    from src.utils.filename_utils import nickname_to_schema_key
     check("Imports OK", True)
 except Exception as e:
     check("Imports OK", False, str(e))
@@ -233,7 +233,7 @@ print()
 # ---------------------------------------------------------------------------
 print("\n=== Step 6: Save temp CSV ===")
 
-prefix = nickname_to_filename_prefix(ACCOUNT_NICKNAME)
+prefix = nickname_to_schema_key(ACCOUNT_NICKNAME)
 csv_name = f"{prefix}_smoke.csv"
 csv_path = tmp_dir / csv_name
 df.to_csv(csv_path, index=False, encoding="utf-8")

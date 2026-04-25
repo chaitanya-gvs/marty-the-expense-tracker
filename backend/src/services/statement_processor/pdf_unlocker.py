@@ -13,7 +13,7 @@ from typing import Dict, Any, Optional
 
 import fitz
 
-from src.utils.filename_utils import nickname_to_filename_prefix
+from src.utils.filename_utils import nickname_to_schema_key
 from src.utils.logger import get_logger
 from src.utils.password_manager import get_password_manager
 
@@ -158,7 +158,7 @@ class PDFUnlocker:
             formatted_date = self._extract_date_from_filename(original_filename)
 
             if account_nickname:
-                base_name = nickname_to_filename_prefix(account_nickname)
+                base_name = nickname_to_schema_key(account_nickname)
                 return f"{base_name}_{formatted_date}.pdf"
 
             sender_email = self._get_sender_email_from_filename(original_filename)

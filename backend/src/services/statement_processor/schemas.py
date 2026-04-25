@@ -69,16 +69,13 @@ class SBISavingsAccount(BaseModel):
     """Pydantic model for extracting transaction tables from SBI Savings Account statements"""
     table: str = Field(description=(
         "Extract the account statement transaction table in markdown format. "
-        "The table must have exactly these 6 columns in this order: "
-        "'Date', 'Description', 'Ref No./Chq. No.', 'Debit', 'Credit', 'Balance'. "
-        "Column semantics: "
-        "'Debit' = withdrawal / money OUT of account (Dr) — put the withdrawal amount here, 0 if none. "
-        "'Credit' = deposit / money INTO account (Cr) — put the deposit amount here, 0 if none. "
-        "'Ref No./Chq. No.' = the transaction reference or cheque number only, NOT the amount. "
-        "'Balance' = the running account balance after each transaction. "
-        "For a UPI credit (deposit): Debit=0, Credit=<deposit amount>, Balance=<balance>. "
-        "For a UPI debit (withdrawal): Debit=<withdrawal amount>, Credit=0, Balance=<balance>. "
-        "Include all transaction rows. Do not put amounts in the Ref No. column."
+        "The table must have exactly these 3 columns in this order: "
+        "'Date', 'Description', 'Amount'. "
+        "'Date' = the transaction date. "
+        "'Description' = the full transaction narration or description text. "
+        "'Amount' = the transaction amount as a positive number, regardless of whether it is a debit or credit. "
+        "Do NOT include columns for Ref No., Chq. No., Debit, Credit, Withdrawal, Deposit, or Balance. "
+        "Include all transaction rows."
     ))
 
 class YesBankSavingsAccount(BaseModel):

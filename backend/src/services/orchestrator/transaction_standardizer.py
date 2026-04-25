@@ -488,39 +488,32 @@ class TransactionStandardizer:
     def process_sbi_savings(self, df: pd.DataFrame, filename: str, account_name: str = None) -> pd.DataFrame:
         """Process SBI Savings Account data"""
         logger.info(f"Processing SBI Savings data: {filename}")
-        
+
+        def _parse_amount(val) -> float:
+            if val is None or (isinstance(val, float) and pd.isna(val)):
+                return 0.0
+            s = str(val).strip().replace(',', '').strip()
+            if not s or s.lower() in ('nan', 'none', '-', ''):
+                return 0.0
+            try:
+                return float(s)
+            except (ValueError, AttributeError):
+                return 0.0
+
         standardized_data = []
         for _, row in df.iterrows():
-            # Get date from "Date" column (format: DD-MM-YY)
             date_value = row.get("Date")
-            if pd.isna(date_value) or str(date_value).strip() == "" or str(date_value).strip() == "-":
+            if pd.isna(date_value) or str(date_value).strip() in ("", "-"):
                 continue
-            
-            # Description may be in "Transaction Reference" (old extraction) or "Description" (new)
-            description = str(
-                row.get("Transaction Reference") or row.get("Description") or ""
-            ).strip()
-            if not description or description == "-" or description.lower() in ['nan', 'none']:
+
+            description = str(row.get("Description") or "").strip()
+            if not description or description == "-" or description.lower() in ('nan', 'none'):
                 continue
-            
-            # Skip summary/balance rows
-            if any(keyword in description.upper() for keyword in ['OPENING BALANCE', 'CLOSING BALANCE', 'TOTAL', 'SUMMARY']):
+
+            if any(kw in description.upper() for kw in ('OPENING BALANCE', 'CLOSING BALANCE', 'TOTAL', 'SUMMARY')):
                 logger.info(f"Skipping summary row: {description}")
                 continue
-            
-            def _parse_amount(val) -> float:
-                if val is None or (isinstance(val, float) and pd.isna(val)):
-                    return 0.0
-                s = str(val).strip().replace(',', '').replace('CR', '').replace('DR', '').strip()
-                if not s or s.lower() in ('nan', 'none', '-', ''):
-                    return 0.0
-                try:
-                    return float(s)
-                except (ValueError, AttributeError):
-                    return 0.0
 
-            # Determine direction from description — UPI narrations always contain /CR/ or /DR/.
-            # This is more reliable than column names because the LLM shifts columns unpredictably.
             desc_upper = description.upper()
             if '/CR/' in desc_upper or (
                 ('CREDIT' in desc_upper or 'INTEREST' in desc_upper) and '/DR/' not in desc_upper
@@ -529,24 +522,9 @@ class TransactionStandardizer:
             elif '/DR/' in desc_upper or ('DEBIT' in desc_upper and '/CR/' not in desc_upper):
                 transaction_type = 'debit'
             else:
-                continue  # can't determine direction, skip
-
-            # Collect all non-zero numeric values across every possible amount column.
-            # The LLM may put the transaction amount in any of these depending on the run.
-            # The running balance is always the larger value; the transaction amount is the smaller.
-            candidate_cols = [
-                'Debit', 'Credit', 'Withdrawal (Dr)', 'Deposit (Cr)',
-                'Withdrawal', 'Deposit',
-                'Ref No./Chq. No.', 'Ref.No./Chq.No.', 'Ref.No./Chq.No',
-            ]
-            non_zero = [_parse_amount(row.get(c)) for c in candidate_cols]
-            non_zero = [v for v in non_zero if v > 0]
-
-            if not non_zero:
                 continue
 
-            amount = min(non_zero)  # balance is always larger than the individual transaction
-
+            amount = _parse_amount(row.get("Amount"))
             if amount <= 0:
                 continue
 

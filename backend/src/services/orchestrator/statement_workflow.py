@@ -29,7 +29,7 @@ from src.services.email_ingestion.token_manager import TokenManager
 from src.services.cloud_storage.gcs_service import GoogleCloudStorageService
 from src.services.statement_processor.document_extractor import DocumentExtractor
 from .transaction_standardizer import TransactionStandardizer
-from src.utils.filename_utils import nickname_to_filename_prefix
+from src.utils.filename_utils import nickname_to_schema_key
 from src.services.statement_processor.pdf_unlocker import PDFUnlocker
 from src.services.splitwise_processor.service import SplitwiseService
 from src.utils.logger import get_logger
@@ -697,7 +697,7 @@ class StatementWorkflow:
                 logger.warning(f"No account nickname found, using fallback: {account_nickname}", extra=self._log_extra())
             
             # Process nickname: {account}_{date} convention (no savings, credit card, account suffix)
-            processed_nickname = nickname_to_filename_prefix(account_nickname)
+            processed_nickname = nickname_to_schema_key(account_nickname)
             
             # Parse email date (handle Gmail format)
             try:
@@ -780,7 +780,7 @@ class StatementWorkflow:
             _date_match = re.search(r"_(\d{8})(?:_locked)?\.pdf$", normalized_filename)
             _date_str = _date_match.group(1) if _date_match else datetime.now().strftime("%Y%m%d")
             if account_nickname:
-                _nick_clean = nickname_to_filename_prefix(account_nickname)
+                _nick_clean = nickname_to_schema_key(account_nickname)
                 unlocked_filename = f"{_nick_clean}_{_date_str}.pdf"
             else:
                 # Fallback: strip _locked suffix from normalized filename
@@ -1712,7 +1712,7 @@ class StatementWorkflow:
                 return False
             
             # Generate expected CSV filename pattern (matches document_extractor: {account}_{date}.csv)
-            nickname_clean = nickname_to_filename_prefix(account_nickname)
+            nickname_clean = nickname_to_schema_key(account_nickname)
             
             # Extract date from normalized filename or use email date
             date_str = self._extract_date_from_filename(normalized_filename) or self._extract_date_from_email_date(email_date)
