@@ -401,6 +401,19 @@ class ApiClient {
     });
   }
 
+  async getRecurringCount(
+    recurringKey: string
+  ): Promise<{ data: { count: number } }> {
+    return this.request(`/transactions/recurring/${encodeURIComponent(recurringKey)}/count`);
+  }
+
+  async cancelRecurring(
+    recurringKey: string
+  ): Promise<{ data: { updated_count: number } }> {
+    return this.request(`/transactions/recurring/${encodeURIComponent(recurringKey)}/cancel`, {
+      method: "PATCH",
+    });
+  }
 
   // Tags (now under transactions)
   async getTags(): Promise<ApiResponse<Tag[]>> {
