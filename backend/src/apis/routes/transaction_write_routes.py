@@ -721,3 +721,41 @@ async def set_transaction_recurring(transaction_id: str, body: SetRecurringReque
     except Exception:
         logger.error("Failed to set recurring on transaction id=%s", transaction_id, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/recurring/{recurring_key}/count", response_model=ApiResponse)
+async def get_recurring_count(recurring_key: str):
+    """Return how many non-deleted transactions share the given recurring_key."""
+    try:
+        count = await handle_database_operation(
+            TransactionOperations.count_recurring_by_key,
+            recurring_key=recurring_key,
+        )
+        return ApiResponse(data={"count": count})
+    except Exception:
+        logger.error("Failed to count recurring key=%s", recurring_key, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.patch("/recurring/{recurring_key}/cancel", response_model=ApiResponse)
+async def cancel_recurring_by_key(recurring_key: str):
+    """
+    Bulk-unmark all transactions with the given recurring_key as non-recurring.
+    Sets is_recurring=false, recurring_key=null, recurrence_period=null.
+    Returns 404 if no matching transactions exist.
+    """
+    logger.info("Cancelling recurring key=%s", recurring_key)
+    try:
+        updated_count = await handle_database_operation(
+            TransactionOperations.cancel_recurring_by_key,
+            recurring_key=recurring_key,
+        )
+        if updated_count == 0:
+            raise HTTPException(status_code=404, detail=f"No transactions found for recurring_key '{recurring_key}'")
+        logger.info("Cancelled recurring key=%s updated_count=%d", recurring_key, updated_count)
+        return ApiResponse(data={"updated_count": updated_count})
+    except HTTPException:
+        raise
+    except Exception:
+        logger.error("Failed to cancel recurring key=%s", recurring_key, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
