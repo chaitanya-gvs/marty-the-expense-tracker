@@ -458,14 +458,23 @@ class TransactionStandardizer:
                 continue
                 
             # For savings account, we need to determine amount from withdrawals/deposits
-            withdrawal = row.get("Withdrawals", 0)
-            deposit = row.get("Deposits", 0)
-            
-            if pd.notna(withdrawal) and float(withdrawal) > 0:
-                amount = float(withdrawal)
+            def _parse_amt(val) -> float:
+                if val is None or (isinstance(val, float) and pd.isna(val)):
+                    return 0.0
+                s = str(val).strip().replace(',', '')
+                try:
+                    return float(s)
+                except (ValueError, AttributeError):
+                    return 0.0
+
+            withdrawal = _parse_amt(row.get("Withdrawals", 0))
+            deposit = _parse_amt(row.get("Deposits", 0))
+
+            if withdrawal > 0:
+                amount = withdrawal
                 transaction_type = "debit"
-            elif pd.notna(deposit) and float(deposit) > 0:
-                amount = float(deposit)
+            elif deposit > 0:
+                amount = deposit
                 transaction_type = "credit"
             else:
                 continue
