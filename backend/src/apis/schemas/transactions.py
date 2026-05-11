@@ -89,6 +89,7 @@ class TransactionResponse(BaseModel):
     transaction_time: Optional[str] = None  # HH:MM:SS, only present when captured (e.g. email ingestion)
     account: str
     description: str
+    original_description: Optional[str] = None  # Raw bank narration; present only when user has edited description
     category: Optional[str] = None
     subcategory: Optional[str] = None
     direction: str

@@ -302,6 +302,12 @@ function AmbiguousItem({
                   </span>
                   {diff !== null && <DateProximityBadge diff={diff} />}
                 </div>
+                {tx.original_description &&
+                  tx.original_description !== tx.description && (
+                    <p className="text-[11px] text-muted-foreground/60 font-mono truncate">
+                      {tx.original_description}
+                    </p>
+                  )}
               </div>
               <span
                 className={cn(
