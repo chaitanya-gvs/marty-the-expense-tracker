@@ -442,17 +442,18 @@ class TransactionStandardizer:
         
         standardized_data = []
         for _, row in df.iterrows():
-            if pd.isna(row.get("Transaction Date")) or str(row.get("Transaction Date")).strip() == "":
+            date_val = row.get("Date") or row.get("Transaction Date")
+            if date_val is None or (isinstance(date_val, float) and pd.isna(date_val)) or str(date_val).strip() == "":
                 continue
-            
+
             # Skip summary/balance rows
-            date_str = str(row.get("Transaction Date")).strip()
+            date_str = str(date_val).strip()
             description = str(row.get("Description", "")).strip()
-            
+
             if any(keyword in date_str.lower() for keyword in ['closing balance', 'opening balance', 'total', 'summary', 'b/f', 'brought forward']):
                 logger.warning(f"Skipping summary row: {date_str} - {description}")
                 continue
-            
+
             if any(keyword in description.lower() for keyword in ['closing balance', 'opening balance', 'total', 'summary', 'b/f', 'brought forward']):
                 logger.warning(f"Skipping summary row: {date_str} - {description}")
                 continue
@@ -480,14 +481,14 @@ class TransactionStandardizer:
                 continue
             
             standardized_data.append({
-                'transaction_date': self.parse_date(row.get("Transaction Date")),
+                'transaction_date': self.parse_date(date_val),
                 'transaction_time': None,
                 'description': str(row.get("Description", "")).strip(),
                 'amount': amount,
                 'transaction_type': transaction_type,
                 'account': account_name or "Unknown Account",
                 'category': None,
-                'reference_number': str(row.get("Cheque No/Reference No.", "")).strip() if pd.notna(row.get("Cheque No/Reference No.")) else None,
+                'reference_number': None,
                 'source_file': filename,
                 'raw_data': row.to_dict()
             })

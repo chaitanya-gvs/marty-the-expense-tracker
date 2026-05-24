@@ -80,7 +80,17 @@ class SBISavingsAccount(BaseModel):
 
 class YesBankSavingsAccount(BaseModel):
     """Pydantic model for extracting transaction tables from Yes Bank statements"""
-    table: str = Field(description="The transaction table in markdown format called Statement Of Transactions")
+    table: str = Field(description=(
+        "Extract the account statement transaction table in markdown format. "
+        "The table must have exactly these 4 columns in this order: "
+        "'Date', 'Description', 'Withdrawals', 'Deposits'. "
+        "'Date' = the transaction date. "
+        "'Description' = the full transaction narration or description text. "
+        "'Withdrawals' = the amount debited (money going out); use 0 if not a debit. "
+        "'Deposits' = the amount credited (money coming in); use 0 if not a credit. "
+        "Do NOT include columns for Value Date, Cheque No, Reference No, Running Balance, or Balance. "
+        "Include all transaction rows. Skip summary or opening/closing balance rows."
+    ))
 
 class AxisBankSavingsAccount(BaseModel):
     """Pydantic model for extracting transaction tables from Axis Bank statements"""
