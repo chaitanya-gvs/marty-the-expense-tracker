@@ -207,7 +207,7 @@ class TransactionOperations:
                     WHERE t.is_deleted = false
                     {_TRANSACTION_VISIBILITY_FILTER}
                     GROUP BY t.id, c.name
-                    ORDER BY t.transaction_date {order_by}, t.created_at {order_by}
+                    ORDER BY t.transaction_date {order_by}, t.created_at {order_by}, t.id {order_by}
                     LIMIT :limit OFFSET :offset
                 """), {
                     "limit": limit,
@@ -271,7 +271,7 @@ class TransactionOperations:
                       AND t.is_deleted = false
                     {_TRANSACTION_VISIBILITY_FILTER}
                     GROUP BY t.id, c.name
-                    ORDER BY t.transaction_date {order_by}, t.created_at {order_by}
+                    ORDER BY t.transaction_date {order_by}, t.created_at {order_by}, t.id {order_by}
                     LIMIT :limit OFFSET :offset
                 """), {
                     "start_date": start_date,
@@ -527,7 +527,7 @@ class TransactionOperations:
                         OR LOWER(t.notes) LIKE :search_term
                         OR LOWER(t.reference_number) LIKE :search_term
                       )
-                    ORDER BY t.transaction_date DESC, t.created_at DESC
+                    ORDER BY t.transaction_date DESC, t.created_at DESC, t.id DESC
                     LIMIT :limit OFFSET :offset
                 """), {
                     "search_term": search_term,
