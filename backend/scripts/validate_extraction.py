@@ -13,7 +13,6 @@ Exit 0: all accounts pass (new row count >= reference row count)
 Exit 1: regression detected in at least one account
 """
 import argparse
-import asyncio
 import sys
 import tempfile
 from datetime import datetime, timedelta
@@ -53,7 +52,7 @@ def _schema_key_from_csv_stem(stem: str) -> str:
     return "_".join(parts)
 
 
-async def validate(month: str) -> bool:
+def validate(month: str) -> bool:
     """Run validation. Returns True if no regressions."""
     print(f"\nValidating extraction for {month}")
     print("=" * 60)
@@ -108,7 +107,10 @@ async def validate(month: str) -> bool:
 
             # Download reference CSV
             ref_csv = tmp_path / "ref.csv"
-            gcs.download_file(ref_info["name"], str(ref_csv))
+            dl = gcs.download_file(ref_info["name"], str(ref_csv))
+            if not dl.get("success"):
+                print(f"  {ref_stem}: SKIP (CSV download failed: {dl.get('error')})")
+                continue
             old_df = pd.read_csv(ref_csv)
             old_count = len(old_df)
 
@@ -179,7 +181,7 @@ def main():
     parser.add_argument("--month", help="Month to validate (YYYY-MM), default = previous month")
     args = parser.parse_args()
     month = args.month or _previous_month()
-    passed = asyncio.run(validate(month))
+    passed = validate(month)
     sys.exit(0 if passed else 1)
 
 
