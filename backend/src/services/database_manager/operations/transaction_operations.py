@@ -807,6 +807,8 @@ class TransactionOperations:
         Returns:
             Dictionary with insert results and statistics
         """
+        validation_skipped_rows: list = []
+
         if not transactions:
             return {
                 "success": True,
@@ -816,6 +818,39 @@ class TransactionOperations:
                 "error_count": 0,
                 "errors": [],
                 "splitwise_upsert_updates": [],
+                "validation_skipped_rows": [],
+            }
+
+        # Separate validation-flagged rows from valid rows before any DB work.
+        _valid = [t for t in transactions if not t.get("_skip_reason")]
+        validation_skipped_rows = [
+            {
+                "source_file": t.get("source_file", ""),
+                "reason": t["_skip_reason"],
+                "raw_data": t.get("raw_data", {}),
+                "partial_date": t.get("_partial_date_raw"),
+            }
+            for t in transactions if t.get("_skip_reason")
+        ]
+        if validation_skipped_rows:
+            for skipped in validation_skipped_rows:
+                logger.warning(
+                    "Skipped row — reason=%s source=%s raw=%s",
+                    skipped["reason"], skipped["source_file"], skipped["raw_data"],
+                )
+        transactions = _valid
+
+        # If all rows were flagged, skip the DB session entirely
+        if not transactions:
+            return {
+                "success": True,
+                "inserted_count": 0,
+                "updated_count": 0,
+                "skipped_count": 0,
+                "error_count": 0,
+                "errors": [],
+                "splitwise_upsert_updates": [],
+                "validation_skipped_rows": validation_skipped_rows,
             }
 
         session_factory = get_session_factory()
@@ -828,6 +863,7 @@ class TransactionOperations:
                 "error_count": 0,
                 "errors": [],
                 "splitwise_upsert_updates": [],
+                "validation_skipped_rows": validation_skipped_rows,
             }
 
             try:
@@ -1504,20 +1540,16 @@ class TransactionOperations:
         account: str,
         description: str,
         source_file: str,
-        raw_data: Any
+        raw_data: Any = None
     ) -> str:
         """Create a composite key for duplicate detection"""
         # Normalize description
         normalized_desc = description.lower().strip() if description else ""
 
-        # Create hash of raw_data for comparison
-        raw_data_str = json.dumps(raw_data, sort_keys=True) if raw_data else ""
-        raw_data_hash = hashlib.md5(raw_data_str.encode()).hexdigest()
-
         # Round amount to 2 decimal places
         rounded_amount = round(amount, 2)
 
-        return f"{transaction_date}|{rounded_amount}|{account}|{normalized_desc}|{source_file}|{raw_data_hash}"
+        return f"{transaction_date}|{rounded_amount}|{account}|{normalized_desc}|{source_file}"
 
     @staticmethod
     def _clean_data_for_json(data: Any) -> Any:

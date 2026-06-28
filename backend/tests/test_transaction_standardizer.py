@@ -169,3 +169,33 @@ def test_process_method_includes_skip_reason_column(std, method_name, df):
     result = method(df, "test.csv")
     if not result.empty:
         assert "_skip_reason" in result.columns, f"{method_name} must include _skip_reason column"
+
+
+# ------------------------------------------------------------------ #
+# bulk_insert_transactions: pre-filter validation                     #
+# ------------------------------------------------------------------ #
+
+import asyncio
+from src.services.database_manager.operations.transaction_operations import TransactionOperations
+
+
+def test_bulk_insert_filters_flagged_rows_no_db_needed():
+    """All-flagged input returns immediately without opening a DB session."""
+    flagged = {
+        "transaction_date": None,
+        "description": "TRANSACTIONS FOR CHAITANYA GVS",
+        "amount": 0.0,
+        "transaction_type": None,
+        "account": "Cashback SBI Credit Card",
+        "source_file": "cashback_sbi_20260502.csv",
+        "raw_data": {"Date": "TRANSACTIONS FOR CHAITANYA GVS"},
+        "_skip_reason": "null_date",
+        "_partial_date_raw": "TRANSACTIONS FOR CHAITANYA GVS",
+    }
+    result = asyncio.run(TransactionOperations.bulk_insert_transactions([flagged]))
+    assert result["inserted_count"] == 0
+    assert len(result["validation_skipped_rows"]) == 1
+    skipped = result["validation_skipped_rows"][0]
+    assert skipped["reason"] == "null_date"
+    assert skipped["partial_date"] == "TRANSACTIONS FOR CHAITANYA GVS"
+    assert skipped["source_file"] == "cashback_sbi_20260502.csv"
