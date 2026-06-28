@@ -157,7 +157,33 @@ class TransactionStandardizer:
             return f"{time_match.group(1).zfill(2)}:{time_match.group(2)}:00"
         
         return None
-    
+
+    def _make_skip_row(
+        self,
+        reason: str,
+        date_str: str,
+        description: str,
+        account: str,
+        source_file: str,
+        raw_data: dict,
+        reference_number: Optional[str] = None,
+    ) -> dict:
+        """Build a flagged row dict. Flagged rows are reported but not inserted into the DB."""
+        return {
+            "transaction_date": None,
+            "transaction_time": None,
+            "description": description,
+            "amount": 0.0,
+            "transaction_type": None,
+            "account": account,
+            "category": None,
+            "reference_number": reference_number,
+            "source_file": source_file,
+            "raw_data": raw_data,
+            "_skip_reason": reason,
+            "_partial_date_raw": date_str if reason == "null_date" else None,
+        }
+
     async def get_account_name(self, search_pattern: str) -> str:
         """Get account name using database lookup with search pattern"""
         try:
@@ -212,298 +238,262 @@ class TransactionStandardizer:
             return method(df, filename, account_name)
     
     def process_amazon_pay_icici(self, df: pd.DataFrame, filename: str, account_name: str = None) -> pd.DataFrame:
-        """Process Amazon Pay ICICI Credit Card data"""
+        """Process Amazon Pay ICICI Credit Card data. Schema produces: Date, SerNo, Transaction Details, Amount (INR)."""
         logger.info(f"Processing Amazon Pay ICICI data: {filename}")
-        
-        # Skip header rows and card number rows
-        df_clean = df.copy()
-        
-        # Find the actual header row (contains "Date")
-        header_row = None
-        for idx, row in df_clean.iterrows():
-            if any("Date" in str(cell) for cell in row):
-                header_row = idx
-                break
-        
-        if header_row is not None:
-            df_clean = df_clean.iloc[header_row+1:].reset_index(drop=True)
-            # Rename columns to standard names - handle both 5 and 6 column formats
-            if len(df_clean.columns) == 6:
-                df_clean.columns = ["Date", "SerNo", "Transaction Details", "Reward Points", "Intl Amount", "Amount"]
-            elif len(df_clean.columns) == 5:
-                df_clean.columns = ["Date", "SerNo", "Transaction Details", "Reward Points", "Amount"]
-        else:
-            # If no header row found, try to normalize column names
-            # Check if column names need normalization (e.g., "Amount (in ₹)" -> "Amount")
-            if "Amount (in ₹)" in df_clean.columns or "Amount (in₹)" in df_clean.columns:
-                # Rename the amount column to "Amount"
-                amount_col = [col for col in df_clean.columns if "Amount" in col and "in" in col][0]
-                df_clean = df_clean.rename(columns={amount_col: "Amount"})
-        
+        account = account_name or "Amazon Pay ICICI Credit Card"
         standardized_data = []
-        for _, row in df_clean.iterrows():
-            if pd.isna(row.get("Date")) or str(row.get("Date")).strip() == "":
+
+        for _, row in df.iterrows():
+            date_str = str(row.get("Date", "")).strip()
+            description = str(row.get("Transaction Details", "")).strip()
+            amount_str = str(row.get("Amount (INR)", "")).strip()
+            raw = row.to_dict()
+
+            parsed_date = self.parse_date(date_str) if date_str and date_str.lower() not in ("nan", "") else None
+            if not parsed_date:
+                standardized_data.append(self._make_skip_row("null_date", date_str, description, account, filename, raw, str(row.get("SerNo", "")).strip()))
                 continue
-            
-            # Get the amount string - prioritize "Amount" column, but fallback to "Intl Amount" if Amount is empty
-            amount_str = str(row.get("Amount", "")).strip()
-            if not amount_str or amount_str.lower() == 'nan' or amount_str == '':
-                # If Amount column is empty, try Intl Amount column
-                if "Intl Amount" in df_clean.columns:
-                    amount_str = str(row.get("Intl Amount", "")).strip()
-                elif "Intl.* amount" in df_clean.columns:
-                    amount_str = str(row.get("Intl.* amount", "")).strip()
-            
-            if not amount_str or amount_str.lower() == 'nan' or amount_str == '':
+
+            if not description or description.lower() in ("nan", "none"):
+                standardized_data.append(self._make_skip_row("null_description", date_str, description, account, filename, raw, str(row.get("SerNo", "")).strip()))
                 continue
-                
-            # Parse amount and determine transaction type
+
             amount, transaction_type = self.clean_amount(amount_str, is_credit_card=True)
-            
-            # Skip if amount is 0 or invalid
             if amount <= 0:
+                standardized_data.append(self._make_skip_row("zero_amount", date_str, description, account, filename, raw, str(row.get("SerNo", "")).strip()))
                 continue
-            
+
             standardized_data.append({
-                'transaction_date': self.parse_date(row.get("Date")),
-                'transaction_time': None,
-                'description': str(row.get("Transaction Details", "")).strip(),
-                'amount': amount,
-                'transaction_type': transaction_type,
-                'account': account_name or "Amazon Pay ICICI Credit Card",
-                'category': None,
-                'reference_number': str(row.get("SerNo", "")).strip(),
-                'source_file': filename,
-                'raw_data': row.to_dict()
+                "transaction_date": parsed_date,
+                "transaction_time": None,
+                "description": description,
+                "amount": amount,
+                "transaction_type": transaction_type,
+                "account": account,
+                "category": None,
+                "reference_number": str(row.get("SerNo", "")).strip(),
+                "source_file": filename,
+                "raw_data": raw,
+                "_skip_reason": None,
+                "_partial_date_raw": None,
             })
-        
+
         return pd.DataFrame(standardized_data)
     
     def process_axis_atlas(self, df: pd.DataFrame, filename: str, account_name: str = None) -> pd.DataFrame:
-        """Process Axis Atlas Credit Card data"""
+        """Process Axis Atlas Credit Card data. Schema produces: DATE, TRANSACTION DETAILS, AMOUNT (Rs.)."""
         logger.info(f"Processing Axis Atlas data: {filename}")
-
+        account = account_name or "Axis Atlas Credit Card"
         standardized_data = []
+
         for _, row in df.iterrows():
-            if pd.isna(row.get("DATE")) or str(row.get("DATE")).strip() == "":
+            date_str = str(row.get("DATE", "")).strip()
+            description = str(row.get("TRANSACTION DETAILS", "")).strip()
+            amount_str = str(row.get("AMOUNT (Rs.)", "")).strip()
+            raw = row.to_dict()
+
+            parsed_date = self.parse_date(date_str) if date_str and date_str.lower() not in ("nan", "") else None
+            if not parsed_date:
+                standardized_data.append(self._make_skip_row("null_date", date_str, description, account, filename, raw))
                 continue
 
-            amount, transaction_type = self.clean_amount(row.get("AMOUNT (Rs.)", ""), is_credit_card=True)
+            if not description or description.lower() in ("nan", "none"):
+                standardized_data.append(self._make_skip_row("null_description", date_str, description, account, filename, raw))
+                continue
+
+            amount, transaction_type = self.clean_amount(amount_str, is_credit_card=True)
+            if amount <= 0:
+                standardized_data.append(self._make_skip_row("zero_amount", date_str, description, account, filename, raw))
+                continue
 
             standardized_data.append({
-                'transaction_date': self.parse_date(row.get("DATE")),
-                'transaction_time': None,
-                'description': str(row.get("TRANSACTION DETAILS", "")).strip(),
-                'amount': amount,
-                'transaction_type': transaction_type,
-                'account': account_name or "Axis Atlas Credit Card",
-                'category': None,
-                'reference_number': None,
-                'source_file': filename,
-                'raw_data': row.to_dict()
+                "transaction_date": parsed_date,
+                "transaction_time": None,
+                "description": description,
+                "amount": amount,
+                "transaction_type": transaction_type,
+                "account": account,
+                "category": None,
+                "reference_number": None,
+                "source_file": filename,
+                "raw_data": raw,
+                "_skip_reason": None,
+                "_partial_date_raw": None,
             })
 
         return pd.DataFrame(standardized_data)
     
     def process_swiggy_hdfc(self, df: pd.DataFrame, filename: str, account_name: str = None) -> pd.DataFrame:
-        """Process Swiggy HDFC Credit Card data"""
+        """Process Swiggy HDFC Credit Card data. Schema produces: Date, Time, Transaction Description, Amount (INR)."""
         logger.info(f"Processing Swiggy HDFC data: {filename}")
-
+        account = account_name or "Swiggy HDFC Credit Card"
         standardized_data = []
+
         for _, row in df.iterrows():
-            date_time_val = row.get("DATE & TIME")
-            if pd.isna(date_time_val) or str(date_time_val).strip() == "":
+            date_str = str(row.get("Date", "")).strip()
+            time_str = str(row.get("Time", "")).strip()
+            description = str(row.get("Transaction Description", "")).strip()
+            amount_str = str(row.get("Amount (INR)", "")).strip()
+            raw = row.to_dict()
+
+            # Combine into format expected by parse_date / extract_time
+            if time_str and time_str.lower() not in ("nan", ""):
+                full_datetime = f"{date_str}| {time_str}"
+            else:
+                full_datetime = date_str
+
+            parsed_date = self.parse_date(full_datetime) if date_str and date_str.lower() not in ("nan", "") else None
+            if not parsed_date:
+                standardized_data.append(self._make_skip_row("null_date", date_str, description, account, filename, raw))
                 continue
 
-            description_col_val = str(row.get("TRANSACTION DESCRIPTION", "")).strip()
+            if not description or description.lower() in ("nan", "none"):
+                standardized_data.append(self._make_skip_row("null_description", date_str, description, account, filename, raw))
+                continue
 
-            # The LLM sometimes splits "DATE & TIME" into separate date and time cells,
-            # shifting every subsequent column right by one:
-            #   DATE & TIME → date only   |   TRANSACTION DESCRIPTION → time (HH:MM)
-            #   AMOUNT → actual description   |   PI → actual amount
-            # Detect this by checking if TRANSACTION DESCRIPTION looks like a bare time.
-            is_column_shifted = bool(re.match(r'^\d{1,2}:\d{2}$', description_col_val))
-
-            if is_column_shifted:
-                time_str = description_col_val
-                description = str(row.get("AMOUNT", "")).strip()
-                # PI column holds the amount; strip bullet characters before parsing
-                pi_raw = str(row.get("PI", "")).strip()
-                pi_clean = re.sub(r'[•●]', '', pi_raw).strip()
-                amount, transaction_type = self.clean_amount(pi_clean, is_credit_card=True)
-                # Reconstruct the full datetime string so parse_date / extract_time work normally
-                full_datetime = f"{str(date_time_val).strip()}| {time_str}"
-                logger.warning(
-                    f"Column shift detected in {filename} row (date={date_time_val}): "
-                    f"reading description from AMOUNT, amount from PI"
-                )
-            else:
-                description = description_col_val
-                amount, transaction_type = self.clean_amount(row.get("AMOUNT", ""), is_credit_card=True)
-                full_datetime = str(date_time_val).strip()
+            amount, transaction_type = self.clean_amount(amount_str, is_credit_card=True)
+            if amount <= 0:
+                standardized_data.append(self._make_skip_row("zero_amount", date_str, description, account, filename, raw))
+                continue
 
             standardized_data.append({
-                'transaction_date': self.parse_date(full_datetime),
-                'transaction_time': self.extract_time(full_datetime),
-                'description': description,
-                'amount': amount,
-                'transaction_type': transaction_type,
-                'account': account_name or "Swiggy HDFC Credit Card",
-                'category': None,
-                'reference_number': None,
-                'source_file': filename,
-                'raw_data': row.to_dict()
+                "transaction_date": parsed_date,
+                "transaction_time": self.extract_time(full_datetime),
+                "description": description,
+                "amount": amount,
+                "transaction_type": transaction_type,
+                "account": account,
+                "category": None,
+                "reference_number": None,
+                "source_file": filename,
+                "raw_data": raw,
+                "_skip_reason": None,
+                "_partial_date_raw": None,
             })
 
         return pd.DataFrame(standardized_data)
     
     def process_cashback_sbi(self, df: pd.DataFrame, filename: str, account_name: str = None) -> pd.DataFrame:
-        """Process Cashback SBI Credit Card data"""
+        """Process Cashback SBI Credit Card data. Schema produces: Date, Transaction Details, Amount (INR)."""
         logger.info(f"Processing Cashback SBI data: {filename}")
-        
-        standardized_data = []
-        last_valid_date = None
-        
-        # Find the description column dynamically — it starts with "Transaction Details"
-        description_col = next(
-            (c for c in df.columns if str(c).startswith("Transaction Details")),
-            None
-        )
+        account = account_name or "Cashback SBI Credit Card"
+
+        # Dynamic column detection — safety net for minor column name variations
+        description_col = next((c for c in df.columns if str(c).startswith("Transaction Details")), None)
         if not description_col:
-            logger.warning(f"No 'Transaction Details' column found in {filename}, skipping")
+            logger.warning(f"No 'Transaction Details' column in {filename} — skipping")
             return pd.DataFrame()
 
-        # Find the amount column dynamically — it starts with "Amount"
-        # The extracted column name varies (e.g. "Amount (₹)", "Amount (‖)", "Amount (in ₹)")
-        amount_col = next(
-            (c for c in df.columns if str(c).startswith("Amount")),
-            None
-        )
+        amount_col = next((c for c in df.columns if str(c).startswith("Amount")), None)
         if not amount_col:
-            logger.warning(f"No 'Amount' column found in {filename}, skipping")
+            logger.warning(f"No 'Amount' column in {filename} — skipping")
             return pd.DataFrame()
 
+        standardized_data = []
         for _, row in df.iterrows():
-            date_value = row.get("Date")
+            date_str = str(row.get("Date", "")).strip()
             description = str(row.get(description_col, "")).strip()
+            amount_str = str(row.get(amount_col, "")).strip()
+            raw = row.to_dict()
 
-            # Skip summary rows
-            if any(keyword in description.lower() for keyword in ['transactions for', 'summary', 'total']):
-                logger.warning(f"Skipping summary row: {description}")
+            parsed_date = self.parse_date(date_str) if date_str and date_str.lower() not in ("nan", "") else None
+            if not parsed_date:
+                standardized_data.append(self._make_skip_row("null_date", date_str, description, account, filename, raw))
                 continue
 
-            # Handle rows without dates (likely forex charges or fees)
-            if pd.isna(date_value) or str(date_value).strip() == "":
-                if any(keyword in description.lower() for keyword in ['forex', 'markup', 'igst', 'tax', 'charge', 'fee']):
-                    # Use the first of the month for forex charges/fees
-                    if last_valid_date:
-                        if hasattr(last_valid_date, 'date'):
-                            date_obj = last_valid_date.date()
-                        elif isinstance(last_valid_date, str):
-                            try:
-                                date_obj = datetime.strptime(last_valid_date, "%Y-%m-%d").date()
-                            except ValueError:
-                                transaction_date = date.today().replace(day=1)
-                                logger.info(f"Using current month first day {transaction_date} for forex charge: {description}")
-                                continue
-                        else:
-                            date_obj = last_valid_date
-                        transaction_date = date_obj.replace(day=1)
-                    else:
-                        transaction_date = date.today().replace(day=1)
-                    logger.info(f"Using first of month {transaction_date} for forex charge: {description}")
-                else:
-                    logger.warning(f"Skipping row without date: {description}")
-                    continue
-            else:
-                transaction_date = self.parse_date(date_value)
-                last_valid_date = transaction_date
-                
-            amount, transaction_type = self.clean_amount(row.get(amount_col, ""), is_credit_card=True)
-            
+            if not description or description.lower() in ("nan", "none"):
+                standardized_data.append(self._make_skip_row("null_description", date_str, description, account, filename, raw))
+                continue
+
+            amount, transaction_type = self.clean_amount(amount_str, is_credit_card=True)
+            if amount <= 0:
+                standardized_data.append(self._make_skip_row("zero_amount", date_str, description, account, filename, raw))
+                continue
+
             standardized_data.append({
-                'transaction_date': transaction_date,
-                'transaction_time': None,
-                'description': description,
-                'amount': amount,
-                'transaction_type': transaction_type,
-                'account': account_name or "Cashback SBI Credit Card",
-                'category': None,
-                'reference_number': None,
-                'source_file': filename,
-                'raw_data': row.to_dict()
+                "transaction_date": parsed_date,
+                "transaction_time": None,
+                "description": description,
+                "amount": amount,
+                "transaction_type": transaction_type,
+                "account": account,
+                "category": None,
+                "reference_number": None,
+                "source_file": filename,
+                "raw_data": raw,
+                "_skip_reason": None,
+                "_partial_date_raw": None,
             })
-        
+
         return pd.DataFrame(standardized_data)
     
     def process_yes_bank_savings(self, df: pd.DataFrame, filename: str, account_name: str = None) -> pd.DataFrame:
-        """Process Yes Bank Savings Account data"""
+        """Process Yes Bank Savings Account data. Schema produces: Date, Description, Withdrawals, Deposits."""
         logger.info(f"Processing Yes Bank Savings data: {filename}")
-        
+        account = account_name or "Yes Bank Savings Account"
+
+        def _parse_amt(val) -> float:
+            if val is None or (isinstance(val, float) and pd.isna(val)):
+                return 0.0
+            try:
+                return float(str(val).strip().replace(",", ""))
+            except (ValueError, AttributeError):
+                return 0.0
+
         standardized_data = []
         for _, row in df.iterrows():
             date_val = row.get("Date") or row.get("Transaction Date")
-            if date_val is None or (isinstance(date_val, float) and pd.isna(date_val)) or str(date_val).strip() == "":
-                continue
-
-            # Skip summary/balance rows
-            date_str = str(date_val).strip()
+            date_str = str(date_val).strip() if date_val is not None else ""
             description = str(row.get("Description", "")).strip()
+            raw = row.to_dict()
 
-            if any(keyword in date_str.lower() for keyword in ['closing balance', 'opening balance', 'total', 'summary', 'b/f', 'brought forward']):
-                logger.warning(f"Skipping summary row: {date_str} - {description}")
+            parsed_date = self.parse_date(date_str) if date_str and date_str.lower() not in ("nan", "") else None
+            if not parsed_date:
+                standardized_data.append(self._make_skip_row("null_date", date_str, description, account, filename, raw))
                 continue
 
-            if any(keyword in description.lower() for keyword in ['closing balance', 'opening balance', 'total', 'summary', 'b/f', 'brought forward']):
-                logger.warning(f"Skipping summary row: {date_str} - {description}")
+            if not description or description.lower() in ("nan", "none"):
+                standardized_data.append(self._make_skip_row("null_description", date_str, description, account, filename, raw))
                 continue
-                
-            # For savings account, we need to determine amount from withdrawals/deposits
-            def _parse_amt(val) -> float:
-                if val is None or (isinstance(val, float) and pd.isna(val)):
-                    return 0.0
-                s = str(val).strip().replace(',', '')
-                try:
-                    return float(s)
-                except (ValueError, AttributeError):
-                    return 0.0
 
             withdrawal = _parse_amt(row.get("Withdrawals", 0))
             deposit = _parse_amt(row.get("Deposits", 0))
 
             if withdrawal > 0:
-                amount = withdrawal
-                transaction_type = "debit"
+                amount, transaction_type = withdrawal, "debit"
             elif deposit > 0:
-                amount = deposit
-                transaction_type = "credit"
+                amount, transaction_type = deposit, "credit"
             else:
+                standardized_data.append(self._make_skip_row("zero_amount", date_str, description, account, filename, raw))
                 continue
-            
+
             standardized_data.append({
-                'transaction_date': self.parse_date(date_val),
-                'transaction_time': None,
-                'description': str(row.get("Description", "")).strip(),
-                'amount': amount,
-                'transaction_type': transaction_type,
-                'account': account_name or "Unknown Account",
-                'category': None,
-                'reference_number': None,
-                'source_file': filename,
-                'raw_data': row.to_dict()
+                "transaction_date": parsed_date,
+                "transaction_time": None,
+                "description": description,
+                "amount": amount,
+                "transaction_type": transaction_type,
+                "account": account,
+                "category": None,
+                "reference_number": None,
+                "source_file": filename,
+                "raw_data": raw,
+                "_skip_reason": None,
+                "_partial_date_raw": None,
             })
-        
+
         return pd.DataFrame(standardized_data)
     
     def process_sbi_savings(self, df: pd.DataFrame, filename: str, account_name: str = None) -> pd.DataFrame:
-        """Process SBI Savings Account data"""
+        """Process SBI Savings Account data. Schema produces: Date, Description, Amount."""
         logger.info(f"Processing SBI Savings data: {filename}")
+        account = account_name or "SBI Savings Account"
 
         def _parse_amount(val) -> float:
             if val is None or (isinstance(val, float) and pd.isna(val)):
                 return 0.0
-            s = str(val).strip().replace(',', '').strip()
-            if not s or s.lower() in ('nan', 'none', '-', ''):
+            s = str(val).strip().replace(",", "").strip()
+            if not s or s.lower() in ("nan", "none", "-", ""):
                 return 0.0
             try:
                 return float(s)
@@ -512,101 +502,117 @@ class TransactionStandardizer:
 
         standardized_data = []
         for _, row in df.iterrows():
-            date_value = row.get("Date")
-            if pd.isna(date_value) or str(date_value).strip() in ("", "-"):
-                continue
-
+            date_str = str(row.get("Date", "")).strip()
             description = str(row.get("Description") or "").strip()
-            if not description or description == "-" or description.lower() in ('nan', 'none'):
+            raw = row.to_dict()
+
+            parsed_date = self.parse_date(date_str) if date_str and date_str.lower() not in ("nan", "") else None
+            if not parsed_date:
+                standardized_data.append(self._make_skip_row("null_date", date_str, description, account, filename, raw))
                 continue
 
-            if any(kw in description.upper() for kw in ('OPENING BALANCE', 'CLOSING BALANCE', 'TOTAL', 'SUMMARY')):
-                logger.info(f"Skipping summary row: {description}")
-                continue
-
-            desc_upper = description.upper()
-            if '/CR/' in desc_upper or (
-                ('CREDIT' in desc_upper or 'INTEREST' in desc_upper) and '/DR/' not in desc_upper
-            ):
-                transaction_type = 'credit'
-            elif '/DR/' in desc_upper or ('DEBIT' in desc_upper and '/CR/' not in desc_upper):
-                transaction_type = 'debit'
-            else:
+            if not description or description.lower() in ("nan", "none"):
+                standardized_data.append(self._make_skip_row("null_description", date_str, description, account, filename, raw))
                 continue
 
             amount = _parse_amount(row.get("Amount"))
             if amount <= 0:
+                standardized_data.append(self._make_skip_row("zero_amount", date_str, description, account, filename, raw))
+                continue
+
+            desc_upper = description.upper()
+            if "/CR/" in desc_upper or (
+                ("CREDIT" in desc_upper or "INTEREST" in desc_upper) and "/DR/" not in desc_upper
+            ):
+                transaction_type = "credit"
+            elif "/DR/" in desc_upper or ("DEBIT" in desc_upper and "/CR/" not in desc_upper):
+                transaction_type = "debit"
+            else:
+                # Direction cannot be inferred from SBI description format — skip silently
+                logger.warning(f"SBI Savings: unknown direction for '{description}' in {filename}")
                 continue
 
             standardized_data.append({
-                'transaction_date': self.parse_date(date_value),
-                'transaction_time': None,
-                'description': description,
-                'amount': amount,
-                'transaction_type': transaction_type,
-                'account': account_name or "SBI Savings Account",
-                'category': None,
-                'reference_number': None,
-                'source_file': filename,
-                'raw_data': row.to_dict()
+                "transaction_date": parsed_date,
+                "transaction_time": None,
+                "description": description,
+                "amount": amount,
+                "transaction_type": transaction_type,
+                "account": account,
+                "category": None,
+                "reference_number": None,
+                "source_file": filename,
+                "raw_data": raw,
+                "_skip_reason": None,
+                "_partial_date_raw": None,
             })
 
         return pd.DataFrame(standardized_data)
 
     
     def process_axis_bank_savings(self, df: pd.DataFrame, filename: str, account_name: str = None) -> pd.DataFrame:
-        """Process Axis Bank Savings Account data"""
+        """Process Axis Bank Savings Account data. Schema produces: Date, Transaction Details, Chq No, Withdrawal, Deposits."""
         logger.info(f"Processing Axis Bank Savings data: {filename}")
-        
+        account = account_name or "Axis Bank Savings Account"
         standardized_data = []
+
         for _, row in df.iterrows():
-            if pd.isna(row.get("Date")) or str(row.get("Date")).strip() == "":
-                continue
-            
-            # Skip summary/balance rows
-            date_str = str(row.get("Date")).strip()
+            date_str = str(row.get("Date", "")).strip()
             description = str(row.get("Transaction Details", "")).strip()
-            
-            if any(keyword in date_str.lower() for keyword in ['closing balance', 'opening balance', 'total', 'summary']):
-                logger.warning(f"Skipping summary row: {date_str} - {description}")
+            raw = row.to_dict()
+
+            parsed_date = self.parse_date(date_str) if date_str and date_str.lower() not in ("nan", "") else None
+            if not parsed_date:
+                standardized_data.append(self._make_skip_row("null_date", date_str, description, account, filename, raw))
                 continue
-            
-            if any(keyword in description.lower() for keyword in ['closing balance', 'opening balance', 'total', 'summary']):
-                logger.warning(f"Skipping summary row: {date_str} - {description}")
+
+            if not description or description.lower() in ("nan", "none"):
+                standardized_data.append(self._make_skip_row("null_description", date_str, description, account, filename, raw))
                 continue
-                
-            # For savings account, we need to determine amount from withdrawals/deposits
-            withdrawal = row.get("Withdrawal", 0)
-            deposit = row.get("Deposits", 0)
-            
-            if pd.notna(withdrawal) and str(withdrawal).strip() and str(withdrawal).lower() != 'nan':
+
+            withdrawal_raw = row.get("Withdrawal", "")
+            deposit_raw = row.get("Deposits", "")
+
+            def _safe_float(val) -> float:
+                if val is None or (isinstance(val, float) and pd.isna(val)):
+                    return 0.0
+                s = str(val).strip().replace(",", "")
+                if not s or s.lower() in ("nan", ""):
+                    return 0.0
                 try:
-                    amount = float(str(withdrawal).replace(',', ''))
-                    transaction_type = "debit"
+                    return float(s)
                 except (ValueError, TypeError):
-                    continue
-            elif pd.notna(deposit) and str(deposit).strip() and str(deposit).lower() != 'nan':
-                try:
-                    amount = float(str(deposit).replace(',', ''))
-                    transaction_type = "credit"
-                except (ValueError, TypeError):
-                    continue
+                    return 0.0
+
+            withdrawal = _safe_float(withdrawal_raw)
+            deposit = _safe_float(deposit_raw)
+
+            if withdrawal > 0:
+                amount, transaction_type = withdrawal, "debit"
+            elif deposit > 0:
+                amount, transaction_type = deposit, "credit"
             else:
+                standardized_data.append(self._make_skip_row("zero_amount", date_str, description, account, filename, raw))
                 continue
-            
+
+            chq_no = str(row.get("Chq No", "")).strip()
+            reference_number = chq_no if chq_no and chq_no.lower() not in ("nan", "") else None
+
             standardized_data.append({
-                'transaction_date': self.parse_date(row.get("Date")),
-                'transaction_time': None,
-                'description': str(row.get("Transaction Details", "")).strip(),
-                'amount': amount,
-                'transaction_type': transaction_type,
-                'account': account_name or "Unknown Account",
-                'category': None,
-                'reference_number': str(row.get("Chq No.", "")).strip() if pd.notna(row.get("Chq No.")) else None,
-                'source_file': filename,
-                'raw_data': row.to_dict()
+                "transaction_date": parsed_date,
+                "transaction_time": None,
+                "description": description,
+                "amount": amount,
+                "transaction_type": transaction_type,
+                "account": account,
+                "category": None,
+                "reference_number": reference_number,
+                "source_file": filename,
+                "raw_data": raw,
+                "_skip_reason": None,
+                "_partial_date_raw": None,
             })
-        
+
         return pd.DataFrame(standardized_data)
     
     def standardize_splitwise_data(self, df: pd.DataFrame) -> pd.DataFrame:
