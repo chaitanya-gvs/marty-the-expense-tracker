@@ -17,7 +17,7 @@ import shutil
 import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Any
+from typing import Callable, Dict, List, Optional, Any, Set, Tuple
 
 import pandas as pd
 from dateutil.relativedelta import relativedelta
@@ -1214,7 +1214,7 @@ class StatementWorkflow:
             # Steps 6-8: Standardize, dedup, and insert (runs if any data was collected)
             if include_statement or include_splitwise:
                 logger.info("Step 6: Standardizing and combining all transaction data", extra=self._log_extra())
-                combined_data = await self._standardize_and_combine_all_data()
+                combined_data, valid_csv_keys = await self._standardize_and_combine_all_data()
                 if combined_data:
                     workflow_results["combined_transaction_count"] = len(combined_data)
                     workflow_results["all_standardized_data"] = combined_data
@@ -1601,7 +1601,7 @@ class StatementWorkflow:
         )
         return {"email_reconciliation_queued": total_count}
 
-    async def _standardize_and_combine_all_data(self) -> List[Dict[str, Any]]:
+    async def _standardize_and_combine_all_data(self) -> Tuple[List[Dict[str, Any]], Set[str]]:
         """Delegate to DataStandardizerHelper."""
         return await self._data_standardizer_helper.process(
             override=getattr(self, "override", False),
@@ -1859,7 +1859,7 @@ class StatementWorkflow:
             workflow_results["splitwise_transaction_count"] = splitwise_result.get("transaction_count", 0)
 
             # Standardize from GCS (reuses the same combine logic)
-            combined_data = await self._standardize_and_combine_all_data()
+            combined_data, valid_csv_keys = await self._standardize_and_combine_all_data()
             if combined_data:
                 workflow_results["combined_transaction_count"] = len(combined_data)
                 self._emit(

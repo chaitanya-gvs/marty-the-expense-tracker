@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Set, Tuple
 
 import pandas as pd
 
@@ -61,7 +61,7 @@ class DataStandardizerHelper:
         self.emit = emit
         self.log_extra = log_extra
 
-    async def process(self, override: bool = False, job_id: str | None = None) -> List[Dict[str, Any]]:
+    async def process(self, override: bool = False, job_id: str | None = None) -> Tuple[List[Dict[str, Any]], Set[str]]:
         """Standardize and combine all transaction data from cloud storage."""
         try:
             logger.info("Standardizing and combining all transaction data", extra=self.log_extra())
@@ -83,7 +83,7 @@ class DataStandardizerHelper:
                     f"No CSV files found in GCS for {previous_month}",
                     level="warning",
                 )
-                return []
+                return [], set()
 
             csv_files_only = [f for f in cloud_csv_files if f.get("name", "").endswith(".csv")]
             logger.info(f"Found {len(csv_files_only)} CSV files in cloud storage", extra=self.log_extra())
@@ -103,24 +103,21 @@ class DataStandardizerHelper:
                         extra=self.log_extra(),
                     )
 
-            all_standardized_data: List[Dict[str, Any]] = []
+            all_valid_data: List[Dict[str, Any]] = []
+            all_flagged_data: List[Dict[str, Any]] = []
+            valid_csv_keys: Set[str] = set()
 
             # Process each CSV file
-            for cloud_file_info in cloud_csv_files:
+            for cloud_file_info in csv_files_only:
                 try:
-                    # Extract filename from file info dictionary
                     cloud_file = cloud_file_info.get("name", "")
                     if not cloud_file.endswith(".csv"):
                         continue
 
-                    # Skip CSVs whose statements are already fully inserted (rerun guard)
-                    csv_stem = Path(cloud_file).stem  # e.g. "swiggy_hdfc_20260306"
+                    csv_stem = Path(cloud_file).stem
                     csv_key = csv_stem
                     if db_inserted_keys and csv_key in db_inserted_keys:
-                        logger.info(
-                            f"Skipping {csv_key} — already db_inserted",
-                            extra=self.log_extra(),
-                        )
+                        logger.info(f"Skipping {csv_key} — already db_inserted", extra=self.log_extra())
                         self.emit(
                             "standardization_file_skipped", "standardization",
                             f"Skipping {Path(cloud_file).name} — already inserted",
@@ -128,16 +125,12 @@ class DataStandardizerHelper:
                         )
                         continue
 
-                    # Only process canonical splitwise.csv; skip legacy splitwise_* files
                     if "splitwise" in cloud_file.lower():
                         if Path(cloud_file).name != "splitwise.csv":
-                            logger.info(
-                                f"Skipping legacy Splitwise file {Path(cloud_file).name}",
-                                extra=self.log_extra(),
-                            )
+                            logger.info(f"Skipping legacy Splitwise file {Path(cloud_file).name}", extra=self.log_extra())
                             self.emit(
                                 "standardization_file_skipped", "standardization",
-                                f"Skipping {Path(cloud_file).name} — legacy Splitwise file (only splitwise.csv)",
+                                f"Skipping {Path(cloud_file).name} — legacy Splitwise file",
                                 data={"cloud_file": cloud_file, "reason": "legacy_splitwise"},
                             )
                             continue
@@ -149,16 +142,11 @@ class DataStandardizerHelper:
                         data={"cloud_file": cloud_file},
                     )
 
-                    # Download CSV from cloud storage to temp directory
                     temp_csv_path = self.temp_dir / Path(cloud_file).name
                     download_result = self.cloud_storage.download_file(cloud_file, str(temp_csv_path))
 
                     if not download_result.get("success"):
-                        logger.error(
-                            f"Failed to download {cloud_file}: {download_result.get('error')}",
-                            exc_info=True,
-                            extra=self.log_extra(),
-                        )
+                        logger.error(f"Failed to download {cloud_file}: {download_result.get('error')}", exc_info=True, extra=self.log_extra())
                         self.emit(
                             "standardization_file_failed", "standardization",
                             f"Failed to download {Path(cloud_file).name} from GCS",
@@ -167,50 +155,38 @@ class DataStandardizerHelper:
                         )
                         continue
 
-                    # Read CSV file
                     df = pd.read_csv(temp_csv_path)
 
-                    # Determine if this is Splitwise or bank data
                     if "splitwise" in cloud_file.lower():
-                        # Process Splitwise data
                         standardized_df = self.transaction_standardizer.standardize_splitwise_data(df)
                     else:
-                        # Process bank data - extract search pattern from filename
                         search_pattern = _extract_search_pattern_from_csv_filename(Path(cloud_file).name)
                         standardized_df = await self.transaction_standardizer.process_with_dynamic_method(
                             df, search_pattern, Path(cloud_file).name
                         )
 
                     if not standardized_df.empty:
-                        standardized_data = standardized_df.to_dict("records")
-                        all_standardized_data.extend(standardized_data)
+                        rows = standardized_df.to_dict("records")
+                        valid_rows = [r for r in rows if not r.get("_skip_reason")]
+                        flagged_rows = [r for r in rows if r.get("_skip_reason")]
+
+                        all_valid_data.extend(valid_rows)
+                        all_flagged_data.extend(flagged_rows)
+
+                        if valid_rows and "splitwise" not in cloud_file.lower():
+                            valid_csv_keys.add(csv_key)
+
                         logger.info(
-                            f"Standardized {len(standardized_data)} transactions from {cloud_file}",
+                            f"Standardized {len(valid_rows)} valid + {len(flagged_rows)} flagged rows from {cloud_file}",
                             extra=self.log_extra(),
                         )
                         self.emit(
                             "standardization_file_complete", "standardization",
-                            f"Standardized {len(standardized_data)} transaction(s) from {Path(cloud_file).name}",
+                            f"Standardized {len(valid_rows)} transaction(s) from {Path(cloud_file).name}"
+                            + (f" ({len(flagged_rows)} flagged)" if flagged_rows else ""),
                             level="success",
-                            data={"cloud_file": cloud_file, "row_count": len(standardized_data)},
+                            data={"cloud_file": cloud_file, "row_count": len(valid_rows), "flagged_count": len(flagged_rows)},
                         )
-                        # Mark this statement as db_inserted so reruns skip it.
-                        # csv_key = CSV stem without _extracted (e.g. "yes_bank_savings_20260402")
-                        if not "splitwise" in cloud_file.lower():
-                            try:
-                                await StatementLogOperations.update_status(
-                                    csv_key, "db_inserted", job_id=job_id
-                                )
-                                logger.info(
-                                    f"Marked {csv_key} as db_inserted",
-                                    extra=self.log_extra(),
-                                )
-                            except Exception:
-                                logger.warning(
-                                    f"Failed to mark {csv_key} as db_inserted",
-                                    exc_info=True,
-                                    extra=self.log_extra(),
-                                )
                     else:
                         self.emit(
                             "standardization_file_complete", "standardization",
@@ -229,32 +205,27 @@ class DataStandardizerHelper:
                     )
                     continue
 
-            if all_standardized_data:
-                # Remove duplicates using composite key
-                deduplicated_data = await self.remove_duplicate_transactions(all_standardized_data)
+            if all_valid_data or all_flagged_data:
+                deduplicated = await self.remove_duplicate_transactions(all_valid_data)
                 logger.info(
-                    f"Removed {len(all_standardized_data) - len(deduplicated_data)} duplicate transactions",
+                    f"Removed {len(all_valid_data) - len(deduplicated)} duplicate transactions",
                     extra=self.log_extra(),
                 )
-
-                # Sort by transaction date (chronological order - oldest first)
-                sorted_data = await self.sort_transactions_by_date(deduplicated_data)
-                logger.info(
-                    f"Sorted {len(sorted_data)} transactions by date (chronological order)",
-                    extra=self.log_extra(),
-                )
+                sorted_valid = await self.sort_transactions_by_date(deduplicated)
+                combined = sorted_valid + all_flagged_data  # flagged rows appended unsorted
 
                 self.emit(
                     "standardization_complete", "standardization",
-                    f"Standardization complete: {len(sorted_data)} unique transaction(s) across all sources",
+                    f"Standardization complete: {len(sorted_valid)} unique valid + {len(all_flagged_data)} flagged",
                     level="success",
                     data={
-                        "total_before_dedup": len(all_standardized_data),
-                        "total_after_dedup": len(sorted_data),
-                        "duplicates_removed": len(all_standardized_data) - len(deduplicated_data),
+                        "total_before_dedup": len(all_valid_data),
+                        "total_after_dedup": len(sorted_valid),
+                        "duplicates_removed": len(all_valid_data) - len(deduplicated),
+                        "flagged_count": len(all_flagged_data),
                     },
                 )
-                return sorted_data
+                return combined, valid_csv_keys
             else:
                 logger.warning("No standardized transaction data generated", extra=self.log_extra())
                 self.emit(
@@ -263,7 +234,7 @@ class DataStandardizerHelper:
                     level="warning",
                     data={"total_after_dedup": 0},
                 )
-                return []
+                return [], set()
 
         except Exception as e:
             logger.error("Error standardizing and combining all data", exc_info=True, extra=self.log_extra())
@@ -273,4 +244,4 @@ class DataStandardizerHelper:
                 level="error",
                 data={"error": str(e)},
             )
-            return []
+            return [], set()
