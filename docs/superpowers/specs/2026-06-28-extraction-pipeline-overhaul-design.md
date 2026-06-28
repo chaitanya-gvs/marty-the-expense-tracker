@@ -182,7 +182,15 @@ Every `process_*` method gets a `_skip_reason` column added to its output DataFr
 | `"null_description"` | description is empty, `"nan"`, or `"None"` |
 | `"zero_amount"` | parsed amount is 0 or negative |
 
-Rows with a non-null `_skip_reason` are **not inserted** but are **fully reported** (see Section 4).
+All three guards are applied universally to **every** `process_*` method — not just the three accounts with specific fixes.
+
+Rows with a non-null `_skip_reason` are **not inserted into the DB** but are **fully reported** in logs, SSE events, and the job summary. No new DB columns or tables are needed. The expectation is that flagged rows will be rare once extraction schemas are fixed, and any legitimate transaction that gets flagged can be manually inserted using the report data.
+
+Each flagged row in the report includes:
+- `source_file` — which CSV it came from
+- `reason` — the skip reason string
+- `raw_data` — the full raw row dict as extracted
+- `partial_date` — the raw unparsed date string (even when `parse_date()` failed), so a `null_date` row can be manually reconstructed
 
 ### Per-Account Changes
 
@@ -202,7 +210,7 @@ Rows with a non-null `_skip_reason` are **not inserted** but are **fully reporte
 - Construct `full_datetime = f"{date_str}| {time_str}"` for existing `parse_date`/`extract_time` parsers
 - Add `_skip_reason` guard after `parse_date`
 
-**All other accounts**: Add `_skip_reason` guard after `parse_date` — no other logic changes.
+**All other accounts** (SBI Savings, Yes Bank Savings, Axis Bank Savings): Add all three `_skip_reason` guards (`null_date`, `null_description`, `zero_amount`) — no other logic changes.
 
 ### Validation Script
 
@@ -257,7 +265,12 @@ Return value:
 {
     "inserted": 240,
     "skipped": [
-        {"source_file": "cashback_sbi_20260602.csv", "reason": "null_date", "raw_data": {...}}
+        {
+            "source_file": "cashback_sbi_20260602.csv",
+            "reason": "null_date",
+            "raw_data": {...},
+            "partial_date": "TRANSACTIONS FOR CHAITANYA GVS"  # raw string that failed parse_date
+        }
     ]
 }
 ```
