@@ -51,74 +51,49 @@ class PDFPageFilter:
     """
     Filters PDF pages to include only those containing transaction data.
 
-    Two main entry points:
-    - analyze_pages()            — dry-run, no file written, returns PageAnalysis per page
-    - filter_transaction_pages() — writes a filtered PDF and returns its path
+    Strategy is controlled by the PAGE_FILTER_STRATEGY environment variable:
+      "pymupdf"  — keyword/table detection via PyMuPDF (default fallback)
+      "classify" — LandingAI ADE classify() API; falls back to pymupdf on failure
+      "compare"  — runs both, logs the comparison, uses pymupdf result (default)
+
+    Main entry points:
+      analyze_pages()            — dry-run, returns PageAnalysis per page
+      filter_transaction_pages() — returns (filtered_pdf_path, kept_page_indices)
     """
+
+    # ------------------------------------------------------------------ #
+    # Internal helpers                                                     #
+    # ------------------------------------------------------------------ #
 
     def _detect_transaction_table(
         self, page: fitz.Page, config: PageFilterConfig
     ) -> Tuple[bool, int, int]:
-        """
-        Use PyMuPDF's find_tables() to detect whether the page has a table that looks
-        like a transaction table (enough columns and rows).
-
-        Returns (has_transaction_table, max_cols_found, max_rows_found).
-        """
+        """PyMuPDF structural table detection. Returns (has_table, max_cols, max_rows)."""
         try:
             table_finder = page.find_tables()
-            max_cols = 0
-            max_rows = 0
+            max_cols, max_rows = 0, 0
             for table in table_finder.tables:
                 cols = len(table.header.names)
-                # rows includes the header row; subtract 1 for data rows only
                 rows = max(0, len(table.rows) - 1)
                 if cols > max_cols:
                     max_cols = cols
                 if rows > max_rows:
                     max_rows = rows
-            qualifies = (
-                max_cols >= config.min_table_cols
-                and max_rows >= config.min_table_rows
-            )
+            qualifies = max_cols >= config.min_table_cols and max_rows >= config.min_table_rows
             return qualifies, max_cols, max_rows
         except Exception:
-            logger.debug("find_tables() failed on a page — skipping table detection", exc_info=True)
+            logger.debug("find_tables() failed — skipping table detection", exc_info=True)
             return False, 0, 0
 
-    def _score_page(
-        self, page: fitz.Page, config: PageFilterConfig
-    ) -> PageAnalysis:
-        """
-        Score a single fitz.Page using all four signals in priority order.
-        page_num is set to 0 and filled in by the caller.
-
-        Priority:
-          1. Column headers  — exact column names from the transaction table header row
-          2. Required keywords — bank-specific section headings
-          3. Table density   — structural detection via find_tables()
-          4. Supporting keywords — generic fallback
-        """
+    def _score_page(self, page: fitz.Page, config: PageFilterConfig) -> PageAnalysis:
+        """Score a single page using column headers and required keywords."""
         text = page.get_text().lower()
-
-        # Signal 1: exact column header matching (highest confidence)
         matched_col_headers = [h for h in config.column_headers if h in text]
         col_header_hit = len(matched_col_headers) >= config.min_column_header_matches
-
-        # Signal 2: required keywords
         matched_required = [kw for kw in config.required_keywords if kw in text]
-
-        # Signal 3: table density
         has_table, max_cols, max_rows = self._detect_transaction_table(page, config)
-
-        # Signal 4: supporting keywords (fallback only)
         matched_supporting = [kw for kw in config.supporting_keywords if kw in text]
-
-        # Strict decision: only column headers and required keywords count.
-        # Table density and supporting keywords are recorded for diagnostics but do not
-        # influence the keep/drop result.
         kept = col_header_hit or bool(matched_required)
-
         return PageAnalysis(
             page_num=0,
             kept=kept,
@@ -130,26 +105,35 @@ class PDFPageFilter:
             matched_supporting=matched_supporting,
         )
 
-    def analyze_pages(self, pdf_path: Path, schema_key: str) -> List[PageAnalysis]:
-        """
-        Dry-run: score every page and return analysis without writing any file.
+    def _write_filtered_pdf(self, source_path: Path, kept_indices: List[int]) -> Path:
+        """Write a new PDF containing only the pages at kept_indices."""
+        filtered_path = source_path.with_name(f"{source_path.stem}_filtered.pdf")
+        src = fitz.open(str(source_path))
+        dst = fitz.open()
+        try:
+            for idx in kept_indices:
+                dst.insert_pdf(src, from_page=idx, to_page=idx)
+            dst.save(str(filtered_path))
+        finally:
+            src.close()
+            dst.close()
+        return filtered_path
 
-        Returns an empty list (with a warning) if the schema_key has no config,
-        or if the PDF cannot be opened.
-        """
+    # ------------------------------------------------------------------ #
+    # Public dry-run                                                       #
+    # ------------------------------------------------------------------ #
+
+    def analyze_pages(self, pdf_path: Path, schema_key: str) -> List[PageAnalysis]:
+        """Dry-run: score every page and return analysis without writing any file."""
         config = PAGE_FILTER_CONFIGS.get(schema_key)
         if config is None:
-            logger.warning(
-                f"No PageFilterConfig found for schema_key '{schema_key}' — skipping analysis"
-            )
+            logger.warning(f"No PageFilterConfig for '{schema_key}' — skipping analysis")
             return []
-
         try:
             doc = fitz.open(str(pdf_path))
         except Exception:
-            logger.error(f"Could not open PDF for page analysis: {pdf_path}", exc_info=True)
+            logger.error(f"Could not open PDF: {pdf_path}", exc_info=True)
             return []
-
         analyses: List[PageAnalysis] = []
         try:
             for i in range(len(doc)):
@@ -159,69 +143,104 @@ class PDFPageFilter:
                 analyses.append(analysis)
         finally:
             doc.close()
-
         kept_count = sum(1 for a in analyses if a.kept)
-        logger.info(
-            f"Page analysis for '{schema_key}' ({pdf_path.name}): "
-            f"{kept_count}/{len(analyses)} pages would be kept"
-        )
+        logger.info(f"PyMuPDF page analysis '{schema_key}' ({pdf_path.name}): {kept_count}/{len(analyses)} kept")
         return analyses
 
-    def filter_transaction_pages(
-        self, pdf_path: Path, schema_key: str
-    ) -> Tuple[Path, List[int]]:
-        """
-        Build a filtered PDF containing only transaction pages.
+    # ------------------------------------------------------------------ #
+    # Strategy implementations                                            #
+    # ------------------------------------------------------------------ #
 
-        Returns:
-            (filtered_pdf_path, kept_page_indices)  — filtered_pdf_path is a new temp
-            file named '{stem}_filtered.pdf' in the same directory as pdf_path.
-
-        Fallback: returns (pdf_path, []) unchanged when:
-        - No config exists for schema_key
-        - 0 pages matched (avoids sending an empty PDF to Landing AI)
-        - Any exception occurs during filtering
-        """
+    def _filter_with_pymupdf(self, pdf_path: Path, schema_key: str) -> Tuple[Path, List[int]]:
+        """PyMuPDF keyword/table strategy — the original implementation."""
         config = PAGE_FILTER_CONFIGS.get(schema_key)
         if config is None:
-            logger.warning(
-                f"No PageFilterConfig for schema_key '{schema_key}' — using full PDF"
-            )
+            logger.warning(f"No PageFilterConfig for '{schema_key}' — using full PDF")
             return pdf_path, []
-
         try:
             analyses = self.analyze_pages(pdf_path, schema_key)
-            kept_indices = [a.page_num for a in analyses if a.kept]
-
-            if not kept_indices:
-                logger.warning(
-                    f"Page filter matched 0 pages for '{schema_key}' ({pdf_path.name}) "
-                    f"— falling back to full PDF"
-                )
+            kept = [a.page_num for a in analyses if a.kept]
+            if not kept:
+                logger.warning(f"PyMuPDF matched 0 pages for '{schema_key}' — using full PDF")
                 return pdf_path, []
-
-            # Write kept pages to a sibling temp file
-            filtered_path = pdf_path.with_name(f"{pdf_path.stem}_filtered.pdf")
-            src = fitz.open(str(pdf_path))
-            dst = fitz.open()
-            try:
-                for idx in kept_indices:
-                    dst.insert_pdf(src, from_page=idx, to_page=idx)
-                dst.save(str(filtered_path))
-            finally:
-                src.close()
-                dst.close()
-
-            logger.info(
-                f"Wrote filtered PDF ({len(kept_indices)} of {len(analyses)} pages): "
-                f"{filtered_path.name}"
-            )
-            return filtered_path, kept_indices
-
+            filtered_path = self._write_filtered_pdf(pdf_path, kept)
+            logger.info(f"PyMuPDF: kept {len(kept)}/{len(analyses)} pages for '{schema_key}'")
+            return filtered_path, kept
         except Exception:
-            logger.error(
-                f"Error filtering pages for '{schema_key}' ({pdf_path.name}) "
-                f"— falling back to full PDF",
+            logger.error(f"PyMuPDF filter error for '{schema_key}' — using full PDF", exc_info=True)
+            return pdf_path, []
+
+    def _filter_with_classify(
+        self, pdf_path: Path, schema_key: str, ade_client
+    ) -> Tuple[Path, List[int]]:
+        """LandingAI classify() strategy. Falls back to pymupdf on any failure."""
+        try:
+            response = ade_client.classify(
+                document=pdf_path,
+                categories=["transaction_page", "non_transaction_page"],
+            )
+            # SDK response may use .pages or .classifications depending on version
+            pages = getattr(response, "pages", None) or getattr(response, "classifications", None) or []
+            kept = [p.page_num for p in pages if getattr(p, "category", "") == "transaction_page"]
+            if not kept:
+                logger.warning(
+                    f"classify() returned 0 transaction pages for '{schema_key}' — falling back to pymupdf"
+                )
+                return self._filter_with_pymupdf(pdf_path, schema_key)
+            filtered_path = self._write_filtered_pdf(pdf_path, kept)
+            logger.info(f"classify(): kept {len(kept)} pages for '{schema_key}'")
+            return filtered_path, kept
+        except Exception:
+            logger.warning(
+                f"classify() failed for '{schema_key}' — falling back to pymupdf", exc_info=True
+            )
+            return self._filter_with_pymupdf(pdf_path, schema_key)
+
+    def _filter_with_compare(
+        self, pdf_path: Path, schema_key: str, ade_client
+    ) -> Tuple[Path, List[int]]:
+        """Runs both strategies, logs comparison, uses pymupdf result."""
+        pymupdf_path, pymupdf_kept = self._filter_with_pymupdf(pdf_path, schema_key)
+        try:
+            response = ade_client.classify(
+                document=pdf_path,
+                categories=["transaction_page", "non_transaction_page"],
+            )
+            pages = getattr(response, "pages", None) or getattr(response, "classifications", None) or []
+            classify_kept = [p.page_num for p in pages if getattr(p, "category", "") == "transaction_page"]
+            logger.info(
+                f"PAGE_FILTER compare '{schema_key}' ({pdf_path.name}): "
+                f"pymupdf={pymupdf_kept} ({len(pymupdf_kept)} pages), "
+                f"classify={classify_kept} ({len(classify_kept)} pages). "
+                f"Using pymupdf result."
+            )
+        except Exception:
+            logger.warning(
+                f"classify() failed in compare mode for '{schema_key}' — only pymupdf result available",
                 exc_info=True,
             )
-            return pdf_path, []
+        return pymupdf_path, pymupdf_kept
+
+    # ------------------------------------------------------------------ #
+    # Main entry point                                                     #
+    # ------------------------------------------------------------------ #
+
+    def filter_transaction_pages(
+        self, pdf_path: Path, schema_key: str, ade_client=None
+    ) -> Tuple[Path, List[int]]:
+        """
+        Return (filtered_pdf_path, kept_page_indices).
+
+        Fallback: returns (pdf_path, []) unchanged when 0 pages match or any error.
+        Strategy is selected via PAGE_FILTER_STRATEGY env var (default: "compare").
+        """
+        import os
+        strategy = os.getenv("PAGE_FILTER_STRATEGY", "compare").lower()
+
+        if strategy == "classify" and ade_client is not None:
+            return self._filter_with_classify(pdf_path, schema_key, ade_client)
+        elif strategy == "compare" and ade_client is not None:
+            return self._filter_with_compare(pdf_path, schema_key, ade_client)
+        else:
+            # "pymupdf" strategy, or classify/compare requested but no client provided
+            return self._filter_with_pymupdf(pdf_path, schema_key)
