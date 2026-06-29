@@ -73,7 +73,7 @@ def validate(month: str) -> bool:
     ]
     unlocked_pdfs = [
         f for f in gcs.list_files(f"{month}/unlocked_statements/")
-        if f.get("name", "").endswith("_unlocked.pdf")
+        if f.get("name", "").endswith(".pdf")
     ]
 
     if not ref_csvs:

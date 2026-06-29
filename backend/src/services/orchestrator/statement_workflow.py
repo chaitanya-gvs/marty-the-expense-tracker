@@ -1422,6 +1422,12 @@ class StatementWorkflow:
         for tx in combined_data:
             account_name = tx.get("account", "")
 
+            # Flagged rows (will be filtered by bulk_insert) bypass dedup —
+            # transaction_date is None so date arithmetic in match would TypeError.
+            if tx.get("_skip_reason"):
+                filtered.append(tx)
+                continue
+
             # Splitwise transactions bypass dedup entirely
             if account_name.lower() == "splitwise":
                 filtered.append(tx)
