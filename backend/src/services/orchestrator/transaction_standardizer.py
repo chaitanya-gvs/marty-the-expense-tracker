@@ -601,7 +601,7 @@ class TransactionStandardizer:
                 standardized_data.append(self._make_skip_row("null_description", date_str, description, account, filename, raw))
                 continue
 
-            withdrawal_raw = row.get("Withdrawal", "")
+            withdrawal_raw = row.get("Withdrawals", "")
             deposit_raw = row.get("Deposits", "")
 
             def _safe_float(val) -> float:

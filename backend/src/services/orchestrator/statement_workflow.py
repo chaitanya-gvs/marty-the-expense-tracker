@@ -1470,7 +1470,7 @@ class StatementWorkflow:
                         amount=tx["amount"],
                         description=tx.get("description", ""),
                         account=account_name,
-                        direction=tx.get("direction", "debit"),
+                        direction=tx.get("transaction_type", "debit"),
                         transaction_type=tx.get("transaction_type", ""),
                         reference_number=tx.get("reference_number"),
                         raw_data=tx,
