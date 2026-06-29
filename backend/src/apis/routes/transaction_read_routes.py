@@ -1071,49 +1071,48 @@ async def get_transaction_source_pdf(transaction_id: str):
         # Initialize GCS service
         gcs_service = GoogleCloudStorageService()
 
-        # List all PDF files in the month/year unlocked_statements folder
-        prefix = f"{month_year}/unlocked_statements/"
-        pdf_files = gcs_service.list_files(prefix=prefix, max_results=100)
+        # Primary: derive PDF path directly from source_file (e.g. cashback_sbi_20260502.csv → .pdf)
+        gcs_path = None
+        source_file = transaction.get('source_file') or ''
+        if source_file and source_file.lower().endswith('.csv'):
+            pdf_name = Path(source_file).stem + '.pdf'
+            candidate_path = f"{month_year}/unlocked_statements/{pdf_name}"
+            exists_result = gcs_service.file_exists(candidate_path)
+            if exists_result:
+                gcs_path = candidate_path
+                logger.info("Located PDF via source_file for transaction id=%s: %s", transaction_id, gcs_path)
 
-        # Filter to only PDF files
-        pdf_files = [f for f in pdf_files if f['name'].lower().endswith('.pdf')]
+        # Fallback: keyword scoring over all PDFs in the month folder
+        if not gcs_path:
+            prefix = f"{month_year}/unlocked_statements/"
+            pdf_files = gcs_service.list_files(prefix=prefix, max_results=100)
+            pdf_files = [f for f in pdf_files if f['name'].lower().endswith('.pdf')]
 
-        if not pdf_files:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No PDF files found in {prefix}",
-            )
+            if not pdf_files:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No PDF files found in {prefix}",
+                )
 
-        # Find the PDF file that matches the account keywords
-        # Use a scoring system: prefer PDFs that match more keywords
-        matching_pdf = None
-        best_match_score = 0
+            matching_pdf = None
+            best_match_score = 0
 
-        logger.info("Searching for PDF with account: %r, keywords: %s", transaction.get('account'), account_keywords)
-        logger.info("Found %d PDF files in %s", len(pdf_files), prefix)
-        for pdf_file in pdf_files:
-            logger.debug(f"  - {pdf_file['name']}")
+            logger.info("Falling back to keyword search for account: %r, keywords: %s", transaction.get('account'), account_keywords)
+            for pdf_file in pdf_files:
+                filename_lower = pdf_file['name'].lower()
+                match_score = sum(1 for kw in account_keywords if kw in filename_lower)
+                if match_score > best_match_score:
+                    best_match_score = match_score
+                    matching_pdf = pdf_file
 
-        # Score each PDF based on how many keywords match
-        for pdf_file in pdf_files:
-            filename_lower = pdf_file['name'].lower()
-            matching_keywords = [kw for kw in account_keywords if kw in filename_lower]
-            match_score = len(matching_keywords)
+            if matching_pdf and best_match_score > 0:
+                logger.info("Found matching PDF: %s (matched %d/%d keywords)", matching_pdf['name'], best_match_score, len(account_keywords))
+            else:
+                matching_pdf = pdf_files[0]
+                logger.warning("No matching PDF found for account %r, using first available: %s", transaction.get('account'), matching_pdf['name'])
 
-            # Prefer matches with more keywords
-            if match_score > best_match_score:
-                best_match_score = match_score
-                matching_pdf = pdf_file
+            gcs_path = matching_pdf['name']
 
-        # Only use the match if at least one keyword matched
-        if matching_pdf and best_match_score > 0:
-            logger.info("Found matching PDF: %s (matched %d/%d keywords)", matching_pdf['name'], best_match_score, len(account_keywords))
-        else:
-            # If no match, use the first PDF file (fallback)
-            matching_pdf = pdf_files[0]
-            logger.warning("No matching PDF found for account %r, using first available: %s", transaction.get('account'), matching_pdf['name'])
-
-        gcs_path = matching_pdf['name']
         pdf_filename = Path(gcs_path).name
         logger.info("Selected PDF for transaction id=%s: %s", transaction_id, gcs_path)
 

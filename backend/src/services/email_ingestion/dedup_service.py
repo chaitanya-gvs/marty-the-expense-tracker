@@ -51,6 +51,7 @@ class DeduplicationService:
         self, stmt_tx: Dict[str, Any], candidates: List[Dict[str, Any]], stmt_date: date
     ) -> DeduplicationResult:
         stmt_amount = Decimal(str(stmt_tx["amount"]))
+        stmt_direction = stmt_tx.get("transaction_type", "")
         date_min = stmt_date - timedelta(days=DATE_WINDOW_DAYS)
         date_max = stmt_date + timedelta(days=DATE_WINDOW_DAYS)
 
@@ -58,6 +59,7 @@ class DeduplicationService:
             c for c in candidates
             if Decimal(str(c["amount"])) == stmt_amount
             and date_min <= c["transaction_date"] <= date_max
+            and (not stmt_direction or c.get("direction", "") == stmt_direction)
         ]
         if len(matches) == 1:
             return DeduplicationResult(tier=2, matched_id=str(matches[0]["id"]))
