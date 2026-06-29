@@ -1718,14 +1718,14 @@ files = [
 
 [[package]]
 name = "landingai-ade"
-version = "1.9.0"
+version = "1.12.0"
 description = "The official Python library for the landingai-ade API"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "landingai_ade-1.9.0-py3-none-any.whl", hash = "sha256:1dabba49c3ba0c345df5b11b31cc1edaa53aa915082fe62a70dce6bc629f1160"},
-    {file = "landingai_ade-1.9.0.tar.gz", hash = "sha256:0391d27f132b3d9cd66c625e11374bdf8846ec367ef1ca015a459088b88967bc"},
+    {file = "landingai_ade-1.12.0-py3-none-any.whl", hash = "sha256:fe75d98faea41e0ebbaaf133611f82a667134ef421d95afcbb8eea075f4dc3e0"},
+    {file = "landingai_ade-1.12.0.tar.gz", hash = "sha256:c8ba80d062d934c03a26c5ef6bb1d8c0f5dd9f0aa11d88d802bf9e931476949b"},
 ]
 
 [package.dependencies]
@@ -4659,4 +4659,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "f2f12002ff92941f29eb45bef4fd739351af080cf3f3bd97d9bb11fa8b5976de"
+content-hash = "dac0c5bf4d08ed5483c8c85de18749a5692b739ebd75a9e75fb476fd717fc9f3"

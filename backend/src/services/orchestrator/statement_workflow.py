@@ -17,7 +17,7 @@ import shutil
 import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Any
+from typing import Callable, Dict, List, Optional, Any, Set, Tuple
 
 import pandas as pd
 from dateutil.relativedelta import relativedelta
@@ -109,6 +109,8 @@ def _build_completion_data(workflow_results: dict) -> dict:
         "dedup_review_queued": dedup_review,
         "email_reconciliation_queued": email_recon,
         "review_queue_total": dedup_review + email_recon,
+        # Validation-skipped rows (rows that had null date / null description / zero amount)
+        "skipped_rows": workflow_results.get("validation_skipped_rows", []),
         # Errors
         "errors": workflow_results.get("errors", []),
     }
@@ -997,6 +999,7 @@ class StatementWorkflow:
             "all_standardized_data": [],
             "email_ingestion": None,
             "email_reconciliation_queued": 0,
+            "validation_skipped_rows": [],
         }
         
         try:
@@ -1214,7 +1217,7 @@ class StatementWorkflow:
             # Steps 6-8: Standardize, dedup, and insert (runs if any data was collected)
             if include_statement or include_splitwise:
                 logger.info("Step 6: Standardizing and combining all transaction data", extra=self._log_extra())
-                combined_data = await self._standardize_and_combine_all_data()
+                combined_data, valid_csv_keys = await self._standardize_and_combine_all_data()
                 if combined_data:
                     workflow_results["combined_transaction_count"] = len(combined_data)
                     workflow_results["all_standardized_data"] = combined_data
@@ -1286,18 +1289,31 @@ class StatementWorkflow:
                                    f"{db_result.get('updated_count', 0)} updated, "
                                    f"{db_result.get('skipped_count', 0)} skipped, "
                                    f"{db_result.get('error_count', 0)} errors")
-                        # Mark statements as db_inserted only if standardization actually produced data.
-                        # Extraction-skipped statements (already done) and failed extractions (no CSV)
-                        # must not be stamped db_inserted — they need to remain retryable.
-                        for stmt in workflow_results.get("processed_statements", []):
-                            if not stmt.get("extraction_skipped") and stmt.get("standardization_success"):
-                                stmt_log_key = stmt["filename"].replace("_locked.pdf", "")
-                                try:
-                                    await StatementLogOperations.update_status(
-                                        stmt_log_key, "db_inserted", job_id=self.job_id
-                                    )
-                                except Exception:
-                                    logger.warning(f"Failed to mark {stmt_log_key} as db_inserted", exc_info=True, extra=self._log_extra())
+                        # Emit SSE for each validation-flagged row
+                        for skipped_row in db_result.get("validation_skipped_rows", []):
+                            self._emit(
+                                "validation_row_skipped", "db_insert",
+                                f"Skipped row (reason={skipped_row['reason']}): {skipped_row['source_file']}",
+                                level="warning",
+                                data=skipped_row,
+                            )
+                        # Accumulate skipped rows for the workflow_complete event
+                        workflow_results["validation_skipped_rows"].extend(
+                            db_result.get("validation_skipped_rows", [])
+                        )
+                        # Mark db_inserted only for CSV keys that had at least one valid row inserted
+                        for csv_key in valid_csv_keys:
+                            try:
+                                await StatementLogOperations.update_status(
+                                    csv_key, "db_inserted", job_id=self.job_id
+                                )
+                                logger.info(f"Marked {csv_key} as db_inserted", extra=self._log_extra())
+                            except Exception:
+                                logger.warning(
+                                    f"Failed to mark {csv_key} as db_inserted",
+                                    exc_info=True,
+                                    extra=self._log_extra(),
+                                )
                         self._emit(
                             "db_insert_complete", "db_insert",
                             (
@@ -1405,6 +1421,12 @@ class StatementWorkflow:
 
         for tx in combined_data:
             account_name = tx.get("account", "")
+
+            # Flagged rows (will be filtered by bulk_insert) bypass dedup —
+            # transaction_date is None so date arithmetic in match would TypeError.
+            if tx.get("_skip_reason"):
+                filtered.append(tx)
+                continue
 
             # Splitwise transactions bypass dedup entirely
             if account_name.lower() == "splitwise":
@@ -1601,7 +1623,7 @@ class StatementWorkflow:
         )
         return {"email_reconciliation_queued": total_count}
 
-    async def _standardize_and_combine_all_data(self) -> List[Dict[str, Any]]:
+    async def _standardize_and_combine_all_data(self) -> Tuple[List[Dict[str, Any]], Set[str]]:
         """Delegate to DataStandardizerHelper."""
         return await self._data_standardizer_helper.process(
             override=getattr(self, "override", False),
@@ -1859,7 +1881,7 @@ class StatementWorkflow:
             workflow_results["splitwise_transaction_count"] = splitwise_result.get("transaction_count", 0)
 
             # Standardize from GCS (reuses the same combine logic)
-            combined_data = await self._standardize_and_combine_all_data()
+            combined_data, valid_csv_keys = await self._standardize_and_combine_all_data()
             if combined_data:
                 workflow_results["combined_transaction_count"] = len(combined_data)
                 self._emit(
@@ -1877,6 +1899,15 @@ class StatementWorkflow:
                     workflow_results["database_updated_count"] = db_result.get("updated_count", 0)
                     workflow_results["database_skipped_count"] = db_result.get("skipped_count", 0)
                     workflow_results["database_error_count"] = db_result.get("error_count", 0)
+                    # Emit SSE for each validation-flagged row
+                    for skipped_row in db_result.get("validation_skipped_rows", []):
+                        self._emit(
+                            "validation_row_skipped", "db_insert",
+                            f"Skipped row (reason={skipped_row['reason']}): {skipped_row['source_file']}",
+                            level="warning",
+                            data=skipped_row,
+                        )
+                    accumulated_skipped_rows = db_result.get("validation_skipped_rows", [])
                     self._emit(
                         "db_insert_complete", "db_insert",
                         (
@@ -1893,6 +1924,9 @@ class StatementWorkflow:
                     )
                 else:
                     workflow_results["database_errors"] = db_result.get("errors", [])
+                    accumulated_skipped_rows = []
+            else:
+                accumulated_skipped_rows = []
 
             self._emit(
                 "workflow_complete", "workflow",
@@ -1907,6 +1941,7 @@ class StatementWorkflow:
                     "db_inserted": workflow_results.get("database_inserted_count", 0),
                     "db_updated": workflow_results.get("database_updated_count", 0),
                     "db_skipped": workflow_results.get("database_skipped_count", 0),
+                    "skipped_rows": accumulated_skipped_rows,
                 },
             )
         except Exception as e:

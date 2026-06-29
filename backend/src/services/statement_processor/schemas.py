@@ -46,55 +46,89 @@ class PageFilterConfig:
 
 
 class AxisAtlasCreditCard(BaseModel):
-    """Pydantic model for extracting transaction tables from Axis Bank statements"""
-    table: str = Field(description="The transaction table in markdown format called Transaction Details. Include only these columns: DATE, TRANSACTION DETAILS, AMOUNT (Rs.). Do NOT include the MERCHANT CATEGORY column.")
+    table: str = Field(description=(
+        "Extract the Transaction Details table as markdown with EXACTLY these 3 columns in this order: "
+        "'DATE', 'TRANSACTION DETAILS', 'AMOUNT (Rs.)'. "
+        "'DATE' = transaction date in DD/MM/YYYY format. "
+        "'TRANSACTION DETAILS' = full transaction description. "
+        "'AMOUNT (Rs.)' = amount followed by Cr or Dr (e.g. '1000.00 Cr', '500.00 Dr'). "
+        "Do NOT include the Merchant Category column. "
+        "Skip summary rows, opening/closing balance rows, and rows without a valid date."
+    ))
 
 
 class SwiggyHDFCCreditCard(BaseModel):
-    """Pydantic model for extracting transaction tables from HDFC Bank statements"""
-    table: str = Field(description="The transaction table in markdown format called Domestic Transactions. The table has 4 columns: DATE & TIME, TRANSACTION DESCRIPTION, AMOUNT, PI. The DATE & TIME column contains both the date and time — combine them into a single cell in the format 'DD/MM/YYYY| HH:MM'. Do NOT split date and time into separate columns.")
+    table: str = Field(description=(
+        "Extract the Domestic Transactions table as markdown with EXACTLY these 4 columns in this order: "
+        "'Date', 'Time', 'Transaction Description', 'Amount (INR)'. "
+        "'Date' = date in DD/MM/YYYY format. "
+        "'Time' = time in HH:MM format (use 00:00 if not available). "
+        "'Transaction Description' = full transaction description. "
+        "'Amount (INR)' = amount with sign prefix: '+ 1000.00' for credits, '- 500.00' for debits. "
+        "Do NOT combine date and time into one column."
+    ))
 
 
 class AmazonPayICICICreditCard(BaseModel):
-    """Pydantic model for extracting transaction tables from ICICI Bank statements"""
-    table: str = Field(description="The transaction table in markdown format called Transaction Details")
+    table: str = Field(description=(
+        "Extract the Transaction Details table as markdown with EXACTLY these 4 columns in this order: "
+        "'Date', 'SerNo', 'Transaction Details', 'Amount (INR)'. "
+        "'Date' = transaction date in DD/MM/YYYY format. "
+        "'SerNo' = serial/reference number. "
+        "'Transaction Details' = full transaction description. "
+        "'Amount (INR)' = amount followed by Cr or Dr (e.g. '1000.00 Cr', '500.00 Dr'). "
+        "Do NOT include Reward Points or Intl. Amount columns. "
+        "Skip summary rows, opening/closing balance rows, and rows without a valid date."
+    ))
 
 
 class CashbackSBICreditCard(BaseModel):
-    """Pydantic model for extracting transaction tables from State Bank of India statements"""
-    table: str = Field(description="The transaction table in markdown format called Transaction Details")
+    table: str = Field(description=(
+        "Extract the transaction table as markdown with EXACTLY these 3 columns in this order: "
+        "'Date', 'Transaction Details', 'Amount (INR)'. "
+        "'Date' = transaction date in DD Mon YY format (e.g. '01 May 26'). "
+        "'Transaction Details' = full transaction description. "
+        "'Amount (INR)' = amount followed by Cr or Dr (e.g. '1548.00 Cr', '299.00 Dr'). "
+        "Include ONLY rows that have a valid date and a non-zero amount. "
+        "Do NOT include section headers, summary rows, or rows where Date contains text instead of a date."
+    ))
 
 
 class SBISavingsAccount(BaseModel):
-    """Pydantic model for extracting transaction tables from SBI Savings Account statements"""
     table: str = Field(description=(
-        "Extract the account statement transaction table in markdown format. "
-        "The table must have exactly these 3 columns in this order: "
+        "Extract the account statement transaction table as markdown with EXACTLY these 3 columns in this order: "
         "'Date', 'Description', 'Amount'. "
-        "'Date' = the transaction date. "
-        "'Description' = the full transaction narration or description text. "
-        "'Amount' = the transaction amount as a positive number, regardless of whether it is a debit or credit. "
-        "Do NOT include columns for Ref No., Chq. No., Debit, Credit, Withdrawal, Deposit, or Balance. "
-        "Include all transaction rows."
+        "'Date' = transaction date. "
+        "'Description' = full transaction narration including UPI/NEFT/IMPS reference codes. "
+        "'Amount' = transaction amount as a positive number. "
+        "Do NOT include Ref No., Chq. No., Debit, Credit, Withdrawal, Deposit, or Balance columns. "
+        "Skip opening balance, closing balance, summary, and total rows. Include all transaction rows."
     ))
 
 class YesBankSavingsAccount(BaseModel):
-    """Pydantic model for extracting transaction tables from Yes Bank statements"""
     table: str = Field(description=(
-        "Extract the account statement transaction table in markdown format. "
-        "The table must have exactly these 4 columns in this order: "
+        "Extract the account statement transaction table as markdown with EXACTLY these 4 columns in this order: "
         "'Date', 'Description', 'Withdrawals', 'Deposits'. "
-        "'Date' = the transaction date. "
-        "'Description' = the full transaction narration or description text. "
-        "'Withdrawals' = the amount debited (money going out); use 0 if not a debit. "
-        "'Deposits' = the amount credited (money coming in); use 0 if not a credit. "
-        "Do NOT include columns for Value Date, Cheque No, Reference No, Running Balance, or Balance. "
-        "Include all transaction rows. Skip summary or opening/closing balance rows."
+        "'Date' = transaction date. "
+        "'Description' = full transaction narration. "
+        "'Withdrawals' = amount debited (money going out); use 0.00 if not a debit. "
+        "'Deposits' = amount credited (money coming in); use 0.00 if not a credit. "
+        "Do NOT include Value Date, Cheque No, Reference No, Running Balance, or Balance columns. "
+        "Skip opening balance, closing balance, summary rows, and rows where both Withdrawals and Deposits are 0. "
+        "Include all transaction rows."
     ))
 
 class AxisBankSavingsAccount(BaseModel):
-    """Pydantic model for extracting transaction tables from Axis Bank statements"""
-    table: str = Field(description="The transaction table in markdown format for a table with the heading 'Statement for Account No. 92501XXXXX12081...' and containing account statement with columns: Date, Transaction Details, Chq No., Withdrawal, Deposits, Balance")
+    table: str = Field(description=(
+        "Extract the account statement transaction table as markdown with EXACTLY these 5 columns in this order: "
+        "'Date', 'Transaction Details', 'Chq No', 'Withdrawal', 'Deposits'. "
+        "'Date' = transaction date in DD/MM/YYYY format. "
+        "'Transaction Details' = full transaction description. "
+        "'Chq No' = cheque number or reference (empty string if not applicable). "
+        "'Withdrawal' = amount debited as a positive number (empty if not a debit). "
+        "'Deposits' = amount credited as a positive number (empty if not a credit). "
+        "Skip opening balance, closing balance, and summary rows. Include all transaction rows."
+    ))
 
 # Registry of all available bank statement models
 BANK_STATEMENT_MODELS: Dict[str, Type[BaseModel]] = {

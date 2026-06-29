@@ -7,8 +7,11 @@ processing real statements (dry run mode).
 
 import asyncio
 import sys
+from datetime import date
 from pathlib import Path
 from unittest.mock import Mock, patch, AsyncMock
+
+import pytest
 
 # Add the backend directory to Python path
 backend_path = Path(__file__).parent.parent
@@ -134,6 +137,47 @@ class TestStatementWorkflow:
                     assert "processed_statements" in results
                     
                     logger.info("✅ Workflow dry run test passed")
+
+
+@pytest.mark.asyncio
+async def test_dedup_pass_does_not_call_match_for_flagged_rows():
+    """Flagged rows (_skip_reason set) bypass dedup — transaction_date is None
+    so match_statement_transaction would TypeError without the guard."""
+    workflow = StatementWorkflow()
+
+    flagged = {
+        "transaction_date": None,
+        "description": "TRANSACTIONS FOR CHAITANYA GVS",
+        "amount": 0.0,
+        "account": "Cashback SBI Credit Card",
+        "_skip_reason": "null_date",
+        "_partial_date_raw": "TRANSACTIONS FOR CHAITANYA GVS",
+    }
+    valid = {
+        "transaction_date": date(2026, 5, 7),
+        "description": "SPOTIFY",
+        "amount": 179.0,
+        "account": "Cashback SBI Credit Card",
+        "_skip_reason": None,
+    }
+
+    with patch(
+        "src.services.orchestrator.statement_workflow.AccountOperations.get_all_accounts",
+        new_callable=AsyncMock, return_value=[],
+    ), patch(
+        "src.services.orchestrator.statement_workflow.DeduplicationService.match_statement_transaction",
+        new_callable=AsyncMock,
+    ) as mock_match:
+        filtered, stats = await workflow._run_dedup_pass([flagged, valid])
+
+    # Flagged row passes through unchanged
+    assert any(tx.get("_skip_reason") == "null_date" for tx in filtered)
+    # match_statement_transaction must NOT have been called for the flagged row
+    for call in mock_match.call_args_list:
+        tx_arg = call.args[0] if call.args else call.kwargs.get("tx") or call.args[0]
+        assert tx_arg.get("_skip_reason") is None, (
+            "match_statement_transaction was called with a flagged row"
+        )
 
 
 async def run_tests():

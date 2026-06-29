@@ -280,7 +280,9 @@ class DocumentExtractor:
             # Pre-filter pages to skip non-transaction pages (covers, ads, T&Cs)
             schema_key = self._get_schema_key(account_nickname)
             page_filter = PDFPageFilter()
-            parse_path, kept_pages = page_filter.filter_transaction_pages(pdf_path, schema_key)
+            parse_path, kept_pages = page_filter.filter_transaction_pages(
+                pdf_path, schema_key, ade_client=self.client
+            )
             if parse_path != pdf_path:
                 filtered_path = parse_path  # track so we can clean up after parse
 
