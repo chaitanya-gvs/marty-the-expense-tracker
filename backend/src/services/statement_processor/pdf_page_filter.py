@@ -236,10 +236,10 @@ class PDFPageFilter:
         Return (filtered_pdf_path, kept_page_indices).
 
         Fallback: returns (pdf_path, []) unchanged when 0 pages match or any error.
-        Strategy is selected via PAGE_FILTER_STRATEGY env var (default: "compare").
+        Strategy is selected via PAGE_FILTER_STRATEGY env var (default: "pymupdf").
         """
         import os
-        strategy = os.getenv("PAGE_FILTER_STRATEGY", "compare").lower()
+        strategy = os.getenv("PAGE_FILTER_STRATEGY", "pymupdf").lower()
 
         if strategy == "classify" and ade_client is not None:
             return self._filter_with_classify(pdf_path, schema_key, ade_client)

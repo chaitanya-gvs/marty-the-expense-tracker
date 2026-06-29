@@ -94,13 +94,13 @@ def test_pymupdf_strategy_never_calls_ade(two_page_pdf):
     client.classify.assert_not_called()
 
 
-def test_default_strategy_is_compare_when_no_env(two_page_pdf):
-    """Default strategy is 'compare' — classify IS called even with no explicit env var."""
+def test_default_strategy_is_pymupdf_when_no_env(two_page_pdf):
+    """Default strategy is 'pymupdf' — classify is NOT called with no explicit env var."""
     client = _classify_client([0])
     env = {k: v for k, v in os.environ.items() if k != "PAGE_FILTER_STRATEGY"}
     with patch.dict(os.environ, env, clear=True):
         PDFPageFilter().filter_transaction_pages(two_page_pdf, "axis_atlas", ade_client=client)
-    client.classify.assert_called_once()
+    client.classify.assert_not_called()
 
 
 def test_no_ade_client_falls_through_to_pymupdf_even_in_classify_mode(two_page_pdf):
