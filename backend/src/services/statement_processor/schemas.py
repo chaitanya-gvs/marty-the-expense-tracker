@@ -61,11 +61,16 @@ class SwiggyHDFCCreditCard(BaseModel):
     table: str = Field(description=(
         "Extract the Domestic Transactions table as markdown with EXACTLY these 4 columns in this order: "
         "'Date', 'Time', 'Transaction Description', 'Amount (INR)'. "
-        "'Date' = date in DD/MM/YYYY format. "
-        "'Time' = time in HH:MM format (use 00:00 if not available). "
-        "'Transaction Description' = full transaction description. "
-        "'Amount (INR)' = amount with sign prefix: '+ 1000.00' for credits, '- 500.00' for debits. "
-        "Do NOT combine date and time into one column."
+        "CRITICAL — the source PDF has 4 columns: 'DATE & TIME', 'TRANSACTION DESCRIPTION', 'AMOUNT', 'PI'. "
+        "Each cell in the 'DATE & TIME' column contains BOTH the date and time as a single value in the format "
+        "'DD/MM/YYYY| HH:MM' (e.g. '06/05/2026| 11:27'). The '|' character is NOT a column separator — "
+        "it is part of the cell content. Split this single value: "
+        "  - the part before '|' is the 'Date' (e.g. '06/05/2026') "
+        "  - the part after '|' is the 'Time' (e.g. '11:27') "
+        "The PDF's 'TRANSACTION DESCRIPTION' column → 'Transaction Description'. "
+        "The PDF's 'AMOUNT' column → 'Amount (INR)': use '+ X.XX' for credits (payments/cashback), 'X.XX' for debits. "
+        "The PDF's 'PI' column is a category bullet — ignore it entirely. "
+        "Skip rows that have no monetary amount in the AMOUNT column."
     ))
 
 
@@ -77,7 +82,11 @@ class AmazonPayICICICreditCard(BaseModel):
         "'SerNo' = serial/reference number. "
         "'Transaction Details' = full transaction description. "
         "'Amount (INR)' = amount followed by Cr or Dr (e.g. '1000.00 Cr', '500.00 Dr'). "
-        "Do NOT include Reward Points or Intl. Amount columns. "
+        "CRITICAL — the source PDF has TWO amount columns: 'Intl.# amount' and 'Amount (in₹)'. "
+        "For each transaction row, exactly ONE of these two columns will have a value: "
+        "  - If 'Intl.# amount' has a value (e.g. '12,814.53 CR'), use it as 'Amount (INR)' and keep the 'CR' suffix. "
+        "  - If 'Amount (in₹)' has a value (e.g. '2,374.00'), use it as 'Amount (INR)' and append ' Dr' (it is a debit/purchase). "
+        "Do NOT include Reward Points, Intl.# amount, or Amount (in₹) as separate columns. "
         "Skip summary rows, opening/closing balance rows, and rows without a valid date."
     ))
 

@@ -243,10 +243,29 @@ class TransactionStandardizer:
         account = account_name or "Amazon Pay ICICI Credit Card"
         standardized_data = []
 
+        # Amount column name varies by extraction: "Amount (INR)", "Amount (in•)", or falls through to "Intl.# amount"
+        amount_col = next(
+            (c for c in df.columns if str(c).lower().startswith("amount")),
+            None,
+        )
+        fallback_col = next(
+            (c for c in df.columns if "intl" in str(c).lower() or "amount" in str(c).lower()),
+            None,
+        )
+
         for _, row in df.iterrows():
             date_str = str(row.get("Date", "")).strip()
             description = str(row.get("Transaction Details", "")).strip()
-            amount_str = str(row.get("Amount (INR)", "")).strip()
+            # Prefer the "Amount*" column; if NaN fall back to "Intl.# amount"
+            amount_str = ""
+            if amount_col:
+                val = row.get(amount_col, "")
+                if not (pd.isna(val) or str(val).strip().lower() in ("nan", "")):
+                    amount_str = str(val).strip()
+            if not amount_str and fallback_col and fallback_col != amount_col:
+                val = row.get(fallback_col, "")
+                if not (pd.isna(val) or str(val).strip().lower() in ("nan", "")):
+                    amount_str = str(val).strip()
             raw = row.to_dict()
 
             parsed_date = self.parse_date(date_str) if date_str and date_str.lower() not in ("nan", "") else None
@@ -329,11 +348,23 @@ class TransactionStandardizer:
         account = account_name or "Swiggy HDFC Credit Card"
         standardized_data = []
 
+        # Two extraction layouts observed:
+        #   Old: Date | Time | Transaction Description | Amount (INR)
+        #   New: DATE & TIME | TRANSACTION DESCRIPTION (has time) | AMOUNT (has desc) | PI (has amount)
+        cols = list(df.columns)
+        new_layout = "DATE & TIME" in cols
+
         for _, row in df.iterrows():
-            date_str = str(row.get("Date", "")).strip()
-            time_str = str(row.get("Time", "")).strip()
-            description = str(row.get("Transaction Description", "")).strip()
-            amount_str = str(row.get("Amount (INR)", "")).strip()
+            if new_layout:
+                date_str = str(row.get("DATE & TIME", "")).strip()
+                time_str = str(row.get("TRANSACTION DESCRIPTION", "")).strip()
+                description = str(row.get("AMOUNT", "")).strip()
+                amount_str = str(row.get("PI", "")).strip()
+            else:
+                date_str = str(row.get("Date", "")).strip()
+                time_str = str(row.get("Time", "")).strip()
+                description = str(row.get("Transaction Description", "")).strip()
+                amount_str = str(row.get("Amount (INR)", "")).strip()
             raw = row.to_dict()
 
             # Combine into format expected by parse_date / extract_time
