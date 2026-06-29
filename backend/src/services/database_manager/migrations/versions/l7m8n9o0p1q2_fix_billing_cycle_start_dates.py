@@ -10,25 +10,30 @@ amazon_pay_icici: 3 (PDF states "May 3 – June 2"; was incorrectly set to 1)
 """
 from alembic import op
 
+revision = "l7m8n9o0p1q2"
+down_revision = "fb1fb64e5a93"
+branch_labels = None
+depends_on = None
+
 
 def upgrade() -> None:
     op.execute("""
         UPDATE accounts SET billing_cycle_start = 2
-        WHERE account_key = 'axis_atlas' AND billing_cycle_start = 1
+        WHERE nickname = 'Axis Atlas Credit Card' AND billing_cycle_start = 1
     """)
     op.execute("""
         UPDATE accounts SET billing_cycle_start = 2
-        WHERE account_key = 'cashback_sbi' AND billing_cycle_start = 1
+        WHERE nickname = 'Cashback SBI Credit Card' AND billing_cycle_start = 1
     """)
     op.execute("""
         UPDATE accounts SET billing_cycle_start = 3
-        WHERE account_key = 'amazon_pay_icici' AND billing_cycle_start = 1
+        WHERE nickname = 'Amazon Pay ICICI Credit Card' AND billing_cycle_start = 1
     """)
 
 
 def downgrade() -> None:
     op.execute("""
         UPDATE accounts SET billing_cycle_start = 1
-        WHERE account_key IN ('axis_atlas', 'cashback_sbi', 'amazon_pay_icici')
+        WHERE nickname IN ('Axis Atlas Credit Card', 'Cashback SBI Credit Card', 'Amazon Pay ICICI Credit Card')
         AND billing_cycle_start IN (2, 3)
     """)

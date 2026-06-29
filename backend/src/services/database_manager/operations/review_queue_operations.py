@@ -27,8 +27,9 @@ class ReviewQueueOperations:
         reference_number: Optional[str] = None,
         raw_data: Optional[Dict[str, Any]] = None,
         ambiguous_candidate_ids: Optional[List[str]] = None,
-    ) -> str:
-        """Insert a review queue item. Returns the new item's UUID."""
+    ) -> Optional[str]:
+        """Insert a review queue item. Returns the new item's UUID, or None if a matching
+        unresolved item already exists (idempotent — duplicate runs are silently skipped)."""
         import json
 
         # Coerce transaction_date to a date object if it comes in as an ISO string
@@ -46,6 +47,9 @@ class ReviewQueueOperations:
                         (:review_type, :transaction_date, :amount, :description, :account,
                          :direction, :transaction_type, :reference_number,
                          :raw_data, :ambiguous_candidate_ids)
+                    ON CONFLICT (review_type, description, amount, transaction_date, direction, account)
+                    WHERE resolved_at IS NULL
+                    DO NOTHING
                     RETURNING id
                 """),
                 {
@@ -62,7 +66,14 @@ class ReviewQueueOperations:
                 }
             )
             await session.commit()
-            return str(result.scalar())
+            row = result.scalar()
+            if row is None:
+                logger.debug(
+                    "review_queue: skipped duplicate unresolved item — %s %s %s %s",
+                    account, transaction_date, amount, description[:60],
+                )
+                return None
+            return str(row)
 
     @staticmethod
     async def get_unresolved(review_type: Optional[str] = None) -> List[Dict[str, Any]]:
