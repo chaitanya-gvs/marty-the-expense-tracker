@@ -177,11 +177,12 @@ class PDFPageFilter:
         try:
             response = ade_client.classify(
                 document=pdf_path,
-                categories=["transaction_page", "non_transaction_page"],
+                classes=[
+                    {"class": "transaction_page", "description": "Page containing bank transaction records"},
+                    {"class": "non_transaction_page", "description": "Page without transactions (cover, summary, footer)"},
+                ],
             )
-            # SDK response may use .pages or .classifications depending on version
-            pages = getattr(response, "pages", None) or getattr(response, "classifications", None) or []
-            kept = [p.page_num for p in pages if getattr(p, "category", "") == "transaction_page"]
+            kept = [p.page for p in response.classification if p.class_ == "transaction_page"]
             if not kept:
                 logger.warning(
                     f"classify() returned 0 transaction pages for '{schema_key}' — falling back to pymupdf"
@@ -204,10 +205,12 @@ class PDFPageFilter:
         try:
             response = ade_client.classify(
                 document=pdf_path,
-                categories=["transaction_page", "non_transaction_page"],
+                classes=[
+                    {"class": "transaction_page", "description": "Page containing bank transaction records"},
+                    {"class": "non_transaction_page", "description": "Page without transactions (cover, summary, footer)"},
+                ],
             )
-            pages = getattr(response, "pages", None) or getattr(response, "classifications", None) or []
-            classify_kept = [p.page_num for p in pages if getattr(p, "category", "") == "transaction_page"]
+            classify_kept = [p.page for p in response.classification if p.class_ == "transaction_page"]
             logger.info(
                 f"PAGE_FILTER compare '{schema_key}' ({pdf_path.name}): "
                 f"pymupdf={pymupdf_kept} ({len(pymupdf_kept)} pages), "

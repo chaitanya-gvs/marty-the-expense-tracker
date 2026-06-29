@@ -8,15 +8,17 @@ from unittest.mock import MagicMock, patch
 from src.services.statement_processor.pdf_page_filter import PDFPageFilter
 
 
-class _MockPage:
-    def __init__(self, page_num: int, category: str):
-        self.page_num = page_num
-        self.category = category
+class _MockClassification:
+    """Mirrors landingai_ade.types.classify_response.Classification."""
+    def __init__(self, page: int, class_: str):
+        self.page = page
+        self.class_ = class_
 
 
 class _MockClassifyResponse:
-    def __init__(self, pages):
-        self.pages = pages
+    """Mirrors landingai_ade.types.classify_response.ClassifyResponse."""
+    def __init__(self, classification):
+        self.classification = classification
 
 
 @pytest.fixture
@@ -34,11 +36,11 @@ def two_page_pdf(tmp_path):
 def _classify_client(kept_indices):
     """Return a mock ADE client whose classify() says the given pages are transaction pages."""
     client = MagicMock()
-    all_pages = [
-        _MockPage(i, "transaction_page" if i in kept_indices else "non_transaction_page")
+    classifications = [
+        _MockClassification(i, "transaction_page" if i in kept_indices else "non_transaction_page")
         for i in range(2)
     ]
-    client.classify.return_value = _MockClassifyResponse(all_pages)
+    client.classify.return_value = _MockClassifyResponse(classifications)
     return client
 
 
