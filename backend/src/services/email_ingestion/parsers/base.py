@@ -58,8 +58,8 @@ class BaseAlertParser(ABC):
         return any(all(kw in lower for kw in patterns) for patterns in _NON_TRANSACTION_SUBJECTS)
 
     def parse_emandate(self, email_content: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Override in subclasses that need e-mandate handling."""
-        return self.parse_regular(email_content)
+        """E-mandate alerts are always duplicates of regular spending alerts or statement rows — skip."""
+        return None
 
     @abstractmethod
     def parse_regular(self, email_content: Dict[str, Any]) -> Optional[Dict[str, Any]]:

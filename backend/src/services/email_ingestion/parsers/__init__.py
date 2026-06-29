@@ -38,7 +38,6 @@ class BankParserRegistry:
         # doesn't recognise the email.
         self._registry = {
             "onlinesbicard@sbicard.com": [CashbackSBIParser()],
-            "emandates@sbicard.com": [CashbackSBIParser()],
             "alerts@hdfcbank.bank.in": [SwiggyHDFCParser()],
             "credit_cards@icicibank.com": [AmazonICICIParser()],
             "credit_cards@icici.bank.in": [AmazonICICIParser()],
