@@ -12,6 +12,7 @@ transaction data. Uses two complementary signals per page:
 Each bank account has its own PageFilterConfig defined in statement_extraction.py.
 """
 
+import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -177,10 +178,10 @@ class PDFPageFilter:
         try:
             response = ade_client.classify(
                 document=pdf_path,
-                classes=[
+                classes=json.dumps([
                     {"class": "transaction_page", "description": "Page containing bank transaction records"},
                     {"class": "non_transaction_page", "description": "Page without transactions (cover, summary, footer)"},
-                ],
+                ]),
             )
             kept = [p.page for p in response.classification if p.class_ == "transaction_page"]
             if not kept:
@@ -205,10 +206,10 @@ class PDFPageFilter:
         try:
             response = ade_client.classify(
                 document=pdf_path,
-                classes=[
+                classes=json.dumps([
                     {"class": "transaction_page", "description": "Page containing bank transaction records"},
                     {"class": "non_transaction_page", "description": "Page without transactions (cover, summary, footer)"},
-                ],
+                ]),
             )
             classify_kept = [p.page for p in response.classification if p.class_ == "transaction_page"]
             logger.info(
