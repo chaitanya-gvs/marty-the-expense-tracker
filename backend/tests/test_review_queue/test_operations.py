@@ -10,7 +10,6 @@ from sqlalchemy import text
 from src.services.database_manager.connection import get_session_factory
 from src.services.database_manager.models.transaction import Transaction
 from src.services.database_manager.operations.transaction_operations import TransactionOperations
-from src.services.database_manager.operations.review_queue_operations import ReviewQueueOperations
 
 
 async def _insert_test_transaction(**overrides) -> str:
