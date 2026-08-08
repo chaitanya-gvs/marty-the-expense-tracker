@@ -84,6 +84,26 @@ class TestStatementWorkflow:
         assert start_date == "2026/07/29"  # 2026-08-01 minus 3 days crosses into July
         assert end_date == "2026/08/08"
 
+    async def test_date_range_data_driven_buffer_crosses_year_boundary(self):
+        """3-day buffer subtracted from an early-January min date crosses into
+        the previous year correctly."""
+        from datetime import date as d, datetime as dt
+
+        with patch(
+            "src.services.orchestrator.statement_workflow.AccountOperations.get_statement_account_date_stats",
+            new_callable=AsyncMock,
+            return_value={
+                "min_last_statement_date": d(2026, 1, 2),
+                "account_count": 2,
+                "null_count": 0,
+            },
+        ):
+            workflow = StatementWorkflow()
+            start_date, end_date = await workflow._calculate_date_range(now=dt(2026, 1, 10))
+
+        assert start_date == "2025/12/30"  # 2026-01-02 minus 3 days crosses into December of the previous year
+        assert end_date == "2026/01/10"
+
     async def test_date_range_data_driven_handles_datetime_value(self):
         """min_last_statement_date coming back as a datetime (not date) is truncated correctly."""
         from datetime import datetime as dt
@@ -321,6 +341,7 @@ async def run_tests():
         await test_instance.test_date_range_calculation_smoke()
         await test_instance.test_date_range_data_driven()
         await test_instance.test_date_range_data_driven_buffer_crosses_month_boundary()
+        await test_instance.test_date_range_data_driven_buffer_crosses_year_boundary()
         await test_instance.test_date_range_data_driven_handles_datetime_value()
         await test_instance.test_date_range_falls_back_when_account_never_processed()
         await test_instance.test_date_range_falls_back_when_no_accounts()

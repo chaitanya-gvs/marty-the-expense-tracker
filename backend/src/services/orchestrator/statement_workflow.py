@@ -364,26 +364,37 @@ class StatementWorkflow:
         try:
             stats = await AccountOperations.get_statement_account_date_stats()
         except Exception:
+            fallback_start, fallback_end = self._calculate_fallback_date_range(now)
             logger.warning(
-                "Failed to fetch account statement-date stats — using fixed-window fallback",
-                exc_info=True, extra=self._log_extra(),
+                "Failed to fetch account statement-date stats — using fixed-window fallback: "
+                f"{fallback_start} to {fallback_end}",
+                extra=self._log_extra(),
             )
-            return self._calculate_fallback_date_range(now)
+            return fallback_start, fallback_end
 
         min_date = stats.get("min_last_statement_date")
         if stats.get("account_count", 0) == 0 or stats.get("null_count", 0) > 0 or min_date is None:
+            fallback_start, fallback_end = self._calculate_fallback_date_range(now)
             logger.info(
                 "Using fixed-window fallback for date range "
-                "(no statement-sender accounts, or one has never been processed)",
+                "(no statement-sender accounts, or one has never been processed): "
+                f"{fallback_start} to {fallback_end}",
+                extra=self._log_extra(),
+            )
+            return fallback_start, fallback_end
+
+        if isinstance(min_date, datetime):
+            min_date = min_date.date()
+        start_dt = min_date - timedelta(days=self.DATE_RANGE_SAFETY_BUFFER_DAYS)
+
+        if start_dt > now.date():
+            logger.warning(
+                f"Computed start_date {start_dt} is after now ({now.date()}) — "
+                "likely bad last_statement_date data; using fixed-window fallback",
                 extra=self._log_extra(),
             )
             return self._calculate_fallback_date_range(now)
 
-        if isinstance(min_date, datetime):
-            min_date = min_date.date()
-        start_dt = datetime.combine(min_date, datetime.min.time()) - timedelta(
-            days=self.DATE_RANGE_SAFETY_BUFFER_DAYS
-        )
         start_date = start_dt.strftime("%Y/%m/%d")
         end_date = now.strftime("%Y/%m/%d")
 
