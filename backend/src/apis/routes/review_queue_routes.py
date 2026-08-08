@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 
 from src.apis.schemas.email_ingestion import (
     ReviewQueueResponse, ReviewQueueItemResponse,
-    ConfirmReviewItemRequest, LinkReviewItemRequest, BulkConfirmRequest,
+    ConfirmReviewItemRequest, LinkReviewItemRequest,
 )
 from src.services.database_manager.operations.review_queue_operations import ReviewQueueOperations
 from src.services.database_manager.operations.transaction_operations import TransactionOperations
@@ -36,21 +36,22 @@ async def get_review_queue(review_type: str | None = None):
 @router.post("/{item_id}/confirm")
 async def confirm_review_item(item_id: str, request: ConfirmReviewItemRequest = ConfirmReviewItemRequest()):
     """
-    Confirm a review queue item.
-    - statement_only: insert as a new statement_extraction transaction.
-    - ambiguous (single candidate): mark the existing email_ingestion tx as statement_confirmed.
+    Confirm an ambiguous item with no accepted candidate ("None of these"):
+    insert the statement row as a new transaction, unless a matching
+    transaction already exists (e.g. entered manually in the meantime).
     """
-    items = await ReviewQueueOperations.get_unresolved()
+    items = await ReviewQueueOperations.get_unresolved("ambiguous")
     item = next((i for i in items if str(i["id"]) == item_id), None)
     if not item:
         raise HTTPException(404, "Item not found or already resolved")
 
-    candidate_ids = item.get("ambiguous_candidate_ids") or []
-    if item.get("review_type") == "ambiguous" and len(candidate_ids) == 1:
-        # Email tx exists — just mark it confirmed
-        await TransactionOperations.mark_statement_confirmed(candidate_ids[0])
-    else:
-        # statement_only — insert as new transaction
+    already_exists = await TransactionOperations.exists_matching(
+        account=item["account"],
+        amount=item["amount"],
+        transaction_date=item["transaction_date"],
+        direction=item["direction"],
+    )
+    if not already_exists:
         tx = {**(item.get("raw_data") or {}), **(request.edits or {})}
         await TransactionOperations.bulk_insert_transactions(
             [tx],
@@ -112,19 +113,3 @@ async def delete_review_item(item_id: str):
     if not resolved:
         raise HTTPException(404, "Item not found or already resolved")
     return {"status": "deleted"}
-
-
-@router.post("/bulk-confirm")
-async def bulk_confirm(request: BulkConfirmRequest):
-    """Confirm all statement-only items in batch."""
-    items = await ReviewQueueOperations.get_unresolved("statement_only")
-    id_set = set(request.item_ids)
-    to_confirm = [i for i in items if str(i["id"]) in id_set]
-    txs = [{**(i.get("raw_data") or {})} for i in to_confirm]
-    if txs:
-        await TransactionOperations.bulk_insert_transactions(
-            txs,
-            transaction_source="statement_extraction",
-        )
-    count = await ReviewQueueOperations.bulk_resolve(request.item_ids, "confirmed")
-    return {"confirmed": count}

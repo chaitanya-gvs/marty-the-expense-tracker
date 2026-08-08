@@ -137,6 +137,43 @@ async def _fetch_transaction(tx_id: str) -> dict:
         return dict(result.first()._mapping)
 
 
+async def _set_review_item_raw_data(item_id: str, raw_data: str) -> None:
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        await session.execute(
+            text("UPDATE review_queue SET raw_data = :raw_data WHERE id = :id"),
+            {"id": item_id, "raw_data": raw_data},
+        )
+        await session.commit()
+
+
+async def _count_transactions(account: str, amount: Decimal) -> int:
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        result = await session.execute(
+            text("""
+                SELECT count(*) FROM transactions
+                WHERE account = :account AND amount = :amount AND is_deleted = false
+            """),
+            {"account": account, "amount": amount},
+        )
+        return result.scalar()
+
+
+async def _find_transaction_id(account: str, amount: Decimal) -> str | None:
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        result = await session.execute(
+            text("""
+                SELECT id FROM transactions
+                WHERE account = :account AND amount = :amount AND is_deleted = false
+            """),
+            {"account": account, "amount": amount},
+        )
+        row = result.first()
+        return str(row[0]) if row else None
+
+
 def test_reject_soft_deletes_single_candidate(client):
     tx_id = _run(client, _insert_transaction)
     item_id = _run(client, _insert_review_item, [tx_id])
@@ -214,3 +251,86 @@ def test_link_propagates_candidate_claim_to_siblings(client):
         _run(client, _cleanup, "transactions", tx_other)
         _run(client, _cleanup, "review_queue", item_a)
         _run(client, _cleanup, "review_queue", item_b)
+
+
+def test_confirm_inserts_new_transaction_when_none_matches(client):
+    item_id = _run(
+        client, _insert_review_item,
+        ["placeholder-not-used"],  # multi-candidate path doesn't need real candidates for /confirm
+        account="Confirm Fixture Account",
+        amount=Decimal("77.00"),
+        description="Confirm fixture description",
+    )
+    # /confirm reads raw_data for the insert payload — set it directly since the
+    # fixture helper above doesn't populate it.
+    # Note: TransactionOperations._prepare_transaction_for_insert derives the
+    # `transactions.direction` column from raw_data's `transaction_type` key (a
+    # `direction` key in raw_data is ignored entirely — this matches production
+    # raw_data shape, e.g. statement_workflow.py's
+    # `direction=tx.get("transaction_type", "debit")`), and hardcodes the
+    # `transactions.transaction_type` column to 'purchase' regardless of input —
+    # so raw_data must carry 'debit'/'credit' under the `transaction_type` key,
+    # not a category value, or the insert violates `transactions_direction_check`.
+    _run(
+        client, _set_review_item_raw_data, item_id,
+        (
+            '{"transaction_date": "2026-02-10", "amount": 77.00, '
+            '"transaction_type": "debit", '
+            '"description": "Confirm fixture description", '
+            '"account": "Confirm Fixture Account"}'
+        ),
+    )
+
+    inserted_id = None
+    try:
+        resp = client.post(f"/api/review-queue/{item_id}/confirm")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "confirmed"
+
+        inserted_id = _run(client, _find_transaction_id, "Confirm Fixture Account", Decimal("77.00"))
+        assert inserted_id is not None
+    finally:
+        _run(client, _cleanup, "review_queue", item_id)
+        if inserted_id:
+            _run(client, _cleanup, "transactions", inserted_id)
+
+
+def test_confirm_skips_insert_when_transaction_already_exists(client):
+    existing_tx = _run(
+        client, _insert_transaction,
+        account="Already Exists Account", amount=Decimal("42.00"), description="Manual entry",
+    )
+    item_id = _run(
+        client, _insert_review_item,
+        ["placeholder-not-used"],
+        account="Already Exists Account",
+        amount=Decimal("42.00"),
+        description="Confirm fixture — already covered",
+    )
+    _run(
+        client, _set_review_item_raw_data, item_id,
+        (
+            '{"transaction_date": "2026-02-10", "amount": 42.00, '
+            '"transaction_type": "debit", '
+            '"description": "Should not be inserted", '
+            '"account": "Already Exists Account"}'
+        ),
+    )
+    try:
+        resp = client.post(f"/api/review-queue/{item_id}/confirm")
+        assert resp.status_code == 200
+
+        count = _run(client, _count_transactions, "Already Exists Account", Decimal("42.00"))
+        assert count == 1  # only the pre-existing one — no duplicate inserted
+    finally:
+        _run(client, _cleanup, "review_queue", item_id)
+        _run(client, _cleanup, "transactions", existing_tx)
+
+
+def test_bulk_confirm_endpoint_removed(client):
+    resp = client.post("/api/review-queue/bulk-confirm", json={"item_ids": []})
+    # The route is gone, but "/bulk-confirm" still path-matches the remaining
+    # DELETE /{item_id} route (treating "bulk-confirm" as an item_id), so
+    # FastAPI/Starlette reports 405 Method Not Allowed rather than 404 for a
+    # POST here — either way, the old POST /bulk-confirm handler no longer runs.
+    assert resp.status_code == 405

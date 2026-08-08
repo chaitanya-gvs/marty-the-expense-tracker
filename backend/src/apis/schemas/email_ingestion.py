@@ -53,7 +53,3 @@ class ConfirmReviewItemRequest(BaseModel):
 
 class LinkReviewItemRequest(BaseModel):
     transaction_id: str
-
-
-class BulkConfirmRequest(BaseModel):
-    item_ids: List[str]
