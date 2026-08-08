@@ -32,6 +32,7 @@ async def main() -> None:
 
     inserted = 0
     skipped_duplicate = 0
+    errors = 0
 
     for item in items:
         already_exists = await TransactionOperations.exists_matching(
@@ -46,17 +47,25 @@ async def main() -> None:
                   f"₹{item['amount']} {item['description'][:60]}")
         else:
             tx = dict(item.get("raw_data") or {})
-            await TransactionOperations.bulk_insert_transactions(
+            result = await TransactionOperations.bulk_insert_transactions(
                 [tx],
                 transaction_source="statement_extraction",
             )
+            if not result.get("success") or result.get("inserted_count", 0) < 1:
+                errors += 1
+                print(f"  ERROR (insert failed/filtered) — {item['account']} {item['transaction_date']} "
+                      f"₹{item['amount']} {item['description'][:60]} — result={result}")
+                # Do NOT resolve — leave the review-queue row unresolved so it can be
+                # investigated and re-run, rather than silently marking it confirmed
+                # for a transaction that was never actually written.
+                continue
             inserted += 1
             print(f"  INSERT — {item['account']} {item['transaction_date']} "
                   f"₹{item['amount']} {item['description'][:60]}")
         await ReviewQueueOperations.resolve(str(item["id"]), "confirmed")
 
     print(f"\nDone. {inserted} inserted, {skipped_duplicate} skipped as already-covered, "
-          f"{len(items)} total resolved.")
+          f"{errors} errored (left unresolved), {len(items)} total items processed.")
 
 
 if __name__ == "__main__":
