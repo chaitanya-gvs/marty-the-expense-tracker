@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, time
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
@@ -27,14 +27,33 @@ class ReviewQueueOperations:
         reference_number: Optional[str] = None,
         raw_data: Optional[Dict[str, Any]] = None,
         ambiguous_candidate_ids: Optional[List[str]] = None,
+        transaction_time: Optional[time] = None,
     ) -> Optional[str]:
         """Insert a review queue item. Returns the new item's UUID, or None if a matching
-        unresolved item already exists (idempotent — duplicate runs are silently skipped)."""
+        unresolved item already exists (idempotent — duplicate runs are silently skipped).
+
+        The idempotency key is (review_type, account, transaction_date, amount, direction,
+        COALESCE(transaction_time, '00:00:00'), whitespace-stripped description) — see
+        migration o0p1q2r3s4t5. The ON CONFLICT target below must stay byte-for-byte in
+        step with that index or every insert here fails outright."""
         import json
 
         # Coerce transaction_date to a date object if it comes in as an ISO string
         if isinstance(transaction_date, str):
             transaction_date = date.fromisoformat(transaction_date)
+
+        # Statement-sourced rows carry transaction_time as an "HH:MM:SS" string
+        # (TransactionStandardizer.extract_time returns a str); DB-sourced email rows
+        # carry a real datetime.time. asyncpg only accepts the latter for a TIME column.
+        if isinstance(transaction_time, str):
+            try:
+                transaction_time = time.fromisoformat(transaction_time)
+            except ValueError:
+                logger.warning(
+                    "review_queue: unparseable transaction_time %r — treating as null",
+                    transaction_time,
+                )
+                transaction_time = None
 
         session_factory = get_session_factory()
         async with session_factory() as session:
@@ -42,12 +61,17 @@ class ReviewQueueOperations:
                 text("""
                     INSERT INTO review_queue
                         (review_type, transaction_date, amount, description, account,
-                         direction, transaction_type, reference_number, raw_data, ambiguous_candidate_ids)
+                         direction, transaction_type, reference_number, raw_data,
+                         ambiguous_candidate_ids, transaction_time)
                     VALUES
                         (:review_type, :transaction_date, :amount, :description, :account,
                          :direction, :transaction_type, :reference_number,
-                         :raw_data, :ambiguous_candidate_ids)
-                    ON CONFLICT (review_type, description, amount, transaction_date, direction, account)
+                         :raw_data, :ambiguous_candidate_ids, :transaction_time)
+                    ON CONFLICT (
+                        review_type, account, transaction_date, amount, direction,
+                        COALESCE(transaction_time, '00:00:00'::time),
+                        regexp_replace(description, '\\s+', '', 'g')
+                    )
                     WHERE resolved_at IS NULL
                     DO NOTHING
                     RETURNING id
@@ -55,6 +79,7 @@ class ReviewQueueOperations:
                 {
                     "review_type": review_type,
                     "transaction_date": transaction_date,
+                    "transaction_time": transaction_time,
                     "amount": str(amount),
                     "description": description,
                     "account": account,

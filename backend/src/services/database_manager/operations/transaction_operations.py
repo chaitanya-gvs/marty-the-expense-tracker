@@ -2117,8 +2117,8 @@ class TransactionOperations:
         async with session_factory() as session:
             result = await session.execute(
                 text("""
-                    SELECT id, transaction_date, amount, direction, reference_number,
-                           description, account, transaction_type
+                    SELECT id, transaction_date, transaction_time, amount, direction,
+                           reference_number, description, account, transaction_type
                     FROM transactions
                     WHERE account = :account
                       AND transaction_source = 'email_ingestion'

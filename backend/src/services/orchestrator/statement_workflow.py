@@ -1467,6 +1467,7 @@ class StatementWorkflow:
                     await ReviewQueueOperations.add_item(
                         review_type="ambiguous",
                         transaction_date=tx["transaction_date"],
+                        transaction_time=tx.get("transaction_time"),
                         amount=tx["amount"],
                         description=tx.get("description", ""),
                         account=account_name,
@@ -1600,6 +1601,7 @@ class StatementWorkflow:
                     await ReviewQueueOperations.add_item(
                         review_type="ambiguous",
                         transaction_date=tx_date,
+                        transaction_time=email_tx.get("transaction_time"),
                         amount=email_tx["amount"],
                         description=email_tx.get("description", ""),
                         account=email_tx["account"],

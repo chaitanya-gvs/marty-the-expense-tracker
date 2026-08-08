@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import ARRAY, Date, DateTime, Index, Numeric, Text, func
+from sqlalchemy import ARRAY, Date, DateTime, Index, Numeric, Text, Time, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import text as sa_text
@@ -21,6 +21,9 @@ class ReviewQueue(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, server_default=func.gen_random_uuid())
     review_type: Mapped[str] = mapped_column(Text, nullable=False)  # 'ambiguous' (statement_only retired 2026-08)
     transaction_date: Mapped[date] = mapped_column(Date, nullable=False)
+    # Part of the unresolved-item idempotency key as COALESCE(transaction_time, '00:00:00')
+    # — see migration o0p1q2r3s4t5.
+    transaction_time: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
     amount: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     account: Mapped[str] = mapped_column(Text, nullable=False)
