@@ -814,12 +814,8 @@ class ApiClient {
     await this.request<void>(`/review-queue/${itemId}`, { method: "DELETE" });
   }
 
-  async bulkConfirmReviewItems(itemIds: string[]): Promise<{ confirmed: number }> {
-    const res = await this.request<unknown>("/review-queue/bulk-confirm", {
-      method: "POST",
-      body: JSON.stringify({ item_ids: itemIds }),
-    });
-    return res as unknown as { confirmed: number };
+  async rejectReviewItem(itemId: string): Promise<void> {
+    await this.request<void>(`/review-queue/${itemId}/reject`, { method: "POST" });
   }
 }
 

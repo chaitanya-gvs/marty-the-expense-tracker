@@ -57,14 +57,15 @@ export function useDeleteReviewItem() {
   });
 }
 
-export function useBulkConfirmReviewItems() {
+export function useRejectReviewItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (itemIds: string[]) => apiClient.bulkConfirmReviewItems(itemIds),
-    onSuccess: (data) => {
+    mutationFn: (itemId: string) => apiClient.rejectReviewItem(itemId),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["review-queue"] });
-      toast.success(`${data.confirmed} transactions confirmed`);
+      toast.success("Transaction rejected");
     },
+    onError: () => toast.error("Failed to reject transaction"),
   });
 }
 
