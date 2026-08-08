@@ -106,6 +106,25 @@ class ReviewQueueOperations:
             return result.rowcount > 0
 
     @staticmethod
+    async def remove_candidate_from_others(transaction_id: str, exclude_item_id: str) -> None:
+        """Strip a just-claimed transaction ID from every OTHER unresolved item's
+        candidate list, so the same transaction can't be linked/rejected twice
+        via two different review-queue rows."""
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            await session.execute(
+                text("""
+                    UPDATE review_queue
+                    SET ambiguous_candidate_ids = array_remove(ambiguous_candidate_ids, :transaction_id)
+                    WHERE resolved_at IS NULL
+                      AND id != :exclude_item_id
+                      AND :transaction_id = ANY(ambiguous_candidate_ids)
+                """),
+                {"transaction_id": transaction_id, "exclude_item_id": exclude_item_id},
+            )
+            await session.commit()
+
+    @staticmethod
     async def bulk_resolve(item_ids: List[str], resolution: str) -> int:
         session_factory = get_session_factory()
         async with session_factory() as session:
