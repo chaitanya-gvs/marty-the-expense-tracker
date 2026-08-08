@@ -63,10 +63,20 @@ async def confirm_review_item(item_id: str, request: ConfirmReviewItemRequest = 
 @router.post("/{item_id}/link")
 async def link_review_item(item_id: str, request: LinkReviewItemRequest):
     """Link ambiguous item to a specific email_ingestion transaction."""
+    items = await ReviewQueueOperations.get_unresolved("ambiguous")
+    item = next((i for i in items if str(i["id"]) == item_id), None)
+    if not item:
+        raise HTTPException(404, "Item not found or already resolved")
+
+    candidate_ids = item.get("ambiguous_candidate_ids") or []
+    if request.transaction_id not in candidate_ids:
+        raise HTTPException(400, "transaction_id is not a candidate for this item")
+
     resolved = await ReviewQueueOperations.resolve(item_id, "linked")
     if not resolved:
         raise HTTPException(404, "Item not found or already resolved")
     await TransactionOperations.mark_statement_confirmed(request.transaction_id)
+    await ReviewQueueOperations.remove_candidate_from_others(request.transaction_id, exclude_item_id=item_id)
     return {"status": "linked"}
 
 

@@ -34,6 +34,7 @@ from sqlalchemy import text
 from main import app
 from src.utils.auth_deps import get_current_user
 from src.services.database_manager.connection import get_session_factory
+from src.services.database_manager.operations.review_queue_operations import ReviewQueueOperations
 
 
 def override_auth():
@@ -167,3 +168,49 @@ def test_reject_rejects_multi_candidate_item(client):
 def test_reject_unknown_item_returns_404(client):
     resp = client.post("/api/review-queue/00000000-0000-0000-0000-000000000000/reject")
     assert resp.status_code == 404
+
+
+def test_link_rejects_non_candidate_transaction_id(client):
+    tx_a = _run(client, _insert_transaction, description="Candidate")
+    tx_stranger = _run(client, _insert_transaction, description="Not a candidate")
+    item_id = _run(client, _insert_review_item, [tx_a])
+    try:
+        resp = client.post(
+            f"/api/review-queue/{item_id}/link",
+            json={"transaction_id": tx_stranger},
+        )
+        assert resp.status_code == 400
+    finally:
+        _run(client, _cleanup, "transactions", tx_a)
+        _run(client, _cleanup, "transactions", tx_stranger)
+        _run(client, _cleanup, "review_queue", item_id)
+
+
+def test_link_propagates_candidate_claim_to_siblings(client):
+    tx_shared = _run(client, _insert_transaction, description="Shared candidate")
+    tx_other = _run(client, _insert_transaction, description="Other candidate")
+    item_a = _run(client, _insert_review_item, [tx_shared, tx_other])
+    # uq_review_queue_unresolved_item keys unresolved items on
+    # (review_type, account, transaction_date, amount, direction); item_b needs a
+    # distinct value in one of those columns to coexist with item_a, so it's given
+    # its own account here, standing in for a separate review situation that
+    # happens to share the same candidate transaction id.
+    item_b = _run(
+        client, _insert_review_item, [tx_shared],
+        description="Sibling fixture", account="Sibling Fixture Account",
+    )
+    try:
+        resp = client.post(
+            f"/api/review-queue/{item_a}/link",
+            json={"transaction_id": tx_shared},
+        )
+        assert resp.status_code == 200
+
+        items = _run(client, ReviewQueueOperations.get_unresolved, "ambiguous")
+        b = next(i for i in items if str(i["id"]) == item_b)
+        assert tx_shared not in (b["ambiguous_candidate_ids"] or [])
+    finally:
+        _run(client, _cleanup, "transactions", tx_shared)
+        _run(client, _cleanup, "transactions", tx_other)
+        _run(client, _cleanup, "review_queue", item_a)
+        _run(client, _cleanup, "review_queue", item_b)
