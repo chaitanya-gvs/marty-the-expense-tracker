@@ -69,21 +69,32 @@ class DataStandardizerHelper:
             # Discover every month with pending (not yet db_inserted) work —
             # NOT just "the previous calendar month". A statement extracted in
             # any month must eventually be found here regardless of when this
-            # step happens to run relative to it.
-            pending_months = await StatementLogOperations.get_pending_statement_months()
+            # step happens to run relative to it. Under override=True, every
+            # month ever logged is rediscovered (not just pending ones), so
+            # already-db_inserted months are re-extracted from scratch too.
+            if override:
+                months = await StatementLogOperations.get_all_statement_months()
+            else:
+                months = await StatementLogOperations.get_pending_statement_months()
 
-            if not pending_months:
-                logger.warning("No months with pending statements found", extra=self.log_extra())
-                self.emit(
-                    "standardization_started", "standardization",
-                    "No pending statements found in GCS",
-                    level="warning",
+            if not months:
+                logger.info(
+                    "No months with pending statements in the database; scanning Splitwise month only",
+                    extra=self.log_extra(),
                 )
-                return [], set()
+
+            # Splitwise always uploads its CSV to the GCS folder for its own
+            # date-range month, independent of statement_processing_log (it
+            # never writes a row there). Union that month in unconditionally
+            # so its CSV is never silently skipped.
+            splitwise_month = self.calculate_splitwise_date_range()[0].strftime("%Y-%m")
+            if splitwise_month not in months:
+                months.append(splitwise_month)
+            months.sort()  # keep chronological order (oldest first)
 
             cloud_csv_files: List[Dict[str, Any]] = []
             db_inserted_keys: set = set()
-            for month in pending_months:
+            for month in months:
                 cloud_csv_files.extend(self.cloud_storage.list_files(f"{month}/extracted_data/"))
                 if not override:
                     db_inserted_keys |= await StatementLogOperations.get_db_inserted_filenames(month)
@@ -92,13 +103,13 @@ class DataStandardizerHelper:
             logger.info(f"Found {len(csv_files_only)} CSV files in cloud storage", extra=self.log_extra())
             self.emit(
                 "standardization_started", "standardization",
-                f"Standardizing {len(csv_files_only)} CSV file(s) from GCS ({', '.join(pending_months)})",
-                data={"csv_count": len(csv_files_only), "months": pending_months},
+                f"Standardizing {len(csv_files_only)} CSV file(s) from GCS ({', '.join(months)})",
+                data={"csv_count": len(csv_files_only), "months": months},
             )
 
             if db_inserted_keys:
                     logger.info(
-                        f"Will skip {len(db_inserted_keys)} already db_inserted CSV(s) for {', '.join(pending_months)}",
+                        f"Will skip {len(db_inserted_keys)} already db_inserted CSV(s) for {', '.join(months)}",
                         extra=self.log_extra(),
                     )
 
