@@ -26,13 +26,17 @@ def _make_helper(
     standardized_df=None,
     db_inserted_keys=None,
     temp_dir=None,
+    list_files_side_effect=None,
 ) -> DataStandardizerHelper:
     """Build a DataStandardizerHelper with minimal mocks."""
     if temp_dir is None:
         temp_dir = Path(tempfile.mkdtemp())
 
     cloud_storage = MagicMock()
-    cloud_storage.list_files.return_value = cloud_csv_files or []
+    if list_files_side_effect is not None:
+        cloud_storage.list_files.side_effect = list_files_side_effect
+    else:
+        cloud_storage.list_files.return_value = cloud_csv_files or []
     cloud_storage.download_file.return_value = {"success": True}
 
     transaction_standardizer = MagicMock()
@@ -70,9 +74,12 @@ def _make_helper(
 
 @pytest.mark.asyncio
 async def test_process_returns_tuple_on_empty_storage():
-    """process() returns ([], set()) when no CSV files found."""
+    """process() returns ([], set()) when no months are pending."""
     helper, _ = _make_helper(cloud_csv_files=[])
     with patch(
+        "src.services.orchestrator.data_standardizer_helper.StatementLogOperations.get_pending_statement_months",
+        new=AsyncMock(return_value=[]),
+    ), patch(
         "src.services.orchestrator.data_standardizer_helper.StatementLogOperations.get_db_inserted_filenames",
         new=AsyncMock(return_value=set()),
     ):
@@ -103,6 +110,9 @@ async def test_process_returns_tuple_with_valid_rows():
             temp_dir=tmp,
         )
         with patch(
+            "src.services.orchestrator.data_standardizer_helper.StatementLogOperations.get_pending_statement_months",
+            new=AsyncMock(return_value=["2026-05"]),
+        ), patch(
             "src.services.orchestrator.data_standardizer_helper.StatementLogOperations.get_db_inserted_filenames",
             new=AsyncMock(return_value=set()),
         ):
@@ -132,6 +142,9 @@ async def test_process_separates_flagged_rows():
             temp_dir=tmp,
         )
         with patch(
+            "src.services.orchestrator.data_standardizer_helper.StatementLogOperations.get_pending_statement_months",
+            new=AsyncMock(return_value=["2026-05"]),
+        ), patch(
             "src.services.orchestrator.data_standardizer_helper.StatementLogOperations.get_db_inserted_filenames",
             new=AsyncMock(return_value=set()),
         ):
@@ -161,6 +174,9 @@ async def test_process_no_valid_csv_keys_for_flagged_only():
             temp_dir=tmp,
         )
         with patch(
+            "src.services.orchestrator.data_standardizer_helper.StatementLogOperations.get_pending_statement_months",
+            new=AsyncMock(return_value=["2026-05"]),
+        ), patch(
             "src.services.orchestrator.data_standardizer_helper.StatementLogOperations.get_db_inserted_filenames",
             new=AsyncMock(return_value=set()),
         ):
@@ -188,6 +204,9 @@ async def test_process_does_not_call_update_status():
             temp_dir=tmp,
         )
         with patch(
+            "src.services.orchestrator.data_standardizer_helper.StatementLogOperations.get_pending_statement_months",
+            new=AsyncMock(return_value=["2026-05"]),
+        ), patch(
             "src.services.orchestrator.data_standardizer_helper.StatementLogOperations.get_db_inserted_filenames",
             new=AsyncMock(return_value=set()),
         ) as _mock_get, patch(
@@ -216,6 +235,9 @@ async def test_process_skips_already_inserted():
             temp_dir=tmp,
         )
         with patch(
+            "src.services.orchestrator.data_standardizer_helper.StatementLogOperations.get_pending_statement_months",
+            new=AsyncMock(return_value=["2026-05"]),
+        ), patch(
             "src.services.orchestrator.data_standardizer_helper.StatementLogOperations.get_db_inserted_filenames",
             new=AsyncMock(return_value={"axis_savings_20260501"}),
         ):
@@ -224,6 +246,54 @@ async def test_process_skips_already_inserted():
     data, keys = result
     assert data == []
     assert keys == set()
+
+
+@pytest.mark.asyncio
+async def test_process_combines_multiple_pending_months():
+    """CSVs from two different pending months are combined into one result."""
+    df_may = pd.DataFrame([
+        {"date": "2026-05-01", "description": "May tx", "amount": 100.0, "_skip_reason": None},
+    ])
+    df_june = pd.DataFrame([
+        {"date": "2026-06-01", "description": "June tx", "amount": 200.0, "_skip_reason": None},
+    ])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        (tmp / "axis_savings_20260501.csv").write_text("date,description,amount\n2026-05-01,test,100\n")
+        (tmp / "axis_savings_20260601.csv").write_text("date,description,amount\n2026-06-01,test,200\n")
+
+        def list_files_side_effect(prefix):
+            if prefix == "2026-05/extracted_data/":
+                return [{"name": "2026-05/extracted_data/axis_savings_20260501.csv"}]
+            if prefix == "2026-06/extracted_data/":
+                return [{"name": "2026-06/extracted_data/axis_savings_20260601.csv"}]
+            return []
+
+        transaction_standardizer_returns = {
+            "axis_savings_20260501.csv": df_may,
+            "axis_savings_20260601.csv": df_june,
+        }
+
+        helper, _ = _make_helper(temp_dir=tmp, list_files_side_effect=list_files_side_effect)
+
+        async def _dynamic_method(df, search_pattern, filename):
+            return transaction_standardizer_returns[filename]
+
+        helper.transaction_standardizer.process_with_dynamic_method = _dynamic_method
+
+        with patch(
+            "src.services.orchestrator.data_standardizer_helper.StatementLogOperations.get_pending_statement_months",
+            new=AsyncMock(return_value=["2026-05", "2026-06"]),
+        ), patch(
+            "src.services.orchestrator.data_standardizer_helper.StatementLogOperations.get_db_inserted_filenames",
+            new=AsyncMock(return_value=set()),
+        ):
+            result = await helper.process()
+
+    data, keys = result
+    assert len(data) == 2
+    assert keys == {"axis_savings_20260501", "axis_savings_20260601"}
 
 
 # ---------------------------------------------------------------------------

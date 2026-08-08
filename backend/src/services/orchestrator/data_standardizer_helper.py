@@ -66,40 +66,39 @@ class DataStandardizerHelper:
         try:
             logger.info("Standardizing and combining all transaction data", extra=self.log_extra())
 
-            # Get all CSV files from cloud storage for the previous month
-            start_date, end_date = self.calculate_splitwise_date_range()
-            previous_month = start_date.strftime("%Y-%m")
+            # Discover every month with pending (not yet db_inserted) work —
+            # NOT just "the previous calendar month". A statement extracted in
+            # any month must eventually be found here regardless of when this
+            # step happens to run relative to it.
+            pending_months = await StatementLogOperations.get_pending_statement_months()
 
-            # List all CSV files in the extracted_data directory for the month
-            cloud_csv_files = self.cloud_storage.list_files(f"{previous_month}/extracted_data/")
-
-            if not cloud_csv_files:
-                logger.warning(
-                    f"No CSV files found in cloud storage for {previous_month}",
-                    extra=self.log_extra(),
-                )
+            if not pending_months:
+                logger.warning("No months with pending statements found", extra=self.log_extra())
                 self.emit(
                     "standardization_started", "standardization",
-                    f"No CSV files found in GCS for {previous_month}",
+                    "No pending statements found in GCS",
                     level="warning",
                 )
                 return [], set()
+
+            cloud_csv_files: List[Dict[str, Any]] = []
+            db_inserted_keys: set = set()
+            for month in pending_months:
+                cloud_csv_files.extend(self.cloud_storage.list_files(f"{month}/extracted_data/"))
+                if not override:
+                    db_inserted_keys |= await StatementLogOperations.get_db_inserted_filenames(month)
 
             csv_files_only = [f for f in cloud_csv_files if f.get("name", "").endswith(".csv")]
             logger.info(f"Found {len(csv_files_only)} CSV files in cloud storage", extra=self.log_extra())
             self.emit(
                 "standardization_started", "standardization",
-                f"Standardizing {len(csv_files_only)} CSV file(s) from GCS ({previous_month})",
-                data={"csv_count": len(csv_files_only), "month": previous_month},
+                f"Standardizing {len(csv_files_only)} CSV file(s) from GCS ({', '.join(pending_months)})",
+                data={"csv_count": len(csv_files_only), "months": pending_months},
             )
 
-            # Fetch already-inserted normalized filenames to skip on reruns (unless override)
-            db_inserted_keys: set = set()
-            if not override:
-                db_inserted_keys = await StatementLogOperations.get_db_inserted_filenames(previous_month)
-                if db_inserted_keys:
+            if db_inserted_keys:
                     logger.info(
-                        f"Will skip {len(db_inserted_keys)} already db_inserted CSV(s) for {previous_month}",
+                        f"Will skip {len(db_inserted_keys)} already db_inserted CSV(s) for {', '.join(pending_months)}",
                         extra=self.log_extra(),
                     )
 
