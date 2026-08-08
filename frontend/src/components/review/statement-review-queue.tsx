@@ -7,6 +7,7 @@ import {
   useReviewQueue,
   useConfirmReviewItem,
   useLinkReviewItem,
+  useRejectReviewItem,
   useRunEmailIngestion,
 } from "@/hooks/use-review-queue";
 import { apiClient } from "@/lib/api/client";
@@ -75,6 +76,7 @@ export function StatementReviewQueue() {
   const { data: ambiguous, isLoading } = useReviewQueue("ambiguous");
   const confirm = useConfirmReviewItem();
   const link = useLinkReviewItem();
+  const reject = useRejectReviewItem();
   const runIngestion = useRunEmailIngestion();
 
   const items = ambiguous?.items ?? [];
@@ -106,6 +108,7 @@ export function StatementReviewQueue() {
         isLoading={isLoading}
         onLink={(itemId, txId) => link.mutate({ itemId, transactionId: txId })}
         onNoneMatch={(itemId) => confirm.mutate({ itemId })}
+        onReject={(itemId) => reject.mutate(itemId)}
       />
     </div>
   );
@@ -118,11 +121,13 @@ function AmbiguousList({
   isLoading,
   onLink,
   onNoneMatch,
+  onReject,
 }: {
   items: ReviewQueueItem[];
   isLoading: boolean;
   onLink: (itemId: string, txId: string) => void;
   onNoneMatch: (itemId: string) => void;
+  onReject: (itemId: string) => void;
 }) {
   if (isLoading)
     return <div className="text-muted-foreground text-sm py-6">Loading…</div>;
@@ -142,6 +147,7 @@ function AmbiguousList({
           item={item}
           onLink={onLink}
           onNoneMatch={onNoneMatch}
+          onReject={onReject}
         />
       ))}
     </div>
@@ -154,12 +160,15 @@ function AmbiguousItem({
   item,
   onLink,
   onNoneMatch,
+  onReject,
 }: {
   item: ReviewQueueItem;
   onLink: (itemId: string, txId: string) => void;
   onNoneMatch: (itemId: string) => void;
+  onReject: (itemId: string) => void;
 }) {
   const candidateIds = item.ambiguous_candidate_ids ?? [];
+  const isSingleCandidate = candidateIds.length === 1;
   const parsed = parseUpiDescription(item.description);
 
   const candidateQueries = useQueries({
@@ -226,9 +235,9 @@ function AmbiguousItem({
       {/* ── Candidates ── */}
       <div className="px-4 py-3 space-y-2">
         <p className="text-xs text-muted-foreground font-medium">
-          {candidateIds.length} possible{" "}
-          {candidateIds.length === 1 ? "match" : "matches"} — select the one
-          this transaction belongs to:
+          {isSingleCandidate
+            ? "Is this a legitimate standalone transaction?"
+            : `${candidateIds.length} possible matches — select the one this transaction belongs to:`}
         </p>
 
         {candidateQueries.map((query, i) => {
@@ -263,14 +272,12 @@ function AmbiguousItem({
                   Could not load transaction{" "}
                   <code className="font-mono">{txId.slice(0, 8)}…</code>
                 </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => onLink(item.id, txId)}
-                >
-                  <Link2 className="h-3.5 w-3.5 mr-1.5" />
-                  Link anyway
-                </Button>
+                {!isSingleCandidate && (
+                  <Button size="sm" variant="outline" onClick={() => onLink(item.id, txId)}>
+                    <Link2 className="h-3.5 w-3.5 mr-1.5" />
+                    Link anyway
+                  </Button>
+                )}
               </div>
             );
           }
@@ -318,29 +325,54 @@ function AmbiguousItem({
                 {tx.direction === "debit" ? "−" : "+"}
                 {formatCurrency(tx.amount)}
               </span>
-              <Button
-                size="sm"
-                onClick={() => onLink(item.id, txId)}
-                className="shrink-0"
-                variant={isBest ? "default" : "outline"}
-              >
-                <ArrowRight className="h-3.5 w-3.5 mr-1.5" />
-                Link
-              </Button>
+              {!isSingleCandidate && (
+                <Button
+                  size="sm"
+                  onClick={() => onLink(item.id, txId)}
+                  className="shrink-0"
+                  variant={isBest ? "default" : "outline"}
+                >
+                  <ArrowRight className="h-3.5 w-3.5 mr-1.5" />
+                  Link
+                </Button>
+              )}
             </div>
           );
         })}
 
-        <div className="pt-1">
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-muted-foreground hover:text-foreground text-xs h-7 px-2"
-            onClick={() => onNoneMatch(item.id)}
-          >
-            <Ban className="h-3 w-3 mr-1.5" />
-            None of these
-          </Button>
+        <div className="pt-1 flex items-center gap-2">
+          {isSingleCandidate ? (
+            <>
+              <Button
+                size="sm"
+                variant="default"
+                className="h-7 px-3 text-xs"
+                onClick={() => onLink(item.id, candidateIds[0])}
+              >
+                <ArrowRight className="h-3.5 w-3.5 mr-1.5" />
+                Looks right
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground hover:text-foreground text-xs h-7 px-2"
+                onClick={() => onReject(item.id)}
+              >
+                <Ban className="h-3 w-3 mr-1.5" />
+                Doesn&apos;t belong
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground hover:text-foreground text-xs h-7 px-2"
+              onClick={() => onNoneMatch(item.id)}
+            >
+              <Ban className="h-3 w-3 mr-1.5" />
+              None of these
+            </Button>
+          )}
         </div>
       </div>
     </div>
