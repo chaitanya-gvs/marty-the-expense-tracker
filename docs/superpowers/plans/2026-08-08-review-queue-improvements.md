@@ -475,6 +475,12 @@ async def _insert_transaction(**overrides) -> str:
         "transaction_date": date(2026, 2, 10),
         "amount": Decimal("250.00"),
         "direction": "debit",
+        # transactions.transaction_type has a DB CHECK constraint restricting it to
+        # category values (purchase/refund/transfer/cc_payment/fee/interest/income/
+        # reimbursement/adjustment) — it does NOT accept 'debit'/'credit' (that's what
+        # `direction` is for). Every real row in this DB uses 'purchase' regardless of
+        # direction, so that's the correct fixture default here.
+        "transaction_type": "purchase",
         "description": "Route test fixture txn",
         "account": "Route Fixture Account",
         "transaction_source": "email_ingestion",
@@ -489,7 +495,7 @@ async def _insert_transaction(**overrides) -> str:
                     (transaction_date, amount, direction, transaction_type, description,
                      account, transaction_source, statement_confirmed)
                 VALUES
-                    (:transaction_date, :amount, :direction, :direction, :description,
+                    (:transaction_date, :amount, :direction, :transaction_type, :description,
                      :account, :transaction_source, :statement_confirmed)
                 RETURNING id
             """),
@@ -774,7 +780,9 @@ async def test_confirm_inserts_new_transaction_when_none_matches(client):
                 "id": item_id,
                 "raw_data": (
                     '{"transaction_date": "2026-02-10", "amount": 77.00, '
-                    '"direction": "debit", "transaction_type": "debit", '
+                    # transaction_type must be a valid category (see transactions_transaction_type_check
+                    # constraint) — 'purchase', not 'debit'/'credit' (that's what direction is for).
+                    '"direction": "debit", "transaction_type": "purchase", '
                     '"description": "Confirm fixture description", '
                     '"account": "Confirm Fixture Account"}'
                 ),
@@ -824,7 +832,7 @@ async def test_confirm_skips_insert_when_transaction_already_exists(client):
                 "id": item_id,
                 "raw_data": (
                     '{"transaction_date": "2026-02-10", "amount": 42.00, '
-                    '"direction": "debit", "transaction_type": "debit", '
+                    '"direction": "debit", "transaction_type": "purchase", '
                     '"description": "Should not be inserted", '
                     '"account": "Already Exists Account"}'
                 ),
