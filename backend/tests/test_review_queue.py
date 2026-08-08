@@ -197,3 +197,50 @@ async def test_remove_candidate_from_others_ignores_resolved_items():
     finally:
         await _delete_review_item(item_a)
         await _delete_review_item(item_b)
+
+
+@pytest.mark.asyncio
+async def test_add_item_ON_CONFLICT_target_matches_the_live_unique_index():
+    """Regression test for the bug that caused the final-review Critical finding:
+    add_item's ON CONFLICT clause silently drifted out of sync with
+    uq_review_queue_unresolved_item after a migration changed the index shape,
+    so every insert raised 'no unique or exclusion constraint matching the ON
+    CONFLICT specification' — swallowed by callers, causing duplicate
+    transactions on one path and no review items being created on another.
+
+    This calls the real add_item() against the real index (no mocking) and
+    asserts the idempotent-skip behavior actually works, so a future migration
+    that changes the index shape without updating this ON CONFLICT clause
+    fails loudly here instead of failing silently in production.
+    """
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        await session.execute(text("DELETE FROM review_queue WHERE account = 'ON CONFLICT regression fixture'"))
+        await session.commit()
+
+    first_id = None
+    try:
+        first_id = await ReviewQueueOperations.add_item(
+            review_type="ambiguous",
+            transaction_date=date(2026, 1, 20),
+            amount=Decimal("321.00"),
+            description="ON CONFLICT regression description",
+            account="ON CONFLICT regression fixture",
+            direction="debit",
+            transaction_type="debit",
+        )
+        assert first_id is not None, "add_item raised or failed to insert — ON CONFLICT target has drifted from the live index"
+
+        second_id = await ReviewQueueOperations.add_item(
+            review_type="ambiguous",
+            transaction_date=date(2026, 1, 20),
+            amount=Decimal("321.00"),
+            description="ON CONFLICT regression description",
+            account="ON CONFLICT regression fixture",
+            direction="debit",
+            transaction_type="debit",
+        )
+        assert second_id is None, "identical second insert should be an idempotent no-op, not a new row"
+    finally:
+        if first_id:
+            await _delete_review_item(first_id)
