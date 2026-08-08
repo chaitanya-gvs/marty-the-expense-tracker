@@ -351,6 +351,31 @@ class StatementLogOperations:
                 return set()
 
     @staticmethod
+    async def get_pending_statement_months() -> List[str]:
+        """Return every distinct statement_month with at least one row not yet
+        db_inserted, ordered chronologically (oldest first).
+
+        Used by the standardization step to discover every month with pending
+        work, instead of assuming only 'the previous calendar month' matters.
+        """
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            try:
+                result = await session.execute(
+                    text("""
+                        SELECT DISTINCT statement_month
+                        FROM statement_processing_log
+                        WHERE status != 'db_inserted'
+                          AND statement_month IS NOT NULL
+                        ORDER BY statement_month
+                    """)
+                )
+                return [row[0] for row in result.fetchall()]
+            except Exception:
+                logger.error("Failed to retrieve pending statement months", exc_info=True)
+                return []
+
+    @staticmethod
     async def clear_all() -> int:
         """Delete all rows from statement_processing_log. Returns row count deleted."""
         session_factory = get_session_factory()
