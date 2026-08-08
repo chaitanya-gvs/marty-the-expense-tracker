@@ -227,6 +227,45 @@ class AccountOperations:
             return [row[0] for row in rows if row[0]]
 
     @staticmethod
+    async def get_statement_account_date_stats() -> dict:
+        """Aggregate last_statement_date across active statement-sender accounts.
+
+        Used by StatementWorkflow._calculate_date_range() to compute a
+        data-driven search window. Returns a dict with:
+            - min_last_statement_date: MIN(last_statement_date) across active
+              statement-sender accounts, or None if there are no such accounts
+              or none has ever been processed
+            - account_count: number of active statement-sender accounts
+            - null_count: how many of those have never been processed
+              (last_statement_date IS NULL)
+        """
+        try:
+            session_factory = get_session_factory()
+            async with session_factory() as session:
+                result = await session.execute(
+                    text("""
+                        SELECT
+                            MIN(last_statement_date) AS min_last_statement_date,
+                            COUNT(*) AS account_count,
+                            COUNT(*) FILTER (WHERE last_statement_date IS NULL) AS null_count
+                        FROM accounts
+                        WHERE is_active = true
+                          AND statement_sender IS NOT NULL
+                          AND statement_sender != ''
+                    """)
+                )
+                row = result.fetchone()
+                stats = dict(row._mapping)
+                logger.info(
+                    "Statement account date stats: %d accounts, %d never processed, min=%s",
+                    stats["account_count"], stats["null_count"], stats["min_last_statement_date"],
+                )
+                return stats
+        except Exception:
+            logger.error("Failed to retrieve statement account date stats", exc_info=True)
+            raise
+
+    @staticmethod
     async def get_account_nickname_by_pattern(search_pattern: str) -> Optional[str]:
         """Get account nickname by search pattern (partial match).
         Tries exact pattern first, then pattern with underscores as wildcards for flexibility
