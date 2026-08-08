@@ -139,7 +139,9 @@ def _build_completion_message(workflow_results: dict) -> str:
 
 class StatementWorkflow:
     """Orchestrates the complete statement processing workflow"""
-    
+
+    DATE_RANGE_SAFETY_BUFFER_DAYS = 3
+
     def __init__(
         self,
         account_ids: List[str] = None,
@@ -324,16 +326,13 @@ class StatementWorkflow:
             )
         return all_success
     
-    def _calculate_date_range(self) -> tuple[str, str]:
+    def _calculate_fallback_date_range(self, now: datetime) -> tuple[str, str]:
         """
-        Calculate date range for statement retrieval:
-        From STATEMENT_SEARCH_DAY of the previous month to STATEMENT_SEARCH_DAY
-        of the current month (configurable via env var, default 25).
-
-        The normalized_filename unique key in the processing log prevents
-        re-processing anything already inserted within this window.
+        Fixed-window fallback: STATEMENT_SEARCH_DAY of the previous month to
+        STATEMENT_SEARCH_DAY of the current month (configurable via env var,
+        default 25). Used when no per-account last-statement-date signal is
+        available (see _calculate_date_range).
         """
-        now = datetime.now()
         day = get_settings().STATEMENT_SEARCH_DAY
 
         current_month_nth = now.replace(day=day)
@@ -343,9 +342,16 @@ class StatementWorkflow:
         else:
             previous_month_nth = now.replace(month=now.month - 1, day=day)
 
-        start_date = previous_month_nth.strftime("%Y/%m/%d")
-        end_date = current_month_nth.strftime("%Y/%m/%d")
+        return previous_month_nth.strftime("%Y/%m/%d"), current_month_nth.strftime("%Y/%m/%d")
 
+    def _calculate_date_range(self) -> tuple[str, str]:
+        """
+        Calculate date range for statement retrieval.
+
+        TEMPORARY: still delegates straight to the fixed-window fallback.
+        Task 3 replaces this with the data-driven async version.
+        """
+        start_date, end_date = self._calculate_fallback_date_range(datetime.now())
         logger.info(f"Date range for statement retrieval: {start_date} to {end_date}", extra=self._log_extra())
         return start_date, end_date
     

@@ -30,21 +30,41 @@ class TestStatementWorkflow:
         """Test date range calculation logic"""
         workflow = StatementWorkflow()
         start_date, end_date = workflow._calculate_date_range()
-        
+
         logger.info(f"Calculated date range: {start_date} to {end_date}")
-        
+
         # Verify format is YYYY/MM/DD
         assert len(start_date.split('/')) == 3
         assert len(end_date.split('/')) == 3
-        
+
         # Verify start_date is before end_date
         from datetime import datetime
         start_dt = datetime.strptime(start_date, "%Y/%m/%d")
         end_dt = datetime.strptime(end_date, "%Y/%m/%d")
         assert start_dt < end_dt
-        
+
         logger.info("✅ Date range calculation test passed")
-    
+
+    def test_fallback_date_range_uses_search_day(self):
+        """Fixed-window fallback: prev-month day-N to current-month day-N"""
+        from datetime import datetime
+
+        workflow = StatementWorkflow()
+
+        start_date, end_date = workflow._calculate_fallback_date_range(datetime(2026, 8, 8))
+        assert start_date == "2026/07/25"
+        assert end_date == "2026/08/25"
+
+    def test_fallback_date_range_handles_january(self):
+        """January rolls back to December of the previous year"""
+        from datetime import datetime
+
+        workflow = StatementWorkflow()
+
+        start_date, end_date = workflow._calculate_fallback_date_range(datetime(2026, 1, 10))
+        assert start_date == "2025/12/25"
+        assert end_date == "2026/01/25"
+
     def test_previous_month_name_calculation(self):
         """Test previous month name calculation"""
         workflow = StatementWorkflow()
