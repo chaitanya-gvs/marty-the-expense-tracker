@@ -422,7 +422,7 @@ export interface SplitwiseFriendExpense {
 
 export interface ReviewQueueItem {
   id: string;
-  review_type: "statement_only" | "ambiguous";
+  review_type: "ambiguous";
   transaction_date: string;
   amount: number;
   description: string;
