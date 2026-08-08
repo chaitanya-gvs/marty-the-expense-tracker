@@ -262,3 +262,22 @@ The endpoint runs synchronously (no SSE) since it's a lightweight read + queue o
 - UI changes to the review page — the `statement_only` review type already renders in the frontend's review queue.
 - Reconciliation for Splitwise-only workflow runs (no statement CSV to validate against).
 - Email-only accounts (no statement CSV exists; not present in `StatementProcessingLog`).
+
+---
+
+## Update (2026-08-08): no review gate on unmatched rows
+
+This service was never implemented. If it is built in the future, unmatched
+statement rows should insert **directly** as `statement_extraction`
+transactions — no `review_queue` involvement. The `statement_only` review
+type that this design originally specified was retired: it had no UI
+surfacing it, so 34 real transactions sat unreviewed for months before being
+processed as a one-time backlog cleanup. See
+`docs/superpowers/specs/2026-08-08-review-queue-improvements-design.md` for
+the full investigation and reasoning — every *other* unmatched statement row
+already inserts directly in `_run_dedup_pass`; gating this specific subset
+was the inconsistency that caused the problem.
+
+Reuse `TransactionOperations.exists_matching(account, amount,
+transaction_date, direction)` before inserting, so a manually-entered
+transaction can't get double-booked.
