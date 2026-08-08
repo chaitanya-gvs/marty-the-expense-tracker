@@ -84,29 +84,24 @@ class AccountOperations:
 
     @staticmethod
     async def get_account_by_statement_sender(email: str) -> Optional[dict]:
-        """Get account by statement sender email (handles comma-separated senders)"""
+        """Get account by statement sender email (handles comma-separated senders).
+
+        Matches by exact address after splitting each account's comma-separated
+        statement_sender on ',' — NOT a substring LIKE, which would wrongly match
+        e.g. "statements@axis.bank.in" against "cc.statements@axis.bank.in".
+        """
         session_factory = get_session_factory()
         async with session_factory() as session:
-            # First try exact match
             result = await session.execute(
-                text("""
-                    SELECT * FROM accounts
-                    WHERE statement_sender = :email AND is_active = true
-                """), {"email": email}
+                text("SELECT * FROM accounts WHERE is_active = true")
             )
-            row = result.fetchone()
-            if row:
-                return dict(row._mapping)
-
-            # If no exact match, try comma-separated senders
-            result = await session.execute(
-                text("""
-                    SELECT * FROM accounts
-                    WHERE statement_sender LIKE :email_pattern AND is_active = true
-                """), {"email_pattern": f"%{email}%"}
-            )
-            row = result.fetchone()
-            return dict(row._mapping) if row else None
+            email_lower = email.strip().lower()
+            for row in result.fetchall():
+                account = dict(row._mapping)
+                senders = [s.strip().lower() for s in (account.get("statement_sender") or "").split(",")]
+                if email_lower in senders:
+                    return account
+            return None
 
     @staticmethod
     async def get_account_by_id(account_id: str) -> Optional[dict]:
@@ -183,30 +178,23 @@ class AccountOperations:
     async def get_account_by_sender_email(sender_email: str) -> Optional[dict]:
         """Get account id and nickname by statement sender email (handles comma-separated senders).
 
+        Matches by exact address after splitting each account's comma-separated
+        statement_sender on ',' — NOT a substring LIKE, which would wrongly match
+        e.g. "statements@axis.bank.in" against "cc.statements@axis.bank.in".
+
         Returns a dict with ``id`` and ``nickname`` keys, or ``None`` if not found.
         """
         session_factory = get_session_factory()
         async with session_factory() as session:
-            # First try exact match
             result = await session.execute(
-                text("""
-                    SELECT id, nickname FROM accounts
-                    WHERE statement_sender = :sender_email AND is_active = true
-                """), {"sender_email": sender_email}
+                text("SELECT id, nickname, statement_sender FROM accounts WHERE is_active = true")
             )
-            row = result.fetchone()
-            if row:
-                return {"id": row[0], "nickname": row[1]}
-
-            # If no exact match, try comma-separated senders
-            result = await session.execute(
-                text("""
-                    SELECT id, nickname FROM accounts
-                    WHERE statement_sender LIKE :sender_pattern AND is_active = true
-                """), {"sender_pattern": f"%{sender_email}%"}
-            )
-            row = result.fetchone()
-            return {"id": row[0], "nickname": row[1]} if row else None
+            email_lower = sender_email.strip().lower()
+            for row in result.fetchall():
+                senders = [s.strip().lower() for s in (row[2] or "").split(",")]
+                if email_lower in senders:
+                    return {"id": row[0], "nickname": row[1]}
+            return None
 
     @staticmethod
     async def get_all_statement_senders() -> List[str]:
