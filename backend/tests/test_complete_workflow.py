@@ -184,7 +184,7 @@ async def test_complete_workflow():
             return
         
         # Calculate date range
-        start_date, end_date = workflow._calculate_date_range()
+        start_date, end_date = await workflow._calculate_date_range()
         logger.info(f"Date range: {start_date} to {end_date}")
         
         # Test results

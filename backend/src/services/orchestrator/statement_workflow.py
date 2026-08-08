@@ -344,15 +344,53 @@ class StatementWorkflow:
 
         return previous_month_nth.strftime("%Y/%m/%d"), current_month_nth.strftime("%Y/%m/%d")
 
-    def _calculate_date_range(self) -> tuple[str, str]:
+    async def _calculate_date_range(self, now: Optional[datetime] = None) -> tuple[str, str]:
         """
         Calculate date range for statement retrieval.
 
-        TEMPORARY: still delegates straight to the fixed-window fallback.
-        Task 3 replaces this with the data-driven async version.
+        Data-driven: start_date = MIN(last_statement_date) across active
+        statement-sender accounts, minus DATE_RANGE_SAFETY_BUFFER_DAYS;
+        end_date = now(). Falls back to the fixed STATEMENT_SEARCH_DAY window
+        (_calculate_fallback_date_range) if any active statement-sender
+        account has never been processed, no such accounts exist, or the
+        lookup fails — preserving first-run/error-safe behavior.
+
+        The normalized_filename unique key in the processing log prevents
+        re-processing anything already inserted, even when the buffer causes
+        the search window to overlap a previously-covered range.
         """
-        start_date, end_date = self._calculate_fallback_date_range(datetime.now())
-        logger.info(f"Date range for statement retrieval: {start_date} to {end_date}", extra=self._log_extra())
+        now = now or datetime.now()
+
+        try:
+            stats = await AccountOperations.get_statement_account_date_stats()
+        except Exception:
+            logger.warning(
+                "Failed to fetch account statement-date stats — using fixed-window fallback",
+                exc_info=True, extra=self._log_extra(),
+            )
+            return self._calculate_fallback_date_range(now)
+
+        min_date = stats.get("min_last_statement_date")
+        if stats.get("account_count", 0) == 0 or stats.get("null_count", 0) > 0 or min_date is None:
+            logger.info(
+                "Using fixed-window fallback for date range "
+                "(no statement-sender accounts, or one has never been processed)",
+                extra=self._log_extra(),
+            )
+            return self._calculate_fallback_date_range(now)
+
+        if isinstance(min_date, datetime):
+            min_date = min_date.date()
+        start_dt = datetime.combine(min_date, datetime.min.time()) - timedelta(
+            days=self.DATE_RANGE_SAFETY_BUFFER_DAYS
+        )
+        start_date = start_dt.strftime("%Y/%m/%d")
+        end_date = now.strftime("%Y/%m/%d")
+
+        logger.info(
+            f"Date range for statement retrieval (data-driven): {start_date} to {end_date}",
+            extra=self._log_extra(),
+        )
         return start_date, end_date
     
     def _calculate_splitwise_date_range(self) -> tuple[datetime, datetime]:
@@ -1084,7 +1122,7 @@ class StatementWorkflow:
                     logger.info(f"Found {len(statement_senders)} statement senders", extra=self._log_extra())
 
                     # Step 3: Calculate date range
-                    start_date, end_date = self._calculate_date_range()
+                    start_date, end_date = await self._calculate_date_range()
 
                     # Override with custom date range if provided
                     if custom_start_date and custom_end_date:

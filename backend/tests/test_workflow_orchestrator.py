@@ -26,24 +26,129 @@ logger = get_logger(__name__)
 class TestStatementWorkflow:
     """Test class for the workflow orchestrator"""
     
-    def test_date_range_calculation(self):
-        """Test date range calculation logic"""
-        workflow = StatementWorkflow()
-        start_date, end_date = workflow._calculate_date_range()
+    async def test_date_range_calculation_smoke(self):
+        """End-to-end smoke test: default call (no accounts mocked) still
+        returns a valid, correctly-ordered date range via the fallback path."""
+        with patch(
+            "src.services.orchestrator.statement_workflow.AccountOperations.get_statement_account_date_stats",
+            new_callable=AsyncMock,
+            return_value={"min_last_statement_date": None, "account_count": 0, "null_count": 0},
+        ):
+            workflow = StatementWorkflow()
+            start_date, end_date = await workflow._calculate_date_range()
 
-        logger.info(f"Calculated date range: {start_date} to {end_date}")
-
-        # Verify format is YYYY/MM/DD
+        from datetime import datetime as dt
         assert len(start_date.split('/')) == 3
         assert len(end_date.split('/')) == 3
-
-        # Verify start_date is before end_date
-        from datetime import datetime
-        start_dt = datetime.strptime(start_date, "%Y/%m/%d")
-        end_dt = datetime.strptime(end_date, "%Y/%m/%d")
+        start_dt = dt.strptime(start_date, "%Y/%m/%d")
+        end_dt = dt.strptime(end_date, "%Y/%m/%d")
         assert start_dt < end_dt
 
-        logger.info("✅ Date range calculation test passed")
+    async def test_date_range_data_driven(self):
+        """When every active statement-sender account has a last_statement_date,
+        start_date = MIN(last_statement_date) - 3 days, end_date = now."""
+        from datetime import date as d, datetime as dt
+
+        with patch(
+            "src.services.orchestrator.statement_workflow.AccountOperations.get_statement_account_date_stats",
+            new_callable=AsyncMock,
+            return_value={
+                "min_last_statement_date": d(2026, 6, 28),
+                "account_count": 3,
+                "null_count": 0,
+            },
+        ):
+            workflow = StatementWorkflow()
+            start_date, end_date = await workflow._calculate_date_range(now=dt(2026, 8, 8))
+
+        assert start_date == "2026/06/25"  # 2026-06-28 minus 3 days
+        assert end_date == "2026/08/08"
+
+    async def test_date_range_data_driven_buffer_crosses_month_boundary(self):
+        """3-day buffer subtracted from an early-month min date crosses into
+        the previous month/year correctly."""
+        from datetime import date as d, datetime as dt
+
+        with patch(
+            "src.services.orchestrator.statement_workflow.AccountOperations.get_statement_account_date_stats",
+            new_callable=AsyncMock,
+            return_value={
+                "min_last_statement_date": d(2026, 8, 1),
+                "account_count": 2,
+                "null_count": 0,
+            },
+        ):
+            workflow = StatementWorkflow()
+            start_date, end_date = await workflow._calculate_date_range(now=dt(2026, 8, 8))
+
+        assert start_date == "2026/07/29"  # 2026-08-01 minus 3 days crosses into July
+        assert end_date == "2026/08/08"
+
+    async def test_date_range_data_driven_handles_datetime_value(self):
+        """min_last_statement_date coming back as a datetime (not date) is truncated correctly."""
+        from datetime import datetime as dt
+
+        with patch(
+            "src.services.orchestrator.statement_workflow.AccountOperations.get_statement_account_date_stats",
+            new_callable=AsyncMock,
+            return_value={
+                "min_last_statement_date": dt(2026, 6, 28, 14, 30),
+                "account_count": 1,
+                "null_count": 0,
+            },
+        ):
+            workflow = StatementWorkflow()
+            start_date, end_date = await workflow._calculate_date_range(now=dt(2026, 8, 8))
+
+        assert start_date == "2026/06/25"
+        assert end_date == "2026/08/08"
+
+    async def test_date_range_falls_back_when_account_never_processed(self):
+        """Any active statement-sender account with last_statement_date IS NULL
+        disqualifies the data-driven path for the whole run."""
+        from datetime import date as d, datetime as dt
+
+        with patch(
+            "src.services.orchestrator.statement_workflow.AccountOperations.get_statement_account_date_stats",
+            new_callable=AsyncMock,
+            return_value={
+                "min_last_statement_date": d(2026, 6, 28),
+                "account_count": 3,
+                "null_count": 1,
+            },
+        ):
+            workflow = StatementWorkflow()
+            start_date, end_date = await workflow._calculate_date_range(now=dt(2026, 8, 8))
+
+        assert (start_date, end_date) == workflow._calculate_fallback_date_range(dt(2026, 8, 8))
+
+    async def test_date_range_falls_back_when_no_accounts(self):
+        """No active statement-sender accounts -> fixed-window fallback."""
+        from datetime import datetime as dt
+
+        with patch(
+            "src.services.orchestrator.statement_workflow.AccountOperations.get_statement_account_date_stats",
+            new_callable=AsyncMock,
+            return_value={"min_last_statement_date": None, "account_count": 0, "null_count": 0},
+        ):
+            workflow = StatementWorkflow()
+            start_date, end_date = await workflow._calculate_date_range(now=dt(2026, 8, 8))
+
+        assert (start_date, end_date) == workflow._calculate_fallback_date_range(dt(2026, 8, 8))
+
+    async def test_date_range_falls_back_on_query_error(self):
+        """Stats query raising -> fixed-window fallback, no exception propagates."""
+        from datetime import datetime as dt
+
+        with patch(
+            "src.services.orchestrator.statement_workflow.AccountOperations.get_statement_account_date_stats",
+            new_callable=AsyncMock,
+            side_effect=Exception("db unavailable"),
+        ):
+            workflow = StatementWorkflow()
+            start_date, end_date = await workflow._calculate_date_range(now=dt(2026, 8, 8))
+
+        assert (start_date, end_date) == workflow._calculate_fallback_date_range(dt(2026, 8, 8))
 
     def test_fallback_date_range_uses_search_day(self):
         """Fixed-window fallback: prev-month day-N to current-month day-N"""
@@ -209,11 +314,17 @@ async def run_tests():
     
     try:
         # Run synchronous tests
-        test_instance.test_date_range_calculation()
         test_instance.test_previous_month_name_calculation()
         test_instance.test_cloud_path_generation()
-        
+
         # Run async tests
+        await test_instance.test_date_range_calculation_smoke()
+        await test_instance.test_date_range_data_driven()
+        await test_instance.test_date_range_data_driven_buffer_crosses_month_boundary()
+        await test_instance.test_date_range_data_driven_handles_datetime_value()
+        await test_instance.test_date_range_falls_back_when_account_never_processed()
+        await test_instance.test_date_range_falls_back_when_no_accounts()
+        await test_instance.test_date_range_falls_back_on_query_error()
         await test_instance.test_normalized_filename_generation()
         await test_instance.test_workflow_dry_run()
         
