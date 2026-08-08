@@ -7,7 +7,7 @@ Create Date: 2026-08-08
 Adding time-of-day and a whitespace-normalized description to the idempotency
 key. Two real production rows were found conflated under the account/date/
 amount/direction-only key (different UPI reference numbers, same day/amount).
-transaction_time alone doesn't fix this: ~83%% of statement-sourced rows have
+transaction_time alone doesn't fix this: ~83% of statement-sourced rows have
 no time data, and Postgres composite unique indexes exempt a row from
 uniqueness entirely when ANY indexed column is null (not just that column) —
 verified empirically. COALESCE(transaction_time, '00:00:00') turns that null
