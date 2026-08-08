@@ -104,3 +104,45 @@ async def test_get_pending_statement_months_includes_incomplete_only_month():
         assert month in months
     finally:
         await _delete_log_row(fname)
+
+
+@pytest.mark.asyncio
+async def test_get_all_statement_months_includes_fully_db_inserted_month():
+    """Unlike get_pending_statement_months(), a month whose only row is already
+    db_inserted is still returned — used by override=True to rediscover it."""
+    filenames = [
+        ("test_fixture_all_202403", "2024-03", "db_inserted"),
+        ("test_fixture_all_202404", "2024-04", "csv_stored"),
+    ]
+    try:
+        for fname, month, status in filenames:
+            await _insert_log_row(fname, month, status)
+
+        months = await StatementLogOperations.get_all_statement_months()
+
+        assert "2024-03" in months
+        assert "2024-04" in months
+    finally:
+        for fname, _, _ in filenames:
+            await _delete_log_row(fname)
+
+
+@pytest.mark.asyncio
+async def test_get_all_statement_months_orders_chronologically():
+    """Returned months are sorted oldest first."""
+    filenames = [
+        ("test_fixture_all_order_202412", "2024-12", "db_inserted"),
+        ("test_fixture_all_order_202402", "2024-02", "db_inserted"),
+    ]
+    try:
+        for fname, month, status in filenames:
+            await _insert_log_row(fname, month, status)
+
+        months = await StatementLogOperations.get_all_statement_months()
+
+        idx_feb = months.index("2024-02")
+        idx_dec = months.index("2024-12")
+        assert idx_feb < idx_dec
+    finally:
+        for fname, _, _ in filenames:
+            await _delete_log_row(fname)
