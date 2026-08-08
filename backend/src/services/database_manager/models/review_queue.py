@@ -19,7 +19,7 @@ class ReviewQueue(Base):
     __tablename__ = "review_queue"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, server_default=func.gen_random_uuid())
-    review_type: Mapped[str] = mapped_column(Text, nullable=False)  # 'statement_only' | 'ambiguous'
+    review_type: Mapped[str] = mapped_column(Text, nullable=False)  # 'ambiguous' (statement_only retired 2026-08)
     transaction_date: Mapped[date] = mapped_column(Date, nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
