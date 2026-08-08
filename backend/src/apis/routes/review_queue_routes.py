@@ -36,27 +36,50 @@ async def get_review_queue(review_type: str | None = None):
 @router.post("/{item_id}/confirm")
 async def confirm_review_item(item_id: str, request: ConfirmReviewItemRequest = ConfirmReviewItemRequest()):
     """
-    Confirm an ambiguous item with no accepted candidate ("None of these"):
-    insert the statement row as a new transaction, unless a matching
-    transaction already exists (e.g. entered manually in the meantime).
+    Confirm a multi-candidate ambiguous item with no accepted candidate
+    ("None of these"): insert the statement row as a new transaction, unless a
+    matching transaction already exists (e.g. entered manually in the meantime).
     """
     items = await ReviewQueueOperations.get_unresolved("ambiguous")
     item = next((i for i in items if str(i["id"]) == item_id), None)
     if not item:
         raise HTTPException(404, "Item not found or already resolved")
 
+    candidate_ids = item.get("ambiguous_candidate_ids") or []
+    # Single-candidate items are the email-reconciliation "is this lone transaction
+    # legit?" case: accepting it means marking that transaction statement-confirmed
+    # (/link) and rejecting it means soft-deleting it (/reject). Falling through to
+    # the insert-new path here would resolve the item without ever touching the
+    # candidate — silently dropping the mark_statement_confirmed the pre-review-queue
+    # code used to do. The frontend already routes these to /link or /reject; this
+    # guard closes the door for direct API calls and stale clients.
+    if len(candidate_ids) == 1:
+        raise HTTPException(400, "Single-candidate items must use /link or /reject, not /confirm")
+
     already_exists = await TransactionOperations.exists_matching(
         account=item["account"],
         amount=item["amount"],
         transaction_date=item["transaction_date"],
         direction=item["direction"],
+        # The item's own candidates match on account/amount/direction by
+        # construction, so leaving them in would make "none of these" a no-op.
+        exclude_ids=candidate_ids,
     )
     if not already_exists:
         tx = {**(item.get("raw_data") or {}), **(request.edits or {})}
-        await TransactionOperations.bulk_insert_transactions(
+        result = await TransactionOperations.bulk_insert_transactions(
             [tx],
             transaction_source="statement_extraction",
         )
+        # bulk_insert_transactions reports failure by return value, not by raising,
+        # and its internal duplicate filter can drop the row while still reporting
+        # success. Resolving on either would mark the item confirmed with nothing
+        # written; leave it unresolved so it can be investigated and retried.
+        if not result.get("success") or result.get("inserted_count", 0) < 1:
+            logger.error(
+                "Review queue confirm: insert failed for item %s — result=%s", item_id, result
+            )
+            raise HTTPException(500, f"Insert failed: {result}")
     await ReviewQueueOperations.resolve(item_id, "confirmed")
     return {"status": "confirmed"}
 

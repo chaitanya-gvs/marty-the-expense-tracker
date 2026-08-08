@@ -509,20 +509,31 @@ class TransactionOperations:
         amount: Decimal,
         transaction_date: date,
         direction: str,
+        exclude_ids: Optional[List[str]] = None,
     ) -> bool:
         """True if a non-deleted transaction already exists with this exact
         account/amount/date/direction. Used to avoid double-booking when
-        confirming a review-queue item that a manual entry has since covered."""
+        confirming a review-queue item that a manual entry has since covered.
+
+        `exclude_ids` drops specific transaction ids from consideration. Callers
+        resolving an ambiguous review item pass that item's own candidate ids:
+        those candidates match on account/amount/direction by construction (that
+        is why they were flagged as candidates), so without the exclusion this
+        check would always "find" one of them and mistake the user's explicit
+        "none of these" for an already-covered transaction. Compared as text so
+        a caller-supplied non-uuid string can never blow up the query."""
         session_factory = get_session_factory()
+        exclusion_clause = "AND NOT (id::text = ANY(:exclude_ids))" if exclude_ids else ""
         async with session_factory() as session:
             result = await session.execute(
-                text("""
+                text(f"""
                     SELECT 1 FROM transactions
                     WHERE account = :account
                       AND amount = :amount
                       AND transaction_date = :transaction_date
                       AND direction = :direction
                       AND is_deleted = false
+                      {exclusion_clause}
                     LIMIT 1
                 """),
                 {
@@ -530,6 +541,7 @@ class TransactionOperations:
                     "amount": str(amount),
                     "transaction_date": transaction_date,
                     "direction": direction,
+                    **({"exclude_ids": [str(i) for i in exclude_ids]} if exclude_ids else {}),
                 },
             )
             return result.scalar() is not None

@@ -128,6 +128,18 @@ async def _cleanup(table: str, row_id: str) -> None:
         await session.commit()
 
 
+async def _cleanup_by_account_amount(account: str, amount: Decimal) -> None:
+    """Teardown for tests where the route itself inserts a row whose id the test
+    never learns — deletes every fixture row for that account/amount."""
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        await session.execute(
+            text("DELETE FROM transactions WHERE account = :account AND amount = :amount"),
+            {"account": account, "amount": amount},
+        )
+        await session.commit()
+
+
 async def _fetch_transaction(tx_id: str) -> dict:
     session_factory = get_session_factory()
     async with session_factory() as session:
@@ -256,7 +268,11 @@ def test_link_propagates_candidate_claim_to_siblings(client):
 def test_confirm_inserts_new_transaction_when_none_matches(client):
     item_id = _run(
         client, _insert_review_item,
-        ["placeholder-not-used"],  # multi-candidate path doesn't need real candidates for /confirm
+        # /confirm is the multi-candidate "None of these" path and rejects
+        # single-candidate items outright, so the fixture needs >= 2 candidates.
+        # They needn't be real transaction ids for this case — nothing looks them
+        # up, they only feed exists_matching's exclusion list.
+        ["11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"],
         account="Confirm Fixture Account",
         amount=Decimal("77.00"),
         description="Confirm fixture description",
@@ -302,7 +318,9 @@ def test_confirm_skips_insert_when_transaction_already_exists(client):
     )
     item_id = _run(
         client, _insert_review_item,
-        ["placeholder-not-used"],
+        # Two candidates (see note in the test above); neither is `existing_tx`,
+        # so the exists_matching exclusion doesn't hide the pre-existing row.
+        ["11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"],
         account="Already Exists Account",
         amount=Decimal("42.00"),
         description="Confirm fixture — already covered",
@@ -325,6 +343,87 @@ def test_confirm_skips_insert_when_transaction_already_exists(client):
     finally:
         _run(client, _cleanup, "review_queue", item_id)
         _run(client, _cleanup, "transactions", existing_tx)
+
+
+def test_confirm_rejects_single_candidate_item(client):
+    """Single-candidate items belong to /link or /reject — /confirm would resolve
+    them without ever marking the candidate statement-confirmed."""
+    tx_id = _run(client, _insert_transaction, account="Single Candidate Account")
+    item_id = _run(client, _insert_review_item, [tx_id], account="Single Candidate Account")
+    try:
+        resp = client.post(f"/api/review-queue/{item_id}/confirm")
+        assert resp.status_code == 400
+
+        items = _run(client, ReviewQueueOperations.get_unresolved, "ambiguous")
+        assert any(str(i["id"]) == item_id for i in items)  # left unresolved
+    finally:
+        _run(client, _cleanup, "transactions", tx_id)
+        _run(client, _cleanup, "review_queue", item_id)
+
+
+def test_confirm_inserts_even_when_own_candidate_matches(client):
+    """"None of these" on a multi-candidate item must insert a new transaction.
+    Tier-3 candidates match the item on account/amount/direction by construction,
+    so exists_matching would otherwise always find one of them and no-op."""
+    # Both candidates are real rows that match the item exactly — precisely the
+    # shape that used to make exists_matching swallow the user's decision.
+    tx_a = _run(
+        client, _insert_transaction,
+        account="None Of These Account", amount=Decimal("88.00"), description="Candidate A",
+    )
+    tx_b = _run(
+        client, _insert_transaction,
+        account="None Of These Account", amount=Decimal("88.00"), description="Candidate B",
+    )
+    item_id = _run(
+        client, _insert_review_item, [tx_a, tx_b],
+        account="None Of These Account", amount=Decimal("88.00"),
+        description="None of these fixture",
+    )
+    _run(
+        client, _set_review_item_raw_data, item_id,
+        (
+            '{"transaction_date": "2026-02-10", "amount": 88.00, '
+            '"transaction_type": "debit", '
+            '"description": "Genuinely separate transaction", '
+            '"account": "None Of These Account"}'
+        ),
+    )
+    try:
+        resp = client.post(f"/api/review-queue/{item_id}/confirm")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "confirmed"
+
+        # 2 candidates + the newly inserted row
+        assert _run(client, _count_transactions, "None Of These Account", Decimal("88.00")) == 3
+    finally:
+        _run(client, _cleanup, "review_queue", item_id)
+        _run(
+            client, _cleanup_by_account_amount,
+            "None Of These Account", Decimal("88.00"),
+        )
+
+
+def test_confirm_leaves_item_unresolved_when_insert_fails(client):
+    """An email-reconciliation-origin item has raw_data = NULL, so the insert
+    payload is empty and bulk_insert_transactions fails internally (by return
+    value, not by raising). The item must stay unresolved rather than being
+    marked confirmed with nothing written."""
+    item_id = _run(
+        client, _insert_review_item,
+        ["11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"],
+        account="Failed Insert Account", amount=Decimal("31.00"),
+        description="No raw_data fixture",
+    )  # raw_data intentionally left NULL
+    try:
+        resp = client.post(f"/api/review-queue/{item_id}/confirm")
+        assert resp.status_code == 500
+
+        items = _run(client, ReviewQueueOperations.get_unresolved, "ambiguous")
+        assert any(str(i["id"]) == item_id for i in items)
+        assert _run(client, _count_transactions, "Failed Insert Account", Decimal("31.00")) == 0
+    finally:
+        _run(client, _cleanup, "review_queue", item_id)
 
 
 def test_bulk_confirm_endpoint_removed(client):
