@@ -12,6 +12,19 @@ from src.services.database_manager.models.transaction import Transaction
 from src.services.database_manager.operations.transaction_operations import TransactionOperations
 
 
+@pytest.fixture(autouse=True)
+async def _cleanup_engine():
+    """Dispose the shared DB engine after each test in this file — avoids the
+    'Event loop is closed' asyncpg cleanup race when pytest-asyncio tears down
+    the per-test event loop while the shared connection pool is still open."""
+    yield
+    from src.services.database_manager.connection import close_engine
+    try:
+        await close_engine()
+    except Exception:
+        pass
+
+
 async def _insert_test_transaction(**overrides) -> str:
     """Insert a minimal transaction row for fixture purposes, return its id."""
     defaults = {
