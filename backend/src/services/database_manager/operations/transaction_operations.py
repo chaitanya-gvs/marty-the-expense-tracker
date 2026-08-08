@@ -504,6 +504,37 @@ class TransactionOperations:
             return result.rowcount > 0
 
     @staticmethod
+    async def exists_matching(
+        account: str,
+        amount: Decimal,
+        transaction_date: date,
+        direction: str,
+    ) -> bool:
+        """True if a non-deleted transaction already exists with this exact
+        account/amount/date/direction. Used to avoid double-booking when
+        confirming a review-queue item that a manual entry has since covered."""
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            result = await session.execute(
+                text("""
+                    SELECT 1 FROM transactions
+                    WHERE account = :account
+                      AND amount = :amount
+                      AND transaction_date = :transaction_date
+                      AND direction = :direction
+                      AND is_deleted = false
+                    LIMIT 1
+                """),
+                {
+                    "account": account,
+                    "amount": str(amount),
+                    "transaction_date": transaction_date,
+                    "direction": direction,
+                },
+            )
+            return result.scalar() is not None
+
+    @staticmethod
     async def search_transactions(
         query: str,
         limit: int = 100,
