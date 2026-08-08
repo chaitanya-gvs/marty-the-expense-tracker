@@ -253,26 +253,26 @@ class TestStatementWorkflow:
         """Test workflow with mocked dependencies (dry run)"""
         # Mock the database call
         mock_get_senders.return_value = ["test1@bank.com", "test2@bank.com"]
-        
+
         # Mock email client methods
         with patch.object(StatementWorkflow, '_download_statements_from_sender') as mock_download:
             mock_download.return_value = []
-            
+
             # Mock extraction
             with patch.object(StatementWorkflow, '_process_statement_extraction') as mock_extract:
                 mock_extract.return_value = {"success": True}
-                
+
                 # Mock cloud storage
                 with patch.object(StatementWorkflow, '_upload_unlocked_statement_to_cloud') as mock_upload:
                     mock_upload.return_value = "test/cloud/path"
-                    
+
                     # Mock standardization
                     with patch.object(StatementWorkflow, '_standardize_and_store_data') as mock_standardize:
                         mock_standardize.return_value = True
-                        
+
                         workflow = StatementWorkflow(account_ids=["primary", "secondary"])
                         results = await workflow.run_complete_workflow()
-                    
+
                     # Verify results structure
                     assert "total_senders" in results
                     assert "total_statements_downloaded" in results
@@ -280,8 +280,30 @@ class TestStatementWorkflow:
                     assert "total_statements_processed" in results
                     assert "errors" in results
                     assert "processed_statements" in results
-                    
+
                     logger.info("✅ Workflow dry run test passed")
+
+    async def test_check_cloud_csvs_exist_true_when_pending(self):
+        """check_cloud_csvs_exist() returns True when any month has pending work."""
+        with patch(
+            "src.services.orchestrator.statement_workflow.StatementLogOperations.get_pending_statement_months",
+            new_callable=AsyncMock, return_value=["2026-06", "2026-07"],
+        ):
+            workflow = StatementWorkflow()
+            result = await workflow.check_cloud_csvs_exist()
+
+        assert result is True
+
+    async def test_check_cloud_csvs_exist_false_when_none_pending(self):
+        """check_cloud_csvs_exist() returns False when nothing is pending."""
+        with patch(
+            "src.services.orchestrator.statement_workflow.StatementLogOperations.get_pending_statement_months",
+            new_callable=AsyncMock, return_value=[],
+        ):
+            workflow = StatementWorkflow()
+            result = await workflow.check_cloud_csvs_exist()
+
+        assert result is False
 
 
 @pytest.mark.asyncio
@@ -346,6 +368,8 @@ async def run_tests():
         await test_instance.test_date_range_falls_back_when_account_never_processed()
         await test_instance.test_date_range_falls_back_when_no_accounts()
         await test_instance.test_date_range_falls_back_on_query_error()
+        await test_instance.test_check_cloud_csvs_exist_true_when_pending()
+        await test_instance.test_check_cloud_csvs_exist_false_when_none_pending()
         await test_instance.test_normalized_filename_generation()
         await test_instance.test_workflow_dry_run()
         

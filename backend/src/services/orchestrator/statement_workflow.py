@@ -1749,31 +1749,12 @@ class StatementWorkflow:
             return transactions
     
     async def check_cloud_csvs_exist(self) -> bool:
-        """Check if CSV files exist in cloud storage for the current processing month"""
+        """Check if any statement has extracted data pending standardization/insert."""
         try:
-            # Calculate date range for previous month
-            start_date, end_date = self._calculate_splitwise_date_range()
-            previous_month = start_date.strftime("%Y-%m")
-            
-            # List all CSV files in the extracted_data directory for the month
-            cloud_csv_files = self.cloud_storage.list_files(f"{previous_month}/extracted_data/")
-            
-            if not cloud_csv_files:
-                logger.info(f"No CSV files found in cloud storage for {previous_month}", extra=self._log_extra())
-                return False
-            
-            # Filter for CSV files
-            csv_files = [f for f in cloud_csv_files if f.get("name", "").endswith('.csv')]
-            
-            if csv_files:
-                logger.info(f"Found {len(csv_files)} CSV files in cloud storage for {previous_month}", extra=self._log_extra())
-                return True
-            else:
-                logger.info(f"No CSV files found in cloud storage for {previous_month}", extra=self._log_extra())
-                return False
-                
+            pending_months = await StatementLogOperations.get_pending_statement_months()
+            return bool(pending_months)
         except Exception:
-            logger.error("Error checking cloud CSV files", exc_info=True, extra=self._log_extra())
+            logger.error("Error checking for pending statement months", exc_info=True, extra=self._log_extra())
             return False
     
     async def check_statement_already_extracted(self, statement_data: Dict[str, Any]) -> bool:
