@@ -5,6 +5,7 @@ hardcoded statement password has been replaced with a DB lookup.
 Run from backend/ with: poetry run pytest tests/test_compare_cashback_sbi_statement_script.py -v
 """
 import ast
+import re
 from pathlib import Path
 
 SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "compare_cashback_sbi_statement.py"
@@ -14,9 +15,11 @@ def _source() -> str:
     return SCRIPT_PATH.read_text()
 
 
-def test_no_hardcoded_password_literal():
-    """The old hardcoded password '201219985750' must not appear anywhere in the file."""
-    assert "201219985750" not in _source()
+def test_no_long_digit_literal_anywhere():
+    """No 8+ digit string literal (the shape of a bank statement password) anywhere
+    in the file. This is a general guard against hardcoded secrets, rather than
+    depending on any one specific literal value."""
+    assert not re.search(r'["\']\d{8,}["\']', _source())
 
 
 def test_no_bare_password_string_assignment():

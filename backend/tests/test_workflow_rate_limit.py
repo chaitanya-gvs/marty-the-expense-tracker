@@ -4,6 +4,7 @@ Run from backend/ with: poetry run pytest tests/test_workflow_rate_limit.py -v
 """
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from main import app
@@ -14,6 +15,14 @@ def _authed_client() -> TestClient:
     client = TestClient(app)
     client.cookies.set("access_token", create_access_token())
     return client
+
+
+@pytest.fixture(autouse=True)
+def _reset_workflow_state():
+    yield
+    from src.apis.routes import workflow_routes
+    workflow_routes._jobs.clear()
+    workflow_routes._active_job_id = None
 
 
 @patch("src.apis.routes.workflow_routes._run_workflow_task", new_callable=AsyncMock)

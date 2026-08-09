@@ -14,7 +14,6 @@ import fitz
 
 from src.utils.filename_utils import nickname_to_schema_key
 from src.utils.logger import get_logger
-from src.utils.password_manager import get_password_manager
 
 logger = get_logger(__name__)
 
@@ -23,7 +22,6 @@ class PDFUnlocker:
     """Unlock password-protected PDF statements and save them."""
 
     def __init__(self):
-        self.password_manager = get_password_manager()
         self.unlocked_dir = Path("/tmp/statements/unlocked_statements")
         self.unlocked_dir.mkdir(parents=True, exist_ok=True)
 
