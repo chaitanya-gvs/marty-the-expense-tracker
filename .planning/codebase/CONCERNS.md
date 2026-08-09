@@ -32,7 +32,7 @@
 
 ### Unresolved Statement Backlog Scripts
 - **Problem:** Two operational scripts in `backend/scripts/` appear to be one-off reconciliation tools:
-  - `compare_cashback_sbi_statement.py`: Hardcoded bank password (line 29: `PASSWORD = "201219985750"`), hardcoded dates (April-June 2026), never updated after 2026-05-24
+  - `compare_cashback_sbi_statement.py`: Hardcoded bank password (line 29: `PASSWORD = "<redacted-statement-password>"`), hardcoded dates (April-June 2026), never updated after 2026-05-24
   - `process_statement_only_backlog.py`: One-time processor for retired review-queue type, last modified 2026-08-08
 - **Files:** `backend/scripts/compare_cashback_sbi_statement.py`, `backend/scripts/process_statement_only_backlog.py`
 - **Blocks:** Cannot validate statement extraction quality or reconcile backlog without manually running these scripts
