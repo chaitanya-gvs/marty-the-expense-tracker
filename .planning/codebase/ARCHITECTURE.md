@@ -1,210 +1,297 @@
 # Architecture
 
-**Analysis Date:** 2026-03-27
+**Analysis Date:** 2026-08-09
 
 ## Pattern Overview
 
-**Overall:** Full-stack monorepo with a Python backend (FastAPI) and a TypeScript frontend (Next.js), communicating via a JSON REST API. The backend follows a layered architecture (Routes → Services → DB). The frontend follows a hook-driven data layer (API Client → Hooks → Pages → Components).
+**Overall:** Layered REST API with event-driven background workflows.
 
 **Key Characteristics:**
-- Single-user personal tool — no auth, no multi-tenancy
-- Async throughout: SQLAlchemy 2.0 async, FastAPI async handlers, asyncio for background jobs
-- Server-sent events (SSE) for real-time workflow progress streaming
-- No message queue or Redis — in-process asyncio queues manage job state
-- Migrations applied automatically on startup via Alembic
+- **Separation of Concerns**: Distinct API, service, data, and utility layers
+- **Event-Driven Workflows**: Statement processing pipeline emits SSE events for real-time progress tracking
+- **Async/Await**: FastAPI + SQLAlchemy 2.0 async throughout (no blocking I/O)
+- **Multi-Account Support**: Gmail integration supports primary + secondary accounts; Splitwise sync is account-agnostic
+- **In-Memory Job Orchestration**: Workflow jobs tracked in memory (per-session state, not persisted across restarts)
 
-## Backend Layers
+## Layers
 
-**Routes (`backend/src/apis/routes/`):**
-- Purpose: HTTP entry points — request parsing, validation, response serialization
-- Location: `backend/src/apis/routes/`
-- Contains: FastAPI `APIRouter` instances, Pydantic request/response models via schemas
-- Depends on: Services layer, schemas
-- Used by: FastAPI app in `backend/main.py`
-- Split by domain: `transaction_read_routes.py`, `transaction_write_routes.py`, `transaction_split_routes.py`, `settlement_routes.py`, `participant_routes.py`, `workflow_routes.py`, `splitwise_routes.py`
+**API Layer:**
+- **Location**: `src/apis/routes/` + `src/apis/schemas/`
+- **Purpose**: HTTP route handlers and Pydantic request/response schemas
+- **Contains**: Route functions with dependency injection, input validation, error handling
+- **Depends on**: Service layer (business logic), database operations, utilities
+- **Used by**: Client applications (frontend)
 
-**Schemas (`backend/src/apis/schemas/`):**
-- Purpose: Pydantic models for request/response typing
-- Location: `backend/src/apis/schemas/`
-- Contains: `transactions.py`, `settlements.py`, `participants.py`, `workflow.py`, `common.py` (`ApiResponse`)
-- Depends on: Nothing in the app (pure Pydantic)
+**Service Layer:**
+- **Location**: `src/services/`
+- **Purpose**: Core business logic, orchestration, and external API integrations
+- **Contains**:
+  - **`orchestrator/`** — Workflow orchestration (statement pipeline, Splitwise sync)
+  - **`database_manager/`** — ORM models, connection pooling, and data access
+  - **`email_ingestion/`** — Gmail API integration, token management, email parsers
+  - **`statement_processor/`** — PDF unlocking, document extraction (LLM-based via agentic-doc)
+  - **`splitwise_processor/`** — Splitwise API client and sync service
+  - **`cloud_storage/`** — Google Cloud Storage upload/download
+  - **`budget_service.py`** — Budget calculation and management
+- **Depends on**: Database connection, external APIs (Gmail, Splitwise, GCS, OpenAI), utilities
+- **Used by**: API routes, other services
 
-**Services (`backend/src/services/`):**
-- Purpose: All business logic, external integrations, data processing
-- Location: `backend/src/services/`
-- Sub-services: `database_manager/`, `orchestrator/`, `email_ingestion/`, `statement_processor/`, `splitwise_processor/`, `cloud_storage/`, `ocr_engine/`
+**Data Layer:**
+- **Location**: `src/services/database_manager/`
+- **Purpose**: Database schema, connection management, and CRUD operations
+- **Contains**:
+  - **`connection.py`** — Async SQLAlchemy engine with connection pooling (pool_size=10, max_overflow=20)
+  - **`models/`** — SQLAlchemy ORM models (Transaction, Account, Category, Participant, etc.)
+  - **`operations/`** — Domain-specific operation classes (TransactionOperations, CategoryOperations, etc.)
+  - **`migrations/`** — Alembic migration files (Postgres-specific schema changes)
+- **Depends on**: PostgreSQL database, SQLAlchemy
+- **Used by**: Services and routes (for data access)
 
-**Database Manager (`backend/src/services/database_manager/`):**
-- Purpose: All database interactions
-- `connection.py` — Async engine (pool size 10, max_overflow 20), `get_db_session()` FastAPI dependency, `get_session_factory()` for use outside request context
-- `models/` — SQLAlchemy ORM models: `transaction.py`, `account.py`, `category.py`, `tag.py`, `participant.py`, `statement_processing_log.py`, `transaction_tag.py`
-- `operations/` — Static method classes per entity: `TransactionOperations`, `AccountOperations`, `CategoryOperations`, `TagOperations`, `ParticipantOperations`, `SuggestionOperations`, `StatementLogOperations` — all imported and re-exported from `operations/__init__.py`
-- `schemas.py` — Internal DB-level Pydantic schemas (separate from API schemas)
-- `migrations/versions/` — Alembic migration files
-
-**Utilities (`backend/src/utils/`):**
-- Purpose: Cross-cutting concerns
-- `settings.py` — Pydantic `BaseSettings` singleton via `get_settings()` with `@lru_cache`
-- `logger.py` — `get_logger(name)` factory, rotating file + console output, `job_id` in log extras
-- `db_utils.py` — `handle_database_operation()` wrapper for consistent error handling
-- `transaction_utils.py` — `_convert_db_transaction_to_response()`, `_convert_db_tag_to_response()`
-- `filename_utils.py` — `nickname_to_filename_prefix()` for GCS path construction
-- `password_manager.py` — `BankPasswordManager.get_password_for_sender_async(email)`
-
-## Frontend Layers
-
-**API Client (`frontend/src/lib/api/client.ts`):**
-- Purpose: Single point of contact for all backend HTTP calls
-- Pattern: Class `ApiClient`, exported as singleton `apiClient`
-- Uses native `fetch` (not axios)
-- Never call `fetch` directly in components or hooks — always use `apiClient`
-
-**Hooks (`frontend/src/hooks/`):**
-- Purpose: TanStack React Query wrappers around `apiClient` methods
-- Pattern: `useQuery` for reads, `useMutation` for writes with `queryClient.invalidateQueries` on success
-- Special cases: `useInfiniteTransactions` (infinite scroll), `useWorkflowStream` (EventSource SSE), `useWorkflowStatus` (polls every 3s for non-terminal jobs)
-
-**Pages (`frontend/src/app/`):**
-- Purpose: Next.js App Router route definitions — thin shells only
-- Pattern: Each `page.tsx` wraps a single feature component inside `<MainLayout>`
-- Root `/` redirects to `/transactions`
-
-**Feature Components (`frontend/src/components/{feature}/`):**
-- Purpose: Domain-specific UI — tables, modals, drawers, filters
-- Contains all real rendering logic; pages are just wrappers
-
-**UI Primitives (`frontend/src/components/ui/`):**
-- Purpose: Radix UI + Tailwind primitive wrappers (button, dialog, sheet, etc.)
-- Custom modal: `components/ui/modal/index.tsx` and `primitives.tsx` — use this, not Radix Dialog directly (per memory)
-
-**Providers (`frontend/src/components/providers.tsx`):**
-- Wraps app with: `QueryClientProvider` (1-min stale time, 1 retry), `ThemeProvider` (next-themes), `Toaster` (sonner, top-right)
+**Utility Layer:**
+- **Location**: `src/utils/`
+- **Purpose**: Cross-cutting concerns and helpers
+- **Contains**:
+  - **`settings.py`** — Pydantic BaseSettings for environment config (from `.env` + `.env.secrets`)
+  - **`logger.py`** — Structured logging with file rotation and optional job_id tracking
+  - **`auth_deps.py`** — FastAPI dependency for JWT authentication
+  - **`db_utils.py`** — Database helper functions (error handling, common queries)
+  - **`password_manager.py`** — Bank password retrieval from database
+  - **`transaction_utils.py`** — Transaction data transformation and conversion
+  - **`filename_utils.py`** — Cloud storage path building and account nickname normalization
+  - **`jwt_utils.py`** — JWT token generation and validation
+- **Depends on**: External libraries, configuration
+- **Used by**: All layers
 
 ## Data Flow
 
-**Standard API Request (Frontend):**
-1. Component calls a mutation or query from a hook (e.g., `useUpdateTransaction()`)
-2. Hook calls `apiClient.updateTransaction(id, updates)` in `src/lib/api/client.ts`
-3. `apiClient` sends `PATCH /api/transactions/{id}` to backend
-4. Backend: `transaction_write_routes.py` handler receives request
-5. Backend: Handler calls `TransactionOperations.update_transaction(session, id, updates)`
-6. Backend: Returns updated transaction as `ApiResponse<Transaction>`
-7. Hook's `onSuccess` calls `queryClient.invalidateQueries(["transactions"])` to refresh UI
+**HTTP Request → Response:**
 
-**Standard API Request (Backend):**
-1. `main.py` receives request, routes to correct `APIRouter`
-2. Route handler parses query params / body, creates DB session via `get_db_session()` dependency
-3. Handler calls appropriate `Operations` class static method with the session
-4. Operations class executes raw SQL (via `text()`) or SQLAlchemy ORM query
-5. Result is converted via `_convert_db_transaction_to_response()` and returned as `ApiResponse`
+1. Request arrives at FastAPI endpoint in `src/apis/routes/*.py`
+2. FastAPI dependency injection resolves:
+   - `get_current_user()` from `auth_deps.py` (validates JWT token)
+   - `get_db_session()` from `database_manager/connection.py` (async SQLAlchemy session)
+3. Route handler calls service methods (from `src/services/`)
+4. Service queries or modifies data via operations classes (e.g., `TransactionOperations.create_transaction()`)
+5. Operations execute SQL via async SQLAlchemy session
+6. Response built and returned as Pydantic model wrapped in `ApiResponse` schema
 
-**Statement Processing Pipeline (Workflow):**
-1. `POST /api/workflow/run` creates `_JobState`, spawns `asyncio.create_task(_run_workflow_task(...))`
-2. `_run_workflow_task` instantiates `StatementWorkflow` with `event_callback` that pushes to `asyncio.Queue`
-3. `StatementWorkflow.run_complete_workflow()` in `orchestrator/statement_workflow.py`:
-   a. `email_ingestion/service.py` → Gmail API → downloads PDF attachments
-   b. `statement_processor/pdf_unlocker.py` → unlocks password-protected PDFs
-   c. `statement_processor/pdf_page_filter.py` → filters relevant pages
-   d. `statement_processor/document_extractor.py` → agentic-doc (LandingAI) LLM extraction → CSV
-   e. `cloud_storage/gcs_service.py` → uploads unlocked PDFs and CSVs to GCS
-   f. `orchestrator/transaction_standardizer.py` → normalizes CSV rows to unified schema
-   g. `database_manager/operations/transaction_operations.py` → bulk insert to PostgreSQL
-   h. `database_manager/operations/statement_log_operations.py` → marks `normalized_filename` as `db_inserted`
-4. Splitwise sync runs in parallel: `splitwise_processor/service.py` → Splitwise API → `split_breakdown` JSONB
-5. Frontend connects to `GET /api/workflow/{job_id}/stream` → `StreamingResponse` with SSE
-6. `workflow-tasks.ts` builds hierarchical task tree from flat SSE events for display
+**Example: Get Transactions**
+```
+GET /api/transactions?date_range_start=2026-01-01&categories=groceries
+  → transaction_read_routes.get_transactions()
+    → TransactionOperations.get_transactions_filtered()
+      → SQLAlchemy query with filters, sorting, pagination
+        → Return list of transactions
+  → Convert to response schema (_convert_db_transaction_to_response)
+    → Return ApiResponse(data=[...], pagination={...})
+```
+
+**Statement Processing Pipeline:**
+
+```
+User triggers: POST /api/workflow/run (with mode: full|resume|splitwise_only)
+  ↓
+workflow_routes.run_workflow()
+  ↓ (starts async task)
+StatementWorkflow.run() with phase switches:
+  ├── Phase 1: Email Ingestion (if enabled)
+  │   ├─ AlertIngestionService.run() — parses bank emails
+  │   ├─ Creates transactions for recent account alerts
+  │   └─ Updates review queue for dedup conflicts
+  │
+  ├── Phase 2: Statement Processing (if enabled)
+  │   ├─ Scan all accounts' emails for statements
+  │   ├─ For each new statement:
+  │   │   ├─ Download PDF via Gmail API
+  │   │   ├─ Unlock PDF (password from Account.statement_password)
+  │   │   ├─ Upload unlocked PDF to GCS
+  │   │   ├─ Extract transactions (DocumentExtractor → agentic-doc LLM)
+  │   │   ├─ Save extracted CSV to GCS
+  │   │   ├─ Update StatementProcessingLog (status tracking)
+  │   │   └─ Emit progress events
+  │   └─ Aggregate all CSVs into consolidated DataFrame
+  │
+  ├── Phase 3: Data Standardization
+  │   ├─ Normalize transaction descriptions, dates, amounts
+  │   ├─ Match with existing categories/tags
+  │   ├─ Update StatementProcessingLog (status = 'db_inserted')
+  │   └─ Insert into transactions table
+  │
+  ├── Phase 4: Splitwise Sync (if enabled)
+  │   ├─ Query Splitwise API for recent expenses
+  │   ├─ Build split_breakdown JSONB from Splitwise expense shares
+  │   ├─ Create transactions with split_breakdown
+  │   └─ Update review queue for participant name conflicts
+  │
+  └─ Return summary: {statements_downloaded, db_inserted, splitwise_transactions, ...}
+
+All phases emit SSE events → accumulated in _JobState.events → streamed on GET /api/workflow/{job_id}/stream
+```
+
+**Splitwise Sync Sub-Flow:**
+
+```
+SplitwiseProcessorHelper._run()
+  ├─ Calculate date range: [date(statement_log.original_date) - 3 days, today()]
+  ├─ Call SplitwiseService.get_expenses(start_date, end_date)
+  │   ├─ Use date_range if not null (full sync)
+  │   ├─ Else use updated_at cursor (incremental sync)
+  │   └─ Fetch from Splitwise API
+  ├─ For each expense:
+  │   ├─ Determine payer (simplification: take first in expense.users)
+  │   ├─ Build split_breakdown from expense.users.payment + owed_by
+  │   ├─ Create Transaction with source='splitwise', split_breakdown, paid_by=payer
+  │   └─ If participant name not in DB → queue for review
+  └─ Emit "splitwise_sync_done" event with transaction count
+```
 
 **Settlement Calculation:**
-1. `GET /api/settlements/summary` triggers in-route Python computation (no stored aggregates)
-2. Route queries shared transactions with `split_breakdown` JSONB
-3. Normalizes participant names to title case
-4. Identifies "current user" via `CURRENT_USER_NAMES` setting
-5. Infers payer from `paid_by` field or account type (bank account → current user; Splitwise → other)
-6. Computes `net_balance` per participant and returns summary
 
-**State Management (Frontend):**
-- All server state: TanStack React Query (stale time 1 min global)
-- UI state: `useState` local to components
-- Persistent UI state: `localStorage` for transaction filter preferences
-- No Redux or Zustand
+```
+GET /api/settlements → settlement_routes.get_settlement_summary()
+  ├─ Query all transactions with is_shared=true or split_breakdown IS NOT NULL
+  ├─ For each transaction:
+  │   ├─ Infer payer: use paid_by if set, else check if account is a known bank account
+  │   ├─ For each participant in split_breakdown:
+  │   │   ├─ Normalize name to title case (e.g., "prachi rai" → "Prachi Rai")
+  │   │   ├─ Calculate participant's share: split_breakdown.mode == 'equal' ? total/count : amount
+  │   │   ├─ Build: {participant: X, paid_for: amount, owes_for: share}
+  │   └─ Emit to per-participant accumulator
+  │
+  ├─ For each participant:
+  │   ├─ Sum all paid_for amounts (money they paid)
+  │   ├─ Sum all owes_for amounts (money they owe)
+  │   ├─ Net: amount_owed_to_me = sum(paid_for) - sum(owes_for)
+  │   └─ Return SettlementEntry {participant, amount_owed_to_me, amount_i_owe, ...}
+  │
+  └─ Return SettlementSummary with entries sorted by net balance
+```
+
+**State Management:**
+
+- **Request State**: FastAPI dependency `get_db_session()` provides per-request async session
+- **Workflow State**: In-memory `_jobs` dict + `_active_job_id` singleton (workflow_routes.py)
+- **Configuration State**: Singleton `get_settings()` from `src/utils/settings.py` (lru_cache)
+- **Job State**: `_JobState` class holds job_id, status, events[], summary, task reference
+
+No Redis, no persistent queue. Jobs lost on server restart (acceptable for personal tool).
 
 ## Key Abstractions
 
-**`StatementWorkflow` (Orchestrator):**
-- Purpose: Coordinates the full email-to-DB pipeline
-- Location: `backend/src/services/orchestrator/statement_workflow.py`
-- Pattern: Class with helper modules `statement_extractor_helper.py`, `splitwise_processor_helper.py`, `data_standardizer_helper.py`
-- Three modes: `full`, `resume` (skip extraction, re-standardize from existing CSVs), `splitwise_only`
+**Database Operations:**
+- **Location**: `src/services/database_manager/operations/`
+- **Pattern**: Static method classes per entity (TransactionOperations, CategoryOperations, etc.)
+- **Example**: `TransactionOperations.create_transaction()` normalizes input, inserts into DB, returns UUID
+- **Motivation**: Single place for all DB queries per entity; easy to find and refactor; avoids tight coupling to ORM
 
-**Operations Classes:**
-- Purpose: All database queries in static method classes, never raw SQL in routes
-- Examples: `backend/src/services/database_manager/operations/transaction_operations.py`, `category_operations.py`
-- Pattern: `class TransactionOperations: @staticmethod async def get_transactions(session, ...) -> List[Dict]`
-- Accept `AsyncSession` as first parameter
+**Workflow Events:**
+- **Location**: `src/services/orchestrator/statement_workflow.py`, emitted via `_emit(event_type, step, message, ...)`
+- **Pattern**: Callback-driven (event_callback registered on StatementWorkflow.__init__)
+- **Types**: `started`, `step_complete`, `phase_complete`, `error`, `warning`, `skipped`
+- **Consumer**: workflow_routes.py queues events into SSE stream
 
-**`ApiClient` Singleton:**
-- Purpose: Central HTTP client — all frontend→backend calls
-- Location: `frontend/src/lib/api/client.ts`
-- Pattern: Class with method groups per domain; exported as `export const apiClient = new ApiClient()`
+**Document Extraction:**
+- **Location**: `src/services/statement_processor/document_extractor.py`
+- **Pattern**: LLM-based via agentic-doc SDK (LandingAI Vision Agent)
+- **Input**: Unlocked PDF file path, bank schema key (from account nickname)
+- **Output**: CSV file with extracted transactions
+- **Motivation**: Bank PDFs have varying formats; LLM generalizes across them
 
-**`_JobState` (Workflow Job):**
-- Purpose: In-memory workflow job tracking (not persisted to DB)
-- Location: `backend/src/apis/routes/workflow_routes.py`
-- Pattern: `__slots__` class with `asyncio.Queue` for SSE events; module-level `_jobs: Dict[str, _JobState]` dict; only one job active at a time enforced by `_active_job_id` global
+**Email Parsers:**
+- **Location**: `src/services/email_ingestion/parsers/`
+- **Pattern**: Base parser + bank-specific subclasses (CashbackSBI, AxisAtlas, etc.)
+- **Role**: Parse transaction alerts from email body (not PDF extraction)
+- **Used for**: Real-time transaction ingestion (e.g., cashback alerts, card transactions)
 
-**Canonical TypeScript Types:**
-- Purpose: Single source of truth for all frontend data shapes
-- Location: `frontend/src/lib/types/index.ts`
-- Key types: `Transaction`, `SplitBreakdown`, `SplitEntry`, `TransactionFilters`, `SettlementSummary`, `ApiResponse<T>`, `ExpenseAnalytics`
+**Cloud Storage Abstraction:**
+- **Location**: `src/services/cloud_storage/gcs_service.py`
+- **Pattern**: Path-based structure `{YYYY-MM}/{type}/{filename}` (type = 'extracted', 'statements', etc.)
+- **Role**: Upload/download from Google Cloud Storage; abstraction enables swap to S3 if needed
 
 ## Entry Points
 
-**Backend:**
-- Location: `backend/main.py`
-- Triggers: `uvicorn main:app --reload` or `uvicorn.run()` in `__main__`
-- Responsibilities: Creates `FastAPI` app, attaches CORS middleware, registers all routers at `/api`, sets up lifespan for logging
+**HTTP Server:**
+- **Location**: `main.py`
+- **Triggers**: `uvicorn main:app` (dev) or container startup
+- **Responsibilities**:
+  - Initialize FastAPI app with CORS, rate limiting, exception handlers
+  - Mount all route routers with auth dependencies
+  - Start APScheduler for email ingestion jobs
+  - Lifespan context manager for setup/teardown
 
-**Frontend:**
-- Location: `frontend/src/app/layout.tsx`
-- Triggers: Next.js App Router
-- Responsibilities: Root HTML structure, font loading (DM Sans, DM Mono), `<Providers>` wrapper
+**Background Email Ingestion:**
+- **Location**: `main.py` lifespan + `src/services/email_ingestion/alert_ingestion_service.py`
+- **Triggers**: APScheduler job every N hours (default 4h)
+- **Responsibilities**: Fetch bank emails, parse transaction alerts, insert into DB
 
-**Frontend Root Route:**
-- Location: `frontend/src/app/page.tsx`
-- Behaviour: Immediately `redirect("/transactions")`
+**CLI Entry Points (optional):**
+- **Location**: `backend/scripts/` (not part of main app)
+- **Example**: `compare_cashback_sbi_statement.py` — standalone script for reconciliation
 
 ## Error Handling
 
-**Strategy:** Errors bubble up to route handlers; routes catch and return HTTP errors. Operations classes do not catch — they let exceptions propagate.
+**Strategy:** Layered with context propagation.
 
-**Backend Patterns:**
-- Route handlers wrap operations in `try/except`, return `HTTPException` with appropriate status codes
-- `handle_database_operation()` in `backend/src/utils/db_utils.py` provides a consistent wrapper for DB calls
-- Workflow errors are caught in `_run_workflow_task`, set `job.status = failed`, emit an error event to SSE queue
-- Logger always uses `exc_info=True` on error-level log calls
+**Patterns:**
 
-**Frontend Patterns:**
-- `apiClient.request()` throws `Error` on non-OK responses
-- TanStack Query surfaces errors via `error` state in hooks
-- Toast notifications (`sonner`) are triggered in mutation `onError` callbacks
+1. **API Route Level:**
+   - Wrap in try/except, catch HTTPException and log
+   - Return `400 Bad Request` for validation errors (Pydantic catches)
+   - Return `404 Not Found` if resource not found
+   - Return `500 Internal Server Error` for unexpected exceptions
+   - Example: `transaction_read_routes.get_transactions()` has outer try/except wrapping filter logic
+
+2. **Service Level:**
+   - Catch exceptions from external APIs (Gmail, Splitwise, GCS)
+   - Log with context (job_id, account, statement filename)
+   - Propagate as-is or wrap in custom exceptions
+   - Example: `StatementWorkflow._download_statements()` catches Gmail errors, emits warning event, continues
+
+3. **Database Level:**
+   - SQLAlchemy async errors (connection timeouts, constraint violations)
+   - Caught in `db_utils.handle_database_operation()` helper
+   - Logs and re-raises for route to handle
+   - Example: Duplicate reference_number → IntegrityError → 409 Conflict
+
+4. **Workflow Level:**
+   - Errors emitted as SSE events (event_type='error')
+   - Accumulated in _JobState.events
+   - Summary includes error count and error messages
+   - Workflow continues (best-effort processing)
+
+**Logging:**
+- Logger from `get_logger(__name__)` supports job_id context via `extra={'job_id': ...}`
+- Rotating file handler in `backend/logs/` + console stderr
+- Log level from `LOG_LEVEL` env var
 
 ## Cross-Cutting Concerns
 
 **Logging:**
-- `backend/src/utils/logger.py` — `get_logger(name)` returns `CustomLogger`
-- Log format includes `job_id` extra when in workflow context: `logger.info("msg", extra={"job_id": job_id})`
-- Rotating file handler writes to `backend/logs/`; console handler for dev output
-- `agentic_doc` overrides `basicConfig(force=True)` so logger setup is deferred to lifespan in `main.py`
+- Framework: Python `logging` module via `src/utils/logger.py`
+- Pattern: `logger = get_logger(__name__)` then `logger.info(msg, extra=self._log_extra())`
+- Job tracking: When processing statement workflow, all logs tagged with job_id (helpful for SSE debugging)
 
-**Configuration:**
-- `backend/src/utils/settings.py` — `get_settings()` returns cached `Settings` (Pydantic BaseSettings)
-- Env file loading order: `configs/secrets/.env` (overrides) then `configs/.env`
-- Frontend: `NEXT_PUBLIC_API_URL` in `.env.local`
+**Validation:**
+- Input validation: Pydantic schemas in `src/apis/schemas/` (automatic)
+- Business logic validation: In service/operations methods (e.g., check if amount > 0, category exists)
+- Error messages: Propagated to API responses or SSE events
 
-**Database Sessions:**
-- Route handlers use `get_db_session()` FastAPI dependency (yields `AsyncSession`)
-- Non-route code (workflow, scheduled tasks) uses `get_session_factory()()` as async context manager
+**Authentication:**
+- Framework: JWT tokens stored in HTTP-only cookies
+- Dependency: `get_current_user()` in `src/utils/auth_deps.py`
+- All routes (except `/auth`) protected by `dependencies=[Depends(get_current_user)]`
+- Token expires after `JWT_EXPIRY_DAYS` (default 7)
+
+**Rate Limiting:**
+- Framework: slowapi (decorator-based)
+- Current state: Enabled via `app.state.limiter` but routes not decorated yet
+- Can be added per-route as `@limiter.limit("100/minute")`
+
+**Database Connection Pooling:**
+- Engine config: `pool_size=10, max_overflow=20`
+- Strategy: Reuse connections across requests, recycle after idle period
+- Settings: `pool_pre_ping=True` ensures stale connections detected, `prepared_statement_cache_size=0` avoids statement cache bugs
 
 ---
 
-*Architecture analysis: 2026-03-27*
+*Architecture analysis: 2026-08-09*

@@ -1,268 +1,534 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-03-27
+**Analysis Date:** 2026-08-09
 
----
+## Backend Testing
 
-## Test Framework
+### Test Framework
 
-**Runner:**
-- pytest 8.2.0+
-- Config: `backend/pyproject.toml` (`[tool.pytest.ini_options]`)
-- `asyncio_mode = "auto"` — all async tests run automatically without `@pytest.mark.asyncio`
-- `pythonpath = ["."]` — project root on path so `from main import app` resolves
+**Runner:** pytest v8.2.0
+- Config: `pyproject.toml` (pytest section)
+- Async support: pytest-asyncio v0.23.7 with `asyncio_mode = "auto"`
 
-**Async Support:**
-- `pytest-asyncio 0.23.7`
-
-**HTTP Test Client:**
-- `fastapi.testclient.TestClient` (synchronous WSGI wrapper, not httpx AsyncClient)
-
-**Mocking:**
-- `unittest.mock`: `patch`, `Mock`, `AsyncMock`, `MagicMock`
+**Assertion Library:** Built-in `assert` statements (no external assertion library)
 
 **Run Commands:**
 ```bash
-# Run all tests (from backend/)
-poetry run pytest tests/
-
-# Run single file
-poetry run pytest tests/test_settlement_calculations.py
-
-# Run specific class or test
-poetry run pytest tests/test_splitwise_routes.py::TestGetFriends
-poetry run pytest tests/test_splitwise_routes.py::TestGetFriends::test_returns_friends_sorted_nonzero_first
+poetry run pytest tests/                     # Run all tests
+poetry run pytest tests/test_api_integration.py  # Run single file
+poetry run pytest tests/ -v                  # Verbose output
+poetry run pytest tests/ -x                  # Stop on first failure
+poetry run pytest tests/ -k test_name        # Run tests matching pattern
 ```
 
----
+**Configuration (`pyproject.toml`):**
+```toml
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"
+```
 
-## Test File Organization
+- `pythonpath = ["."]` — Allows import of `src.*` from test files
+- `asyncio_mode = "auto"` — Automatically marks async test methods as async without needing `@pytest.mark.asyncio`
 
-**Location:** All tests in `backend/tests/` (separate from source, not co-located)
+### Test File Organization
+
+**Location:**
+- All tests in `backend/tests/` directory
+- Test files named `test_*.py` (pytest discovery pattern)
+
+**Structure:**
+```
+backend/
+├── tests/
+│   ├── test_api_integration.py          # API route tests
+│   ├── test_workflow_orchestrator.py    # Workflow logic tests
+│   ├── test_dedup_service.py            # Deduplication service tests
+│   ├── test_settlement_calculations.py  # Settlement math tests
+│   ├── test_statement_dedup_integration.py  # Integration tests
+│   ├── test_workflow_sse.py             # SSE streaming tests
+│   ├── test_complete_workflow.py        # End-to-end workflow
+│   ├── test_statement_log_operations.py
+│   ├── test_transaction_standardizer.py
+│   ├── test_data_standardizer_helper.py
+│   └── ... (18 total test files)
+```
+
+### Test Structure & Patterns
+
+**Basic test class structure:**
+```python
+"""
+Brief description of what this module tests.
+"""
+
+import pytest
+from unittest.mock import AsyncMock, patch
+from datetime import date
+from decimal import Decimal
+
+from src.services.email_ingestion.dedup_service import DeduplicationService
+
+
+class TestDeduplicationService:
+    """Test class for deduplication logic"""
+    
+    def setup_method(self):
+        """Set up test fixtures before each test method."""
+        self.service = DeduplicationService()
+    
+    @pytest.mark.asyncio
+    async def test_tier1_match_by_reference_number(self):
+        """Test that tier-1 matching works by reference number."""
+        # Arrange
+        stmt = make_stmt_tx(ref="UTR999")
+        candidates = [make_email_tx(ref="UTR999")]
+        
+        # Act
+        result = self.service._match_tier1(stmt, candidates)
+        
+        # Assert
+        assert result.tier == 1
+        assert result.matched_id == "abc-123"
+    
+    def test_no_match_returns_tier_none(self):
+        """Test that no match returns tier None."""
+        stmt = make_stmt_tx(amount=999.0, ref=None)
+        candidates = [make_email_tx(amount=100.0, ref=None)]
+        result = self.service._match_tier2(stmt, candidates, date(2026, 4, 1))
+        assert result.tier is None
+```
 
 **Naming:**
-- `test_{subject}.py` pattern: `test_api_integration.py`, `test_settlement_calculations.py`, `test_splitwise_routes.py`, `test_workflow_orchestrator.py`
+- Test methods: `test_<what_is_being_tested>()` (e.g., `test_tier1_match_by_reference_number`)
+- Test classes: `Test<ClassBeingTested>` (e.g., `TestDeduplicationService`)
+- Descriptive docstrings explaining what the test validates
 
-**Current test files:**
-```
-backend/tests/
-├── test_api_integration.py        # Integration tests for main route groups
-├── test_settlement_calculations.py # Unit tests for settlement business logic
-├── test_splitwise_routes.py       # Integration tests for Splitwise endpoints
-└── test_workflow_orchestrator.py  # Unit tests for workflow pipeline helpers
-```
-
-No frontend tests exist. No `conftest.py` file is present — no shared fixtures.
-
----
-
-## Test Structure
-
-**Suite organization:** Class-per-feature, methods per scenario.
-
+**Arrange-Act-Assert (AAA) pattern:**
 ```python
-class TestCreditPaymentReducesOwed:
-    """A credit transaction from participant A should REDUCE what A owes me."""
-
-    def test_credit_with_paid_by_participant_removes_from_settlements(self):
-        """Happy path: A pays me 1000 (paid_by=A) → settles the 1000 debt → not in settlements."""
-        ...
-
-    def test_credit_with_paid_by_me_reduces_owed_not_increases(self):
-        """
-        Bug scenario: A pays me 1000, but paid_by = "me" (UI default for all transactions).
-        Before fix: amount_i_owe goes to -1000, net_balance increases from 1000 → 2000.
-        After fix:  credit direction takes precedence → amount_owed_to_me decreases to 0.
-        """
-        ...
+@pytest.mark.asyncio
+async def test_date_range_calculation_smoke(self):
+    """End-to-end smoke test: default call returns valid date range."""
+    # Arrange — set up fixtures and mocks
+    with patch(
+        "src.services.orchestrator.statement_workflow.AccountOperations.get_statement_account_date_stats",
+        new_callable=AsyncMock,
+        return_value={"min_last_statement_date": None, "account_count": 0, "null_count": 0},
+    ):
+        workflow = StatementWorkflow()
+        
+        # Act — execute the code being tested
+        start_date, end_date = await workflow._calculate_date_range()
+    
+    # Assert — verify results
+    assert len(start_date.split('/')) == 3
+    assert len(end_date.split('/')) == 3
 ```
 
-**Route test setup:**
-```python
-class TestTransactionRoutes:
-    """Test transaction API routes."""
+### Test Data & Fixtures
 
-    def setup_method(self):
-        """Set up test client."""
-        self.client = TestClient(app)
+**Helper functions for test data:**
+```python
+# Define at module level
+def make_stmt_tx(amount=100.0, account="Test Account", ref="UTR123",
+                 tx_date=date(2026, 4, 1), direction="debit"):
+    """Factory function for statement transaction test data."""
+    return {
+        "amount": Decimal(str(amount)),
+        "account": account,
+        "reference_number": ref,
+        "transaction_date": tx_date,
+        "direction": direction
+    }
+
+
+def make_email_tx(tx_id="abc-123", amount=100.0, account="Test Account",
+                  ref="UTR123", tx_date=date(2026, 4, 1), direction="debit"):
+    """Factory function for email transaction test data."""
+    return {
+        "id": tx_id,
+        "amount": Decimal(str(amount)),
+        "account": account,
+        "reference_number": ref,
+        "transaction_date": tx_date,
+        "direction": direction
+    }
+
+
+# Usage in tests
+@pytest.mark.asyncio
+async def test_tier2_single_match_by_amount_and_date():
+    svc = DeduplicationService()
+    stmt = make_stmt_tx(ref=None)
+    candidates = [make_email_tx(ref=None, tx_date=date(2026, 4, 2))]
+    result = svc._match_tier2(stmt, candidates, date(2026, 4, 1))
+    assert result.tier == 2
 ```
 
-Some test files also use a module-level client:
-```python
-# test_splitwise_routes.py pattern
-client = TestClient(app)
+**`setup_method`:**
+- Called before each test method in the class
+- Use for common fixture initialization
+- Example: `self.client = TestClient(app)`, `self.service = DeduplicationService()`
 
-class TestGetFriends:
-    @patch("src.apis.routes.splitwise_routes.SplitwiseAPIClient")
-    def test_returns_friends_sorted_nonzero_first(self, MockClient):
-        ...
+**No pytest fixtures or conftest used** — factories and direct initialization are preferred.
+
+### Async Testing
+
+**Marker:** `@pytest.mark.asyncio` (required for async test methods)
+
+**Syntax:**
+```python
+@pytest.mark.asyncio
+async def test_async_operation(self):
+    """Test an async function."""
+    result = await some_async_function()
+    assert result == expected_value
+
+
+@pytest.mark.asyncio
+async def test_with_async_mocks(self):
+    """Test with mocked async dependencies."""
+    with patch('module.AsyncFunc', new_callable=AsyncMock, return_value={"key": "value"}):
+        result = await orchestrator._calculate_date_range()
+        assert result is not None
 ```
 
----
-
-## Mocking
-
-**Framework:** `unittest.mock` — `patch`, `Mock`, `AsyncMock`, `MagicMock`
-
-**Patching DB operations (integration tests):**
+**AsyncMock pattern:**
 ```python
-@patch('src.apis.routes.transaction_routes.CategoryOperations.get_all_categories')
-def test_get_categories(self, mock_get_categories):
-    mock_get_categories.return_value = [
-        {'id': '1', 'name': 'Food', ...}
+from unittest.mock import AsyncMock, patch
+
+# Mock async function with return value
+with patch(
+    "src.services.orchestrator.statement_workflow.AccountOperations.get_statement_account_date_stats",
+    new_callable=AsyncMock,
+    return_value={"min_last_statement_date": date(2026, 6, 28), ...},
+):
+    workflow = StatementWorkflow()
+    start_date, end_date = await workflow._calculate_date_range()
+```
+
+### Mocking
+
+**Framework:** `unittest.mock` (standard library)
+
+**Patterns:**
+
+1. **Mock function return value:**
+```python
+@patch('src.services.database_manager.operations.TransactionOperations.get_all_transactions')
+def test_get_transactions(self, mock_get_transactions):
+    mock_get_transactions.return_value = [
+        {'id': '1', 'amount': 100.0, 'direction': 'debit', ...}
     ]
-    response = self.client.get("/api/transactions/categories/")
+    response = self.client.get("/api/transactions/")
     assert response.status_code == 200
 ```
 
-**Patching external service clients:**
+2. **Mock async function:**
 ```python
-@patch("src.apis.routes.splitwise_routes.SplitwiseAPIClient")
-def test_returns_friends_sorted_nonzero_first(self, MockClient):
-    mock_instance = MockClient.return_value
-    mock_instance.get_friends_with_balances.return_value = [...]
-    response = client.get("/api/splitwise/friends")
+with patch(
+    "src.services.orchestrator.AccountOperations.get_statement_account_date_stats",
+    new_callable=AsyncMock,
+    return_value={"min_last_statement_date": None},
+):
+    result = await workflow._calculate_date_range()
 ```
 
-**Patching requests library directly:**
+3. **Patch in context manager (preferred for clarity):**
 ```python
-@patch("src.apis.routes.splitwise_routes.requests")
-@patch("src.apis.routes.splitwise_routes.SplitwiseAPIClient")
-def test_filters_to_friend_and_excludes_deleted(self, MockClient, mock_requests):
-    mock_response = MagicMock()
-    mock_response.json.return_value = {"expenses": raw_expenses}
-    mock_response.raise_for_status.return_value = None
-    mock_requests.get.return_value = mock_response
-```
-
-**Nested context manager mocking (workflow dry-run):**
-```python
-with patch.object(StatementWorkflow, '_download_statements_from_sender') as mock_download:
-    mock_download.return_value = []
-    with patch.object(StatementWorkflow, '_process_statement_extraction') as mock_extract:
-        mock_extract.return_value = {"success": True}
-        ...
+def test_some_operation(self):
+    with patch('module.SomeClass.some_method') as mock_method:
+        mock_method.return_value = "mocked_value"
+        result = call_code_using_mock()
+        assert result == expected
+        mock_method.assert_called_once()
 ```
 
 **What to mock:**
-- Database operations (`CategoryOperations.*`, `TransactionOperations.*`, etc.)
-- External API clients (`SplitwiseAPIClient`, `requests`)
-- Workflow steps that call I/O (`_download_statements_from_sender`, `_upload_unlocked_statement_to_cloud`)
+- External service calls (Gmail API, Splitwise API, GCS)
+- Database operations (inject mocked `get_session_factory()`)
+- Time-dependent operations (`datetime.now()`)
+- File I/O
 
 **What NOT to mock:**
-- Pure business logic functions (settlement calculations tested directly — `_calculate_settlements()` is called without any mocking)
-- FastAPI app construction and routing
+- Core business logic (actual algorithms should be tested)
+- Internal service methods (test the service, not its dependencies)
+- Simple data transformations (test with real data)
+
+### Coverage
+
+**Tool:** Built-in pytest coverage (no separate config)
+- Generate: `poetry run pytest tests/ --cov=src --cov-report=html`
+- View: Open `htmlcov/index.html`
+
+**Requirements:** None enforced in CI/CD currently (no coverage threshold)
+
+**Current gaps:** No systematic coverage measurement — relies on developer discretion
+
+### Test Types
+
+**Unit Tests:**
+- Test individual functions/methods in isolation
+- Example: `test_tier1_match_by_reference_number()` — tests `_match_tier1()` method directly
+- Mock all external dependencies
+- Location: `backend/tests/test_*.py`
+
+**Integration Tests:**
+- Test multiple components working together
+- Example: `test_statement_dedup_integration.py` — tests email ingestion + dedup + DB insert
+- May use real DB (if available) or heavily mocked
+- Example: `test_complete_workflow.py` — tests full statement processing pipeline
+
+**API Tests:**
+- Use `TestClient` from FastAPI
+- Test HTTP endpoints with mocked services
+- Example: `test_api_integration.py`
+
+**Example (API test):**
+```python
+from fastapi.testclient import TestClient
+from main import app
+
+class TestTransactionRoutes:
+    def setup_method(self):
+        self.client = TestClient(app)
+    
+    @patch('src.services.database_manager.operations.TransactionOperations.get_all_transactions')
+    def test_get_transactions(self, mock_get_transactions):
+        mock_get_transactions.return_value = [
+            {'id': '1', 'amount': 100.0, ...}
+        ]
+        response = self.client.get("/api/transactions/")
+        assert response.status_code == 200
+        assert "data" in response.json()
+```
+
+### Common Test Patterns
+
+**Testing with date/datetime:**
+```python
+from datetime import date as d, datetime as dt
+
+@pytest.mark.asyncio
+async def test_date_range_data_driven(self):
+    """Test with specific dates."""
+    with patch(..., return_value={"min_last_statement_date": d(2026, 6, 28)}):
+        workflow = StatementWorkflow()
+        start_date, end_date = await workflow._calculate_date_range(now=dt(2026, 8, 8))
+    
+    assert start_date == "2026/06/25"  # 3 days before 6/28
+    assert end_date == "2026/08/08"
+```
+
+**Testing error conditions:**
+```python
+@pytest.mark.asyncio
+async def test_invalid_account_raises_error(self):
+    """Test that invalid account raises appropriate error."""
+    with pytest.raises(ValueError, match="Account not found"):
+        await operations.get_account_by_email("nonexistent@example.com")
+```
+
+**Testing database operations:**
+```python
+@patch('src.services.database_manager.connection.get_session_factory')
+@pytest.mark.asyncio
+async def test_get_transactions_queries_db(self, mock_session_factory):
+    """Test database query is executed."""
+    mock_session = AsyncMock()
+    mock_result = AsyncMock()
+    mock_result.fetchall.return_value = [...]
+    mock_session.execute.return_value = mock_result
+    mock_session_factory.return_value.__aenter__.return_value = mock_session
+    
+    result = await TransactionOperations.get_all_transactions()
+    
+    mock_session.execute.assert_called_once()
+    assert len(result) > 0
+```
 
 ---
 
-## Test Data / Factories
+## Frontend Testing (TypeScript/React)
 
-**Builder function pattern (settlement tests):**
+### Test Framework
+
+**Status:** No automated tests currently configured
+- No Jest, Vitest, or React Testing Library setup
+- `package.json` has no test scripts
+- `tsconfig.json` does not include test files
+
+### Recommendations for Frontend Testing
+
+If tests are added, use:
+- **Test Runner:** Vitest (recommended for Vite/Turbopack projects) or Jest with Next.js preset
+- **Testing Library:** React Testing Library (for component testing)
+- **Mocking:** Vitest's mocking capabilities or `jest.mock()`
+
+**Suggested structure (if implemented):**
+```typescript
+// src/components/transactions/transaction-filters.test.tsx
+
+import { render, screen, fireEvent } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { TransactionFilters } from './transaction-filters';
+import type { TransactionFilters as TransactionFiltersType } from '@/lib/types';
+
+describe('TransactionFilters', () => {
+  const mockFilters: TransactionFiltersType = { /* ... */ };
+  const mockOnFiltersChange = jest.fn();
+  const mockOnClearFilters = jest.fn();
+
+  it('should render filter inputs', () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <TransactionFilters
+          filters={mockFilters}
+          onFiltersChange={mockOnFiltersChange}
+          onClearFilters={mockOnClearFilters}
+        />
+      </QueryClientProvider>
+    );
+
+    expect(screen.getByPlaceholderText('Search...')).toBeInTheDocument();
+  });
+
+  it('should call onFiltersChange when search input changes', () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <TransactionFilters {...props} />
+      </QueryClientProvider>
+    );
+
+    const searchInput = screen.getByPlaceholderText('Search...');
+    fireEvent.change(searchInput, { target: { value: 'coffee' } });
+
+    // Wait for debounce (500ms)
+    setTimeout(() => {
+      expect(mockOnFiltersChange).toHaveBeenCalled();
+    }, 600);
+  });
+});
+```
+
+---
+
+## Running Tests Locally
+
+### Backend
+
+**All tests:**
+```bash
+cd backend
+poetry run pytest tests/
+```
+
+**Single test file:**
+```bash
+poetry run pytest tests/test_dedup_service.py -v
+```
+
+**Single test:**
+```bash
+poetry run pytest tests/test_dedup_service.py::TestDeduplicationService::test_tier1_match_by_reference_number -v
+```
+
+**With debugging:**
+```bash
+poetry run pytest tests/ -vv --tb=long  # Verbose with long tracebacks
+poetry run pytest tests/ -s              # Show print statements
+poetry run pytest tests/ --pdb           # Drop to pdb on failure
+```
+
+### Frontend
+
+**No test suite currently** — would use `npm test` if Jest/Vitest configured.
+
+---
+
+## Mock Data Patterns
+
+### Backend Mock Builders
+
 ```python
-def _tx(
-    id: str,
-    amount: float,
-    direction: str,
-    paid_by: str | None,
-    participants: list[str],
-    account: str = "HDFC Savings",
+# Transaction data factory
+def make_transaction(
+    id="tx-1",
+    amount=100.0,
+    date=date(2026, 4, 1),
+    direction="debit",
+    account="Axis Credit Card",
+    description="Coffee",
+    category="Food & Dining"
 ):
-    """Build a minimal transaction dict matching what _get_settlement_transactions returns."""
-    n = len(participants) + 1
-    entries = [{"participant": p, "amount": amount / n} for p in participants]
-    entries.append({"participant": "me", "amount": amount / n})
     return {
         "id": id,
-        "date": "2024-01-01",
-        "amount": amount,
-        "split_breakdown": {"mode": "equal", "entries": entries, "paid_by": paid_by},
-        ...
+        "amount": Decimal(str(amount)),
+        "transaction_date": date,
+        "direction": direction,
+        "account": account,
+        "description": description,
+        "category": category,
+        "is_shared": False,
+        "split_breakdown": None,
+    }
+
+
+# Account data factory
+def make_account(
+    nickname="Axis CC",
+    account_type="credit_card",
+    statement_sender="statements@axis.bank.in",
+    statement_password="password123"
+):
+    return {
+        "id": str(uuid4()),
+        "nickname": nickname,
+        "account_type": account_type,
+        "statement_sender": statement_sender,
+        "statement_password": statement_password,
+        "is_active": True,
     }
 ```
 
-**Inline dict fixtures (integration tests):**
-Raw dicts assembled inline inside each test. No shared fixtures or factory classes.
+### API Response Mocks
 
-**No fixture files or `conftest.py`** — all test data is defined per-test or per-file.
+```python
+# Mock successful response
+mock_transactions = {
+    "data": [
+        {"id": "1", "amount": 100.0, "description": "Coffee", ...},
+        {"id": "2", "amount": 50.0, "description": "Lunch", ...},
+    ],
+    "pagination": {"page": 1, "limit": 50, "total": 2}
+}
+
+# Mock error response
+mock_error = {
+    "detail": "Account not found",
+    "status": 404
+}
+```
 
 ---
 
-## Coverage
+## Test Isolation & Cleanup
 
-**Requirements:** None enforced — no coverage threshold configured in `pyproject.toml`.
+**Database isolation:**
+- Tests should not depend on a real PostgreSQL database
+- All DB operations should be mocked via `patch()` on `get_session_factory()`
+- No `setup_db()` or teardown SQL execution needed
 
-**View Coverage:**
-```bash
-poetry run pytest tests/ --cov=src --cov-report=term-missing
-```
-(requires `pytest-cov`; not currently listed as a dev dependency — install separately if needed)
+**State isolation:**
+- Each test class has `setup_method()` to reinitialize fixtures
+- No global state shared between tests
+- Mock patches are scoped to individual test methods
 
----
-
-## Test Types
-
-**Unit Tests:**
-- `test_settlement_calculations.py` — Tests `_calculate_settlements()` directly with no I/O
-- `test_workflow_orchestrator.py` — Tests date/path helpers on `StatementWorkflow` without real DB or email
-
-**Integration Tests:**
-- `test_api_integration.py` — Tests full FastAPI request/response cycle using `TestClient`, with DB operations mocked
-- `test_splitwise_routes.py` — Tests Splitwise route logic using `TestClient`, with API client and `requests` mocked
-
-**E2E Tests:** Not present.
+**No cleanup required:**
+- Pytest handles cleanup automatically
+- Mock patches are automatically reverted after each test
+- No explicit teardown needed (though `teardown_method()` can be added if needed)
 
 ---
 
-## Common Patterns
-
-**Async testing:**
-```python
-# asyncio_mode = "auto" in pyproject.toml means this just works:
-async def test_normalized_filename_generation(self):
-    workflow = StatementWorkflow()
-    with patch('...AccountOperations.get_account_nickname_by_sender') as mock_get_nickname:
-        mock_get_nickname.return_value = "test_account"
-        filename = await workflow._generate_normalized_filename(...)
-        assert filename == "test_account_20250904_locked.pdf"
-```
-
-**Assertion style:**
-```python
-# Status + response structure
-assert response.status_code == 200
-data = response.json()
-assert "data" in data
-assert len(data["data"]) == 1
-
-# Business logic invariants with failure messages
-assert alice.net_balance <= 0.01, (
-    f"Bug: credit payment increased balance instead of reducing it. "
-    f"net_balance={alice.net_balance} (expected ≤ 0)"
-)
-
-# Floating-point comparisons use a tolerance
-assert abs(alice.net_balance) < 0.01
-assert bob.amount_i_owe >= -0.01
-```
-
-**Optional presence pattern (settlement tests):**
-```python
-alice = next((s for s in summary.settlements if s.participant == "Alice"), None)
-assert alice is None or abs(alice.net_balance) < 0.01, "..."
-```
-Tests assert invariants even when the entity may not appear in results (filtered-out means settled).
-
-**Documenting bug regressions in test docstrings:**
-```python
-def test_credit_with_paid_by_me_reduces_owed_not_increases(self):
-    """
-    Bug scenario: A pays me 1000, but paid_by = "me" (UI default).
-    Before fix: amount_i_owe goes to -1000, net_balance increases 1000 → 2000.
-    After fix:  credit direction takes precedence → amount_owed_to_me decreases to 0.
-    """
-```
-Bug regressions document the original failure explicitly in the docstring.
-
----
-
-*Testing analysis: 2026-03-27*
+*Testing analysis: 2026-08-09*

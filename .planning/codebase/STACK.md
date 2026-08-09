@@ -1,152 +1,195 @@
 # Technology Stack
 
-**Analysis Date:** 2026-03-27
+**Analysis Date:** 2026-08-09
 
 ## Languages
 
 **Primary:**
-- Python 3.11+ (constraint in `pyproject.toml`; system Python 3.13 in use) - Backend API, services, data processing
-- TypeScript 5.x - Frontend application, all `.ts` / `.tsx` files
+- Python 3.11 (3.11.9 in `.python-version`) - Backend services
+- TypeScript 5.x - Frontend (React + Next.js)
+- JavaScript - Build/dev tooling
 
 **Secondary:**
-- SQL (PostgreSQL dialect) - Database migrations in `backend/src/services/database_manager/migrations/versions/`
+- CSS/PostCSS - Styling (Tailwind CSS v4)
+- SQL - Database schema (PostgreSQL)
 
 ## Runtime
 
-**Backend:**
-- Python 3.13 (current machine); `pyproject.toml` requires `^3.11`
-- Uvicorn ASGI server — `poetry run uvicorn main:app --reload` runs on port 8000
+**Backend Environment:**
+- Python 3.11.9 (specified in `backend/.python-version`)
+- Uvicorn ASGI server 0.30.0
 
-**Frontend:**
-- Node.js 24.x (system); package-lock at v3
-- Next.js dev server via Turbopack — `npm run dev` runs on port 3000
+**Frontend Environment:**
+- Node.js (version unspecified, likely 18+)
+- Turbopack build system (bundled with Next.js 15)
 
-## Package Managers
-
-**Backend:**
-- Poetry — `backend/pyproject.toml`, lockfile `backend/poetry.lock` present
-
-**Frontend:**
-- npm — `frontend/package.json`, lockfile `frontend/package-lock.json` present
+**Package Managers:**
+- Backend: Poetry (specified in `backend/pyproject.toml`)
+  - Lockfile: `poetry.lock` (Poetry handles this)
+  - Install: `poetry install`
+  
+- Frontend: npm (specified in `frontend/package.json`)
+  - Lockfile: `package-lock.json` (managed by npm)
+  - Install: `npm install`
 
 ## Frameworks
 
-**Backend Core:**
-- FastAPI `^0.111.0` — REST API framework, routers defined in `backend/src/apis/routes/`
-- SQLAlchemy 2.0 async `^2.0.30` — ORM, async engine via `asyncpg`
-- Alembic `^1.13.2` — Database migrations; config at `backend/alembic.ini`; versions in `backend/src/services/database_manager/migrations/versions/`
-- Pydantic v2 `^2.7.1` — Schema validation; `pydantic-settings ^2.3.4` for env config
-- Uvicorn `^0.30.0` — ASGI server
-
-**Frontend Core:**
-- Next.js 15.5.3 (App Router) — Pages in `frontend/src/app/`
-- React 19.1.0 — UI rendering
-- TanStack Query v5 `^5.87.4` — Server state, data fetching, all API calls wired through hooks in `frontend/src/hooks/`
-- TanStack Table v8 `^8.21.3` — Transaction table rendering
-- TanStack Virtual v3 `^3.13.12` — Virtualised list rendering
-- Tailwind CSS 4 — Utility-first styling; config via PostCSS at `frontend/postcss.config.mjs`
-- Framer Motion `^12.23.24` — Animations
-
-**Frontend Forms/Validation:**
-- React Hook Form `^7.62.0` — Form state
-- Zod v4 `^4.1.8` — Schema validation
-- `@hookform/resolvers ^5.2.1` — Connects Zod to RHF
-
-**Frontend UI Primitives:**
-- Radix UI — `@radix-ui/react-*` components: alert-dialog, checkbox, dialog, dropdown-menu, label, popover, progress, radio-group, select, slider, slot, switch, tabs, toast, tooltip
-- shadcn/ui component system — config at `frontend/components.json`; `class-variance-authority`, `clsx`, `tailwind-merge`
-- `cmdk ^1.1.1` — Command palette
-- `lucide-react ^0.544.0` — Icon set
-- `sonner ^2.0.7` — Toast notifications
-- `next-themes ^0.4.6` — Theme switching
-
-**Frontend Data Viz:**
-- Recharts `^3.2.0` — Charts on analytics page (`frontend/src/app/analytics/`)
-
-**Frontend PDF:**
-- `pdfjs-dist ^5.4.394` + `react-pdf ^10.2.0` — PDF viewing in statement review UI (`frontend/src/app/review/`)
-
-## LLM / AI Stack
-
-**Frameworks:**
-- LangChain `^0.2.6` + `langchain-core ^0.2.11` + `langchain-community ^0.2.5` — Orchestration and chain building
-- `langchain-openai ^0.1.8` — OpenAI adapter
-- `openai ^1.37.1` — Direct OpenAI SDK
-
-**Document Extraction:**
-- `agentic-doc ^0.3.3` — LandingAI's document parsing library; used in `backend/src/services/statement_processor/document_extractor.py` via `from agentic_doc.parse import parse`; requires `VISION_AGENT_API_KEY`
-
-**OCR:**
-- `pytesseract ^0.3.10` — Tesseract OCR wrapper; used in `backend/src/services/ocr_engine/engine.py`
-- `Pillow ^10.3.0` — Image processing for OCR input
-- `PyMuPDF ^1.24.0` — PDF rendering and page extraction (`fitz`)
-
-## Key Backend Dependencies
-
-**Database:**
-- `asyncpg ^0.29.0` — Async PostgreSQL driver (used by SQLAlchemy async engine)
-- `psycopg2-binary ^2.9.10` — Sync PostgreSQL driver (used by Alembic for migrations)
-
-**Data Processing:**
-- `pandas ^2.2.2` — DataFrame manipulation during statement extraction and standardisation
-- `openpyxl ^3.1.2` — Excel file support (xlxs output from extraction)
-- `beautifulsoup4 ^4.12.0` + `html5lib ^1.1` + `lxml ^6.0.2` — HTML email body parsing in `email_ingestion/client.py`
-
-**Utilities:**
-- `orjson ^3.10.3` — Fast JSON serialisation for FastAPI responses
-- `python-multipart ^0.0.9` — Multipart form data (file uploads)
-- `python-dotenv ^1.0.1` — `.env` loading
-- `greenlet ^3.3.2` — Required by SQLAlchemy async
-
-**Google Integrations:**
-- `google-api-python-client ^2.136.0` — Gmail API client
-- `google-auth ^2.31.0` + `google-auth-oauthlib ^1.2.0` + `google-auth-httplib2 ^0.2.0` — Google OAuth2
-- `google-cloud-storage ^3.3.1` — GCS client
-
-**External:**
-- `splitwise ^3.0.0` — Splitwise SDK (installed but `SplitwiseAPIClient` in `backend/src/services/splitwise_processor/client.py` calls the REST API directly via `requests`)
-
-## Dev Dependencies
-
 **Backend:**
-- `ruff ^0.5.0` — Linting; run `poetry run ruff check .`
-- `pytest ^8.2.0` + `pytest-asyncio ^0.23.7` — Testing; tests in `backend/tests/`; `asyncio_mode = "auto"` in `pyproject.toml`
+- FastAPI 0.111.0 - Web framework with automatic API docs
+- Uvicorn 0.30.0 - ASGI application server with hot reload
+- SQLAlchemy 2.0.30 - ORM for database operations (async-first)
+- Alembic 1.13.2 - Database migrations management
+- APScheduler 3.10.4 - Task scheduling (email ingestion jobs)
 
 **Frontend:**
-- ESLint 9 — Config at `frontend/eslint.config.mjs`; extends `next/core-web-vitals` + `next/typescript`
-- TypeScript strict mode — `"strict": true` in `frontend/tsconfig.json`
+- Next.js 15.5.3 - React framework with App Router, SSR, Turbopack
+- React 19.1.0 - UI library (ES2017 target)
+- Tailwind CSS 4 - Utility-first CSS framework (PostCSS plugin, no `tailwind.config.js`)
+
+**Data & State Management (Frontend):**
+- TanStack React Query 5.87.4 - Server state management + caching
+- React Hook Form 7.62.0 - Form state management
+- Zod 4.1.8 - Runtime schema validation
+
+**Tables & UI (Frontend):**
+- TanStack React Table 8.21.3 - Headless table component library
+- TanStack React Virtual 3.13.12 - Virtual scrolling for large lists
+- Radix UI (multiple packages: dialog, dropdown-menu, select, slider, tabs, toast, etc.) - Unstyled accessible UI primitives
+- lucide-react - Icon library
+
+**Forms & Input:**
+- @hookform/resolvers 5.2.1 - Schema validation integration with React Hook Form
+
+**Content & Visualization:**
+- Recharts 3.2.0 - React charts library (for analytics)
+- react-pdf 10.2.0 - PDF viewer component
+- pdfjs-dist 5.4.394 - PDF.js library (dependency of react-pdf)
+
+**Animations & Effects:**
+- Framer Motion 12.23.24 - Animation library
+- Tailwind CSS animations - Simple CSS transitions (via tw-animate-css)
+
+**Utilities & Theming:**
+- next-themes 0.4.6 - Dark mode / theme switching
+- class-variance-authority 0.7.1 - Component variant management
+- clsx 2.1.1 - Utility for conditional class names
+- tailwind-merge 3.3.1 - Merges Tailwind class conflicts
+- date-fns 4.1.0 - Date formatting and manipulation
+- cmdk 1.1.1 - Command/command palette component
+- sonner 2.0.7 - Toast notification library
+- jose 6.2.2 - JWT token handling
+
+**Testing:**
+- pytest 8.2.0 - Testing framework
+- pytest-asyncio 0.23.7 - Async support for pytest
+- No E2E testing framework detected
+
+## Key Dependencies
+
+**Critical (Backend):**
+- asyncpg 0.29.0 - PostgreSQL async driver (raw driver for pool management)
+- psycopg2-binary 2.9.9 - PostgreSQL driver (fallback/legacy compatibility)
+- pydantic 2.7.1 - Data validation and serialization
+- pydantic-settings 2.3.4 - Environment-based settings management
+- orjson 3.10.3 - Fast JSON serialization (performance-critical)
+- python-multipart 0.0.9 - Multipart form data parsing
+
+**AI & Language Processing (Backend):**
+- langchain 0.2.6 - LLM orchestration framework
+- langchain-core 0.2.11 - Core LangChain abstractions
+- langchain-community 0.2.5 - Community integrations
+- langchain-openai 0.1.8 - OpenAI integration for LangChain
+- openai 1.37.1 - OpenAI Python client (for direct API calls)
+
+**Google Cloud & APIs (Backend):**
+- google-api-python-client 2.136.0 - Google API client library
+- google-auth 2.31.0 - Google authentication
+- google-auth-oauthlib 1.2.0 - OAuth 2.0 flow support
+- google-auth-httplib2 0.2.0 - HTTP transport for Google Auth
+- google-cloud-storage 3.3.1 - Google Cloud Storage client
+
+**Document Processing (Backend):**
+- PyMuPDF 1.24.0 - PDF unlocking/manipulation (fitz backend)
+- landingai-ade >=1.12.0 - LandingAI Agentic Document Extraction (vision API)
+- BeautifulSoup4 4.12.0 - HTML parsing
+- html5lib 1.1 - HTML5 parser (fallback for BeautifulSoup)
+- lxml 5.0 - XML/HTML parsing (performance)
+
+**Data Processing:**
+- pandas 2.2.2 - Data manipulation and CSV handling
+
+**Security & Authentication (Backend):**
+- passlib[bcrypt] 1.7.4 - Password hashing
+- python-jose[cryptography] 3.5.0 - JWT token signing and validation
+
+**Rate Limiting & Scheduling:**
+- slowapi 0.1.9 - Rate limiting for FastAPI
+- apscheduler 3.10.4 - Background job scheduling (email ingestion)
+
+**Utilities:**
+- python-dotenv 1.0.1 - Environment variable loading
+- greenlet 3.3.2 - Lightweight coroutine support (dependency of SQLAlchemy)
 
 ## Configuration
 
-**Backend Environment:**
-- Primary config: `backend/configs/.env`
-- Secrets config: `backend/configs/secrets/.env`
-- Both loaded by Pydantic Settings class at `backend/src/utils/settings.py` with `secrets/.env` taking precedence
-- Settings accessed app-wide via `get_settings()` (LRU-cached singleton)
+**Backend Configuration:**
+- Primary: `backend/configs/.env` (checked into repo with defaults)
+- Secrets override: `backend/configs/secrets/.env` (loaded first, takes precedence)
+- Pydantic Settings: `backend/src/utils/settings.py` (lru_cache singleton)
+- Settings loaded in this order: `secrets/.env` → `configs/.env` (highest to lowest priority)
 
-**Frontend Environment:**
-- `NEXT_PUBLIC_API_URL` — Backend base URL (default: `http://localhost:8000/api`)
-- `NEXT_PUBLIC_APP_ENV` — Environment label
-- Template: `frontend/.env.local.example`
+**Frontend Configuration:**
+- `.env.local` (Next.js convention, not in repo)
+- Environment variables prefixed with `NEXT_PUBLIC_` are available in browser
+- Base URL: `NEXT_PUBLIC_API_URL` (defaults to `http://localhost:8000/api`)
+- Dev environment: `NEXT_PUBLIC_APP_ENV=development` (enables API rewrites)
 
-**Build:**
-- `frontend/next.config.ts` — Minimal Next.js config (Turbopack enabled via CLI flags)
-- `frontend/tsconfig.json` — TypeScript; path alias `@/*` → `./src/*`
-- `frontend/postcss.config.mjs` — PostCSS + Tailwind CSS 4 plugin
+**Database Configuration:**
+- PostgreSQL connection string: `postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}`
+- Alembic config: `backend/alembic.ini` (separate connection string for migrations)
+- Pool settings: size=10, max_overflow=20 (SQLAlchemy async engine)
+- Database name in alembic.ini: `expense_tracker`; in settings: `expense_db`
+
+**Build Configuration:**
+- Backend: Poetry manages Python dependencies and dev commands
+  - Config: `backend/pyproject.toml`
+  - Test runner: pytest with asyncio mode auto
+  
+- Frontend: npm manages Node.js dependencies
+  - Config: `frontend/package.json`
+  - TypeScript: `frontend/tsconfig.json` (ES2017 target, path aliases `@/*` → `src/*`)
+  - Next.js: `frontend/next.config.ts` (Turbopack, standalone output)
+  - PostCSS: `frontend/postcss.config.mjs` (Tailwind v4 plugin)
+  - ESLint: `frontend/eslint.config.mjs` (version 9)
+  - Tailwind: No separate `tailwind.config.js` (uses PostCSS plugin defaults)
+  - Shadcn/ui: `frontend/components.json` (for component scaffolding)
 
 ## Platform Requirements
 
 **Development:**
-- PostgreSQL at `localhost:5432` database `expense_tracker`
-- Tesseract OCR installed on host (required by `pytesseract`)
-- Python 3.11+
-- Node.js 18+ (20+ recommended)
+- Python 3.11.9 (backend)
+- PostgreSQL 12+ (localhost:5432 by default)
+- Node.js 18+ (frontend, inferred)
+- POSIX-compatible shell (bash)
 
-**Production:**
-- Target: Oracle Free Tier or Hetzner (per project context)
-- No Docker setup yet
-- GCS bucket: `marty-the-expense-tracker`
+**API Keys Required (Environment):**
+- OpenAI: `OPENAI_API_KEY` (LLM for transaction extraction)
+- Google: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` (Gmail primary)
+- Google (secondary): `GOOGLE_CLIENT_ID_2`, `GOOGLE_CLIENT_SECRET_2`, `GOOGLE_REFRESH_TOKEN_2` (optional)
+- Google Cloud: `GOOGLE_CLOUD_PROJECT_ID`, `GOOGLE_CLOUD_BUCKET_NAME`, `GOOGLE_APPLICATION_CREDENTIALS` (path to service account key)
+- LandingAI: `VISION_AGENT_API_KEY` (document extraction)
+- Splitwise: `SPLITWISE_API_KEY` (split expense sync)
+
+**Authentication:**
+- JWT: `JWT_SECRET_KEY`, `JWT_ALGORITHM` (HS256)
+- Basic auth fallback: `AUTH_USERNAME`, `AUTH_PASSWORD_HASH`
+
+**Production Deployment:**
+- Container runtime (Docker implied by CLAUDE.md references)
+- Cloud storage: Google Cloud Storage (mandatory for statement archive)
+- Database: PostgreSQL (managed or self-hosted)
+- API rate limiting: Built-in via slowapi
 
 ---
 
-*Stack analysis: 2026-03-27*
+*Stack analysis: 2026-08-09*

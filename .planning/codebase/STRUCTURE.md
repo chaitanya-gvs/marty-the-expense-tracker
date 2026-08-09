@@ -1,255 +1,479 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-03-27
+**Analysis Date:** 2026-08-09
 
 ## Directory Layout
 
 ```
-expense-tracker/                      # Monorepo root
-├── backend/                          # Python FastAPI backend
-│   ├── main.py                       # App entry point (FastAPI + router mounts)
-│   ├── pyproject.toml                # Poetry dependencies + ruff/pytest config
-│   ├── alembic.ini                   # Alembic migration config
+marty-the-expense-tracker/
+├── backend/                                 # FastAPI backend (Python)
+│   ├── main.py                              # FastAPI app entry point
+│   ├── pyproject.toml                       # Poetry dependencies & config
+│   ├── alembic.ini                          # Database migration config
 │   ├── configs/
-│   │   ├── .env                      # Primary app config (non-secret)
-│   │   └── secrets/                  # client_secret.json, gcs_service_account_key.json, secrets/.env
+│   │   ├── .env                             # Environment variables (git-ignored)
+│   │   └── secrets/                         # Service account keys (git-ignored)
 │   ├── data/
+│   │   ├── backups/                         # Database dumps
+│   │   ├── extracted_data/                  # CSV outputs from document extractor
 │   │   ├── statements/
-│   │   │   ├── locked_statements/    # Downloaded PDFs (pre-unlock)
-│   │   │   └── unlocked_statements/  # Decrypted PDFs (post-unlock)
-│   │   ├── extracted_data/           # CSV output from document extractor
-│   │   └── backups/                  # DB dump files
-│   ├── logs/                         # Rotating log files (not committed)
-│   ├── scripts/                      # Standalone operational scripts
-│   ├── tests/                        # Pytest test files
+│   │   │   ├── locked_statements/           # Downloaded PDFs (encrypted)
+│   │   │   └── unlocked_statements/         # Decrypted PDFs
+│   │   └── standardized_transactions.csv    # Final consolidated CSV
+│   ├── logs/                                # Rotating log files
+│   ├── scripts/                             # Standalone operational scripts
+│   ├── tests/                               # Pytest test files
 │   └── src/
 │       ├── apis/
-│       │   ├── routes/               # FastAPI route handlers (one file per domain)
-│       │   └── schemas/              # Pydantic request/response schemas
+│       │   ├── routes/                      # FastAPI route handlers
+│       │   │   ├── auth_routes.py           # Login/logout, JWT token generation
+│       │   │   ├── transaction_read_routes.py  # GET /transactions (+ filters, pagination)
+│       │   │   ├── transaction_write_routes.py # POST/PUT/DELETE /transactions
+│       │   │   ├── transaction_split_routes.py # POST /transactions/{id}/split, /clear-split
+│       │   │   ├── settlement_routes.py     # GET /settlements (balance calculations)
+│       │   │   ├── participant_routes.py    # CRUD for split participants
+│       │   │   ├── workflow_routes.py       # Statement processing orchestration + SSE
+│       │   │   ├── splitwise_routes.py      # Manual Splitwise sync endpoint
+│       │   │   ├── email_ingestion_routes.py # Manual email ingestion endpoint
+│       │   │   ├── review_queue_routes.py   # Query/acknowledge review items
+│       │   │   └── budget_routes.py         # CRUD for budgets
+│       │   └── schemas/
+│       │       ├── common.py                # ApiResponse wrapper, common models
+│       │       ├── transactions.py          # Transaction DTO schemas
+│       │       ├── settlements.py           # Settlement calculation schemas
+│       │       ├── participants.py          # Participant schemas
+│       │       ├── workflow.py              # WorkflowRunRequest, WorkflowEvent, etc.
+│       │       ├── email_ingestion.py       # Email ingestion request schemas
+│       │       ├── budgets.py               # Budget DTOs
+│       │       └── common.py                # ApiResponse, common types
 │       ├── services/
 │       │   ├── database_manager/
-│       │   │   ├── connection.py     # Async engine, session factory
-│       │   │   ├── models/           # SQLAlchemy ORM models
-│       │   │   ├── operations/       # Static DB operation classes
-│       │   │   ├── migrations/       # Alembic env.py + versions/
-│       │   │   └── schemas.py        # Internal DB-level Pydantic schemas
-│       │   ├── orchestrator/         # Pipeline orchestration + standardization
-│       │   ├── email_ingestion/      # Gmail API client + auth
-│       │   ├── statement_processor/  # PDF unlock, page filter, LLM extraction
-│       │   ├── splitwise_processor/  # Splitwise API client + sync
-│       │   ├── cloud_storage/        # GCS upload/download
-│       │   └── ocr_engine/           # OCR engine wrapper
-│       └── utils/
-│           ├── settings.py           # Pydantic settings singleton
-│           ├── logger.py             # Custom rotating logger
-│           ├── db_utils.py           # DB error handling wrapper
-│           ├── transaction_utils.py  # DB→API response converters
-│           ├── filename_utils.py     # GCS path helpers
-│           └── password_manager.py   # Account password lookup
-│
-└── frontend/                         # Next.js 15 frontend
-    ├── package.json
-    ├── next.config.ts
-    ├── tsconfig.json                  # Path alias: @/* → src/*
-    ├── components.json                # shadcn/ui config
-    ├── postcss.config.mjs             # Tailwind CSS v4 PostCSS plugin
-    └── src/
-        ├── app/                       # Next.js App Router pages
-        │   ├── layout.tsx             # Root layout (fonts, Providers)
-        │   ├── page.tsx               # Root → redirect to /transactions
-        │   ├── globals.css            # Tailwind + OkLCH CSS custom properties
-        │   ├── transactions/page.tsx
-        │   ├── settlements/page.tsx
-        │   ├── analytics/page.tsx
-        │   ├── budgets/page.tsx
-        │   ├── review/page.tsx
-        │   └── settings/page.tsx
-        ├── components/
-        │   ├── providers.tsx          # QueryClient + ThemeProvider + Toaster
-        │   ├── theme-toggle.tsx
-        │   ├── layout/                # MainLayout + Navigation (hover-overlay sidebar)
-        │   ├── transactions/          # All transaction UI components (table, modals, drawers, inline)
-        │   ├── analytics/             # Analytics charts and filters
-        │   ├── budgets/               # Budget list and overview
-        │   ├── settlements/           # Settlement tabs and filters
-        │   ├── settings/              # Category and tag managers
-        │   ├── review/                # Review queue for flagged transactions
-        │   ├── split-editor/          # Reusable split editor
-        │   ├── workflow/              # Workflow SSE progress sheet
-        │   └── ui/                    # Radix UI primitives + custom modal
-        │       └── modal/             # Custom modal (use over Radix Dialog)
-        ├── hooks/                     # TanStack React Query wrappers
-        ├── lib/
-        │   ├── api/
-        │   │   ├── client.ts          # Singleton ApiClient class
-        │   │   └── types/workflow.ts  # Workflow-specific request/response types
-        │   ├── types/index.ts         # All canonical TypeScript interfaces
-        │   ├── format-utils.ts        # formatCurrency(), formatDate()
-        │   ├── utils.ts               # cn() class merge helper
-        │   └── workflow-tasks.ts      # SSE event → task tree builder
-        └── store/                     # Global state (currently unused/minimal)
+│       │   │   ├── connection.py            # AsyncEngine, session factory, Base ORM class
+│       │   │   ├── models/
+│       │   │   │   ├── transaction.py       # Transaction ORM model
+│       │   │   │   ├── account.py           # Bank account with sender email + password
+│       │   │   │   ├── category.py          # Hierarchical categories (self-referencing)
+│       │   │   │   ├── participant.py       # People in splits (linked to Splitwise)
+│       │   │   │   ├── tag.py               # User-defined tags
+│       │   │   │   ├── budget.py            # Budget periods + targets
+│       │   │   │   ├── review_queue.py      # Flagged/uncertain items for manual review
+│       │   │   │   ├── statement_processing_log.py # Per-statement processing status
+│       │   │   │   ├── transaction_tag.py   # Join table for transaction-tag relationships
+│       │   │   │   └── __init__.py          # Exports all models
+│       │   │   ├── operations/
+│       │   │   │   ├── transaction_operations.py # CRUD + complex filtering for transactions
+│       │   │   │   ├── category_operations.py    # Category hierarchy queries
+│       │   │   │   ├── tag_operations.py         # Tag CRUD + search
+│       │   │   │   ├── participant_operations.py # Participant CRUD
+│       │   │   │   ├── account_operations.py     # Account queries (by sender, by nickname)
+│       │   │   │   ├── budget_operations.py      # Budget CRUD + rollup calculations
+│       │   │   │   ├── statement_log_operations.py # Per-statement log queries
+│       │   │   │   ├── review_queue_operations.py # Dedup queue queries
+│       │   │   │   ├── suggestion_operations.py  # Transfer suggestions for settlements
+│       │   │   │   ├── __init__.py               # Aggregated exports (AccountOps, TransactionOps, etc.)
+│       │   │   │   └── schemas.py                # Internal SQLAlchemy query response DTOs
+│       │   │   ├── migrations/
+│       │   │   │   ├── env.py                    # Alembic migration runner config
+│       │   │   │   └── versions/                 # Migration files (auto-generated by `alembic revision`)
+│       │   │   │       ├── e8f7aea1fe10_initial_migration_for_existing_tables.py
+│       │   │   │       ├── a1b2c3d4e5f6_backup_transactions_add_transaction_source.py
+│       │   │   │       └── ... (40+ more)
+│       │   │   └── __init__.py
+│       │   ├── orchestrator/
+│       │   │   ├── statement_workflow.py    # Main pipeline orchestrator (750+ lines)
+│       │   │   │   ├─ StatementWorkflow class
+│       │   │   │   ├─ Coordinates: email fetch → PDF unlock → extraction → standardization → DB insert
+│       │   │   │   ├─ Handles multi-account (primary + secondary Gmail)
+│       │   │   │   ├─ Emits SSE events during processing
+│       │   │   │   └─ Three modes: full | resume | splitwise_only
+│       │   │   ├── statement_extractor_helper.py # Sub-orchestrator for extraction phase
+│       │   │   ├── data_standardizer_helper.py  # Sub-orchestrator for standardization phase
+│       │   │   ├── splitwise_processor_helper.py # Sub-orchestrator for Splitwise sync phase
+│       │   │   ├── transaction_standardizer.py  # Normalizes extracted transaction data
+│       │   │   ├── csv_processor.py             # CSV reading/writing helpers
+│       │   │   └── __init__.py
+│       │   ├── email_ingestion/
+│       │   │   ├── service.py                   # Transactional email ingestion (for alert emails)
+│       │   │   ├── alert_ingestion_service.py   # Real-time alert parsing + ingestion scheduler
+│       │   │   ├── client.py                    # Gmail API wrapper (list, fetch, search)
+│       │   │   ├── auth.py                      # Gmail OAuth flow (manual token setup)
+│       │   │   ├── token_manager.py             # OAuth token refresh + storage
+│       │   │   ├── dedup_service.py             # Duplicate detection across multiple parsers
+│       │   │   ├── parsers/
+│       │   │   │   ├── base.py                  # Abstract BankEmailParser
+│       │   │   │   ├── amazon_icici.py          # Amazon Pay ICICI credit card alerts
+│       │   │   │   ├── axis_atlas.py            # Axis Atlas credit card alerts
+│       │   │   │   ├── axis_savings.py          # Axis Savings account alerts
+│       │   │   │   ├── cashback_sbi.py          # SBI Cashback card alerts + pre-debit alerts
+│       │   │   │   ├── swiggy_hdfc.py           # Swiggy HDFC card alerts
+│       │   │   │   ├── yes_bank_savings.py      # Yes Bank Savings account alerts
+│       │   │   │   └── __init__.py
+│       │   │   └── __init__.py
+│       │   ├── statement_processor/
+│       │   │   ├── document_extractor.py    # LLM-based PDF → CSV extraction (agentic-doc)
+│       │   │   ├── pdf_unlocker.py          # PDF decryption (PyPDF2)
+│       │   │   ├── pdf_page_filter.py       # Extract relevant pages from statement PDF
+│       │   │   ├── schemas.py               # Extraction request/response DTOs
+│       │   │   └── __init__.py
+│       │   ├── splitwise_processor/
+│       │   │   ├── service.py               # Splitwise sync orchestration
+│       │   │   ├── client.py                # Splitwise API HTTP client
+│       │   │   ├── schemas.py               # Splitwise API response models
+│       │   │   └── __init__.py
+│       │   ├── cloud_storage/
+│       │   │   ├── gcs_service.py           # Google Cloud Storage (upload/download)
+│       │   │   └── __init__.py
+│       │   ├── budget_service.py            # Budget calculations and rollups
+│       │   ├── llm_parser/
+│       │   │   └── parser.py                # LLM-based expense text parsing
+│       │   ├── ocr_engine/
+│       │   │   └── engine.py                # OCR engine integration (optional)
+│       │   └── __init__.py
+│       ├── utils/
+│       │   ├── settings.py                  # Pydantic BaseSettings (env config)
+│       │   ├── logger.py                    # Structured logging with rotation + job_id context
+│       │   ├── auth_deps.py                 # FastAPI dependency for JWT validation
+│       │   ├── db_utils.py                  # Database error handling + common queries
+│       │   ├── transaction_utils.py         # Transaction DTO conversion helpers
+│       │   ├── password_manager.py          # Bank password retrieval
+│       │   ├── filename_utils.py            # Cloud storage path building
+│       │   ├── jwt_utils.py                 # JWT token creation + validation
+│       │   └── __init__.py
+│       └── __init__.py
+├── frontend/                                # Next.js frontend (TypeScript/React)
+│   ├── next.config.ts                       # Next.js configuration
+│   ├── package.json                         # npm dependencies
+│   ├── tsconfig.json                        # TypeScript configuration
+│   ├── components.json                      # shadcn/ui CLI config
+│   ├── src/
+│   │   ├── app/                             # Next.js App Router pages
+│   │   │   ├── page.tsx                     # Root redirect
+│   │   │   ├── layout.tsx                   # Root layout (providers, fonts)
+│   │   │   ├── globals.css                  # Tailwind config + CSS custom properties (OkLCH theme)
+│   │   │   ├── transactions/page.tsx        # Transactions list + filters
+│   │   │   ├── settlements/page.tsx         # Settlement calculations
+│   │   │   ├── analytics/page.tsx           # Analytics visualizations
+│   │   │   ├── budgets/page.tsx             # Budget management
+│   │   │   ├── review/page.tsx              # Review queue (flagged items)
+│   │   │   ├── settings/page.tsx            # Category + tag management
+│   │   │   └── login/page.tsx               # Authentication
+│   │   ├── components/
+│   │   │   ├── providers.tsx                # React Query + ThemeProvider + Toaster
+│   │   │   ├── theme-toggle.tsx             # Dark mode toggle
+│   │   │   ├── transactions/
+│   │   │   │   ├── transactions-page.tsx        # Main page orchestrator
+│   │   │   │   ├── transactions-table.tsx       # Virtual scrolling table
+│   │   │   │   ├── transaction-filters.tsx      # Filter panel
+│   │   │   │   ├── transaction-details-drawer.tsx
+│       │   │   ├── transaction-edit-modal.tsx
+│       │   │   ├── transaction-inline-edit.tsx
+│       │   │   ├── add-transaction-modal.tsx
+│       │   │   ├── bulk-edit-modal.tsx
+│       │   │   ├── split-transaction-modal.tsx
+│       │   │   ├── split-editor.tsx
+│       │   │   ├── group-expense-modal.tsx
+│       │   │   ├── email-links-drawer.tsx
+│       │   │   ├── pdf-viewer.tsx
+│       │   │   ├── category-selector.tsx
+│       │   │   ├── tag-selector.tsx
+│       │   │   └── ... (25+ component files)
+│   │   ├── settlements/
+│   │   │   └── settlement-filters.tsx
+│   │   ├── analytics/
+│   │   │   ├── analytics-charts.tsx
+│   │   │   ├── analytics-filters.tsx
+│   │   │   └── analytics-overview.tsx
+│   │   ├── budgets/
+│   │   │   ├── budgets-list.tsx
+│   │   │   └── budgets-overview.tsx
+│   │   ├── review/
+│   │   │   └── review-queue.tsx
+│   │   ├── settings/
+│   │   │   ├── categories-manager.tsx
+│   │   │   └── tags-manager.tsx
+│   │   ├── workflow/
+│   │   │   └── workflow-sheet.tsx            # Real-time workflow progress UI
+│   │   ├── layout/
+│   │   │   ├── main-layout.tsx
+│   │   │   └── navigation.tsx
+│   │   ├── split-editor/
+│   │   │   └── split-editor.tsx
+│   │   └── ui/                              # Radix UI primitives (auto-generated by shadcn)
+│   │       ├── button.tsx, dialog.tsx, sheet.tsx, etc.
+│   │       └── modal/                       # Custom modal primitives
+│   ├── lib/
+│   │   ├── api/
+│   │   │   ├── client.ts                    # Singleton API client (all backend calls)
+│   │   │   └── types/
+│   │   │       └── workflow.ts              # Workflow-specific types
+│   │   ├── types/
+│   │   │   └── index.ts                     # All canonical TypeScript interfaces
+│   │   │       ├─ Transaction, SplitEntry, SplitBreakdown
+│   │   │       ├─ Category, Tag, Participant
+│   │   │       ├─ SettlementSummary, SettlementDetail
+│   │   │       ├─ TransactionFilters, ExpenseAnalytics
+│   │   │       └─ EmailMetadata, EmailDetails
+│   │   ├── format-utils.ts                  # formatCurrency(), formatDate() (SSR-safe)
+│   │   ├── utils.ts                         # cn() helper (clsx + tailwind-merge)
+│   │   └── workflow-tasks.ts                # SSE event → task tree builder
+│   ├── hooks/
+│   │   ├── use-transactions.ts              # useTransactions(), useInfiniteTransactions()
+│   │   ├── use-categories.ts                # useCategories(), useCreateCategory()
+│   │   ├── use-settlements.ts               # useSettlementSummary(), useSettlementDetail()
+│   │   ├── use-workflow.ts                  # useWorkflowStatus(), useWorkflowStream()
+│   │   ├── use-analytics.ts                 # useExpenseAnalytics()
+│   │   ├── use-budgets.ts                   # useBudgets(), useCreateBudget()
+│   │   ├── use-tags.ts                      # useTags(), useCreateTag()
+│   │   ├── use-accounts.ts                  # useAccounts()
+│   │   ├── use-participants.ts              # useParticipants()
+│   │   └── use-debounce.ts                  # useDebounce()
+│   ├── store/                               # Global state (TanStack Query)
+│   └── public/                              # Static assets
+├── docs/                                    # Documentation
+│   └── superpowers/                         # Spec documents
+├── scripts/                                 # Repository-level scripts
+├── .planning/                               # GSD planning (execution phases)
+│   ├── codebase/                            # Codebase analysis (this file)
+│   └── phases/                              # Implementation phase plans
+└── CLAUDE.md                                # Project instructions
 ```
 
 ## Directory Purposes
 
-**`backend/src/apis/routes/`:**
-- Purpose: HTTP boundary — only request parsing, validation, delegation to services
-- Contains: `transaction_read_routes.py`, `transaction_write_routes.py`, `transaction_split_routes.py`, `settlement_routes.py`, `participant_routes.py`, `workflow_routes.py`, `splitwise_routes.py`
-- Key pattern: Routes do not contain business logic; they call Operations classes
+**`backend/`:**
+- **Purpose:** FastAPI backend server for expense tracking and statement processing
+- **Stack:** Python 3.10+, FastAPI, SQLAlchemy 2.0 async, PostgreSQL, APScheduler
+- **Entry:** `main.py` (run via `poetry run uvicorn main:app --reload`)
 
-**`backend/src/apis/schemas/`:**
-- Purpose: Pydantic models for API request/response contracts
-- Contains: `common.py` (`ApiResponse`), `transactions.py`, `settlements.py`, `participants.py`, `workflow.py`
+**`frontend/`:**
+- **Purpose:** React 19 web UI for expense management
+- **Stack:** Next.js 15 (App Router), TypeScript, TanStack React Query, Tailwind CSS 4
+- **Entry:** `src/app/page.tsx` → redirects to `/transactions` (run via `npm run dev`)
 
-**`backend/src/services/database_manager/operations/`:**
-- Purpose: All SQL/ORM queries, organized by entity
-- Key files: `transaction_operations.py` (heaviest), `category_operations.py`, `account_operations.py`, `tag_operations.py`, `participant_operations.py`, `statement_log_operations.py`, `suggestion_operations.py`
-- All re-exported via `operations/__init__.py`
+**`backend/src/apis/`:**
+- **Purpose:** HTTP API layer (route handlers + schema definitions)
+- **Organization:** Separate route files per domain (transactions, settlements, workflow, etc.); schemas separate
+- **Pattern:** Each route file is a self-contained FastAPI router with dependencies and error handling
 
-**`backend/src/services/database_manager/models/`:**
-- Purpose: SQLAlchemy declarative ORM models
-- Key files: `transaction.py`, `account.py`, `category.py`, `tag.py`, `participant.py`, `statement_processing_log.py`, `transaction_tag.py`
+**`backend/src/services/`:**
+- **Purpose:** Core business logic and external service integrations
+- **Organization:** Subdirectory per concern (database_manager, email_ingestion, orchestrator, etc.)
+- **Entry Point:** StatementWorkflow (orchestrator/statement_workflow.py) — main domain logic
+
+**`backend/src/services/database_manager/`:**
+- **Purpose:** Database schema, connection pooling, and CRUD operations
+- **Organization:**
+  - `connection.py` — Async engine + session factory (lifecycle management)
+  - `models/` — SQLAlchemy ORM classes (schema definition)
+  - `operations/` — Data access classes (queries + transactions)
+  - `migrations/` — Alembic revision files (schema version control)
 
 **`backend/src/services/orchestrator/`:**
-- Purpose: Statement processing pipeline coordination
-- Key files: `statement_workflow.py` (main orchestrator), `transaction_standardizer.py`, `csv_processor.py`
-- Helpers: `statement_extractor_helper.py`, `splitwise_processor_helper.py`, `data_standardizer_helper.py`
+- **Purpose:** Statement processing pipeline orchestration
+- **Main File:** `statement_workflow.py` — Coordinates email fetch, PDF processing, extraction, standardization, and DB insertion
+- **Helper Files:** Sub-orchestrators for each phase (extraction, standardization, Splitwise sync)
 
-**`backend/src/services/statement_processor/`:**
-- Purpose: PDF handling and LLM-based extraction
-- Key files: `pdf_unlocker.py`, `pdf_page_filter.py`, `document_extractor.py` (agentic-doc), `schemas.py`
+**`backend/src/services/email_ingestion/`:**
+- **Purpose:** Gmail integration and bank alert parsing
+- **Organization:**
+  - `client.py` — Gmail API wrapper
+  - `service.py` — Transactional email processing
+  - `alert_ingestion_service.py` — Real-time alert parser (scheduled job)
+  - `parsers/` — Bank-specific email parsers (7 banks supported)
+
+**`backend/src/utils/`:**
+- **Purpose:** Cross-cutting utilities
+- **Key Files:**
+  - `settings.py` — Environment config (loads from `.env` + `.env.secrets`)
+  - `logger.py` — Structured logging with file rotation
+  - `auth_deps.py` — JWT validation dependency for FastAPI
+  - `password_manager.py` — Bank password retrieval
 
 **`frontend/src/app/`:**
-- Purpose: Next.js App Router pages — one file per route, all are thin wrappers
-- Pattern: `page.tsx` imports one feature component and wraps in `<MainLayout>`
+- **Purpose:** Next.js App Router pages (URL routing)
+- **Pattern:** Each page file renders a single feature component; minimal logic
+- **Routing:** `/transactions`, `/settlements`, `/analytics`, `/budgets`, `/review`, `/settings`, `/login`
 
-**`frontend/src/components/transactions/`:**
-- Purpose: Largest component domain — all transaction UI
-- Contains: Table, detail drawer, edit modal, add modal, bulk edit, split editor, group expense modals, inline editing, email links, PDF viewer, tag/category selectors, transfer chips
-
-**`frontend/src/components/ui/`:**
-- Purpose: Reusable primitives from Radix UI, styled with Tailwind
-- Important: `modal/index.tsx` is the custom modal — always use this instead of raw Radix `Dialog` for modal overlays
-
-**`frontend/src/hooks/`:**
-- Purpose: One hook file per data domain
-- Files: `use-transactions.ts`, `use-categories.ts`, `use-tags.ts`, `use-accounts.ts`, `use-participants.ts`, `use-settlements.ts`, `use-analytics.ts`, `use-budgets.ts`, `use-workflow.ts`, `use-debounce.ts`, `use-local-storage.ts`, `use-transaction-keyboard-nav.ts`
+**`frontend/src/components/`:**
+- **Purpose:** Feature-specific React components
+- **Organization:** Subdirectory per feature (transactions, settlements, analytics, etc.); shared UI in `ui/`
+- **Pattern:** Components use React Hook Form + Zod for forms; TanStack Query via custom hooks
 
 **`frontend/src/lib/`:**
-- Purpose: Pure utilities and types — no React
-- `api/client.ts` is the only file that imports from external HTTP libraries
+- **Purpose:** Shared utilities and types
+- **Key Files:**
+  - `api/client.ts` — Singleton API client (all backend calls)
+  - `types/index.ts` — Canonical TypeScript interfaces (single source of truth)
+  - `format-utils.ts` — Date/currency formatting (SSR-safe)
+
+**`frontend/src/hooks/`:**
+- **Purpose:** Custom React Query hooks for server state management
+- **Pattern:** One hook file per domain (transactions, categories, settlements, etc.)
+- **Pattern:** Queries for fetches, mutations for writes; cache invalidation on mutation success
 
 ## Key File Locations
 
 **Entry Points:**
-- `backend/main.py`: FastAPI app creation and router registration
-- `frontend/src/app/layout.tsx`: Root Next.js layout (fonts, providers)
-- `frontend/src/app/page.tsx`: Root redirect to `/transactions`
+- `backend/main.py` — FastAPI app startup
+- `frontend/src/app/page.tsx` — Root page (redirects to transactions)
+- `backend/src/services/orchestrator/statement_workflow.py` — Statement processing pipeline
 
 **Configuration:**
-- `backend/src/utils/settings.py`: All backend config via `get_settings()`
-- `backend/configs/.env`: Non-secret env vars
-- `frontend/.env.local`: `NEXT_PUBLIC_API_URL` (not committed; see `.env.local.example`)
-- `backend/alembic.ini`: Alembic migration connection string
+- `backend/configs/.env` — Environment variables (git-ignored)
+- `backend/src/utils/settings.py` — Pydantic config loader
+- `frontend/src/app/globals.css` — Tailwind + CSS custom properties (theme)
 
 **Core Logic:**
-- `backend/src/services/orchestrator/statement_workflow.py`: Statement pipeline orchestrator
-- `backend/src/services/database_manager/operations/transaction_operations.py`: All transaction DB queries
-- `backend/src/services/database_manager/connection.py`: Async engine + session factory
-- `frontend/src/lib/api/client.ts`: All frontend→backend HTTP calls
-- `frontend/src/lib/types/index.ts`: All canonical TypeScript interfaces
+- `backend/src/services/orchestrator/statement_workflow.py` — Main workflow orchestrator
+- `backend/src/services/database_manager/operations/` — All DB queries (domain-organized)
+- `backend/src/apis/routes/` — HTTP route handlers (domain-organized)
+- `frontend/src/lib/api/client.ts` — API client (all backend calls)
 
-**Database:**
-- `backend/src/services/database_manager/models/transaction.py`: Core transaction model
-- `backend/src/services/database_manager/migrations/versions/`: Alembic migration files
+**Data Access:**
+- `backend/src/services/database_manager/models/transaction.py` — Core Transaction model
+- `backend/src/services/database_manager/models/account.py` — Bank account with statement sender email + password
+- `backend/src/services/database_manager/operations/transaction_operations.py` — Complex transaction queries
 
 **Testing:**
-- `backend/tests/test_api_integration.py`: API integration tests
-- `backend/tests/test_settlement_calculations.py`: Settlement logic tests
-- `backend/tests/test_workflow_orchestrator.py`: Workflow orchestration tests
+- `backend/tests/` — Pytest test files (mirrors src/ structure)
 
 ## Naming Conventions
 
-**Backend Files:**
-- Routes: `{domain}_routes.py` (e.g., `transaction_read_routes.py`, `settlement_routes.py`)
-- Models: singular noun (e.g., `transaction.py`, `category.py`)
-- Operations: `{domain}_operations.py` (e.g., `transaction_operations.py`)
-- Services: descriptive module name (e.g., `statement_workflow.py`, `gcs_service.py`)
-- Helpers: `{domain}_helper.py` (e.g., `statement_extractor_helper.py`)
+**Files:**
 
-**Backend Classes:**
-- Operations: `{Domain}Operations` (e.g., `TransactionOperations`, `CategoryOperations`)
-- Services: `{Name}Service`, `{Name}Workflow`, `{Name}Client` (e.g., `SplitwiseService`, `StatementWorkflow`, `EmailClient`)
+| Pattern | Purpose | Examples |
+|---------|---------|----------|
+| `*_routes.py` | FastAPI route handlers | `transaction_routes.py`, `settlement_routes.py` |
+| `*_operations.py` | Database CRUD + queries | `transaction_operations.py`, `category_operations.py` |
+| `*_service.py` | Business logic service | `budget_service.py`, `splitwise_service.py` |
+| `*_processor.py` | Data transformation | `csv_processor.py`, `transaction_standardizer.py` |
+| `*_helper.py` | Sub-orchestrator / phase handler | `statement_extractor_helper.py`, `data_standardizer_helper.py` |
+| `*_schemas.py` | Pydantic/SQLAlchemy models | `workflow.py` (API schemas), `statement_processor/schemas.py` (internal DTOs) |
+| `.py` (no suffix) | Utilities, managers | `logger.py`, `password_manager.py`, `filename_utils.py` |
 
-**Frontend Files:**
-- Pages: `page.tsx` (Next.js convention)
-- Components: `kebab-case.tsx` (e.g., `transactions-table.tsx`, `add-transaction-modal.tsx`)
-- Hooks: `use-{domain}.ts` (e.g., `use-transactions.ts`, `use-settlements.ts`)
-- Types/utils: `kebab-case.ts` (e.g., `format-utils.ts`, `workflow-tasks.ts`)
+**Directories:**
 
-**Frontend Directories:**
-- Feature components: `src/components/{feature}/` (plural domain name)
-- Pages: `src/app/{route}/page.tsx`
+| Pattern | Purpose |
+|---------|---------|
+| `src/apis/` | HTTP API layer (routes + schemas) |
+| `src/services/` | Business logic services |
+| `src/utils/` | Cross-cutting utilities |
+| `src/services/{domain}/` | Domain-specific services (email_ingestion, orchestrator, etc.) |
+| `src/services/database_manager/{models,operations,migrations}` | ORM + data access |
+| `src/components/{feature}/` | Feature-specific React components |
+| `src/hooks/` | Custom React Query hooks |
+
+**Classes:**
+
+| Pattern | Purpose | Example |
+|---------|---------|---------|
+| `*Operations` | Database CRUD + queries | `TransactionOperations.create_transaction()` |
+| `*Service` | Business logic service | `SplitwiseService.get_expenses()` |
+| `*Workflow` / `*Helper` | Orchestration | `StatementWorkflow.run()` |
+| `*Extractor` | Data extraction | `DocumentExtractor.extract_transactions()` |
+| `*Parser` | Data parsing | `CashbackSBIParser.parse()` |
+
+**Functions:**
+
+- **Routes:** `snake_case` (FastAPI convention) — `get_transactions()`, `create_transaction()`
+- **Services:** `snake_case` — `get_expenses()`, `process_pdf()`
+- **Utilities:** `snake_case` — `get_logger()`, `nickname_to_schema_key()`
+- **React Hooks:** `camelCase` with `use` prefix — `useTransactions()`, `useSettlementSummary()`
+- **React Components:** `PascalCase` — `TransactionTable`, `SettlementFilters`
+- **Variables:** `snake_case` (Python), `camelCase` (TypeScript) — `transaction_date`, `participantName`
 
 ## Where to Add New Code
 
-**New Backend API Endpoint:**
-1. Add route handler to appropriate file in `backend/src/apis/routes/` (or create `{domain}_routes.py`)
-2. Add Pydantic schemas to `backend/src/apis/schemas/{domain}.py`
-3. Add DB operation static methods to `backend/src/services/database_manager/operations/{domain}_operations.py`
-4. Register new router in `backend/main.py` if it's a new domain
-5. Tests: `backend/tests/test_api_integration.py`
+**New Feature (End-to-End):**
 
-**New Frontend Feature:**
-1. Create feature components in `frontend/src/components/{feature}/`
-2. Create hooks in `frontend/src/hooks/use-{feature}.ts`
-3. Add API methods to `frontend/src/lib/api/client.ts`
-4. Add TypeScript types to `frontend/src/lib/types/index.ts`
-5. Create page at `frontend/src/app/{route}/page.tsx` wrapping main component in `<MainLayout>`
+1. **Database Model:** Add to `backend/src/services/database_manager/models/` (e.g., `new_entity.py`)
+2. **Database Operations:** Add class to `backend/src/services/database_manager/operations/new_entity_operations.py` (e.g., `NewEntityOperations`)
+3. **Migration:** Run `poetry run alembic revision --autogenerate -m "add new_entity table"` in `backend/`
+4. **API Schema:** Add to `backend/src/apis/schemas/new_entity.py` (DTOs for request/response)
+5. **API Routes:** Create `backend/src/apis/routes/new_entity_routes.py` (HTTP handlers)
+6. **Service:** If complex logic, add to `backend/src/services/new_entity_service.py`
+7. **Frontend Types:** Add to `frontend/src/lib/types/index.ts` (canonical interface)
+8. **Frontend Hook:** Create `frontend/src/hooks/use-new-entities.ts` (React Query wrapper)
+9. **Frontend Component:** Create `frontend/src/components/new-entity/new-entity-list.tsx` (UI)
+10. **Frontend Page:** Create `frontend/src/app/new-entities/page.tsx` (route + layout)
 
-**New Database Model:**
-1. Create SQLAlchemy model in `backend/src/services/database_manager/models/{name}.py`
-2. Import in `backend/src/services/database_manager/models/__init__.py`
-3. Generate migration: `poetry run alembic revision --autogenerate -m "description"` from `backend/`
-4. Apply: `poetry run alembic upgrade head`
+**New Route Handler:**
+- File: `backend/src/apis/routes/new_feature_routes.py`
+- Pattern: Import from `database_manager.operations`, call async, return Pydantic schema wrapped in `ApiResponse`
+- Auth: Add `dependencies=[Depends(get_current_user)]` to `main.py` include_router call
 
-**New Utility Function:**
-- Shared backend helpers: `backend/src/utils/` (pick closest file or create new `{domain}_utils.py`)
-- Frontend formatting: `frontend/src/lib/format-utils.ts`
-- Frontend class merging: `frontend/src/lib/utils.ts` (`cn()`)
+**New Service/Business Logic:**
+- File: `backend/src/services/new_service.py` or `backend/src/services/domain/new_service.py`
+- Pattern: Async methods, structured logging, error handling (propagate as-is)
+- Testing: Mock external services (Gmail, Splitwise, GCS)
+
+**New Database Operation:**
+- File: `backend/src/services/database_manager/operations/entity_operations.py` (add to existing or new class)
+- Pattern: Static async methods, accept `AsyncSession`, return Pydantic DTOs or native types
+- Error Handling: Catch `SQLAlchemy` exceptions, log with context, re-raise
+
+**New React Component:**
+- File: `frontend/src/components/feature/ComponentName.tsx`
+- Pattern: Import from custom hooks (for data), use Radix UI primitives, style with `cn()` + Tailwind
+- Forms: Use React Hook Form + Zod
+- Avoid: Direct API calls (use custom hooks), hardcoded styles (use Tailwind)
+
+**New React Hook:**
+- File: `frontend/src/hooks/use-feature.ts`
+- Pattern: Wrap API client methods with `useQuery()` or `useMutation()` from TanStack React Query
+- Cache Invalidation: On mutation success, invalidate related query keys
+
+**New Utility:**
+- File: `backend/src/utils/new_utility.py` or `frontend/src/lib/new-utils.ts`
+- Pattern: Pure functions, no side effects; document inputs/outputs
 
 ## Special Directories
 
 **`backend/data/`:**
-- Purpose: Local file storage for PDFs and extracted CSVs during workflow processing
-- Generated: Yes (created by workflow)
-- Committed: No (in `.gitignore`)
+- **Purpose:** Local file storage for statement processing
+- **Generated:** Yes (auto-created by statement workflow)
+- **Committed:** No (git-ignored, contents are ephemeral)
+- **Subdirs:**
+  - `locked_statements/` — Downloaded PDFs (encrypted)
+  - `unlocked_statements/` — Decrypted PDFs (intermediate)
+  - `extracted_data/` — CSV extraction output (intermediate)
+  - `backups/` — Database dumps
 
 **`backend/logs/`:**
-- Purpose: Rotating log files from `backend/src/utils/logger.py`
-- Generated: Yes
-- Committed: No
+- **Purpose:** Rotating log files
+- **Generated:** Yes (auto-created on first log write)
+- **Committed:** No (git-ignored)
+- **Cleanup:** Manual (or configure rotation in `logger.py`)
 
 **`backend/configs/secrets/`:**
-- Purpose: Google OAuth client secrets and GCS service account key
-- Generated: No (manually placed)
-- Committed: No (gitignored)
+- **Purpose:** Service account keys (Google Cloud, etc.)
+- **Generated:** No (user manually placed)
+- **Committed:** No (git-ignored for security)
+- **Contents:** `client_secret.json`, `gcs_service_account_key.json`
 
-**`backend/src/services/database_manager/migrations/versions/`:**
-- Purpose: Alembic migration scripts (one file per schema change)
-- Generated: Yes (`alembic revision --autogenerate`)
-- Committed: Yes
+**`backend/.venv/`:**
+- **Purpose:** Poetry virtual environment
+- **Generated:** Yes (`poetry install`)
+- **Committed:** No (git-ignored)
 
-**`frontend/src/components/ui/`:**
-- Purpose: Primitive UI components from shadcn/ui (Radix + Tailwind)
-- Generated: Partially (shadcn CLI adds files here)
-- Committed: Yes (treated as source code, can be modified)
+**`frontend/node_modules/`:**
+- **Purpose:** npm dependencies
+- **Generated:** Yes (`npm install`)
+- **Committed:** No (git-ignored)
+
+**`frontend/.next/`:**
+- **Purpose:** Next.js build output + cache
+- **Generated:** Yes (auto on dev/build)
+- **Committed:** No (git-ignored)
 
 **`.planning/`:**
-- Purpose: GSD planning documents — codebase maps, phase plans
-- Generated: Yes (by Claude Code agents)
-- Committed: Optionally (project planning artifacts)
+- **Purpose:** GSD phase planning documents (auto-generated)
+- **Committed:** Yes (used for execution)
+
+**`docs/superpowers/`:**
+- **Purpose:** Manual specification documents
+- **Committed:** Yes
 
 ---
 
-*Structure analysis: 2026-03-27*
+*Structure analysis: 2026-08-09*

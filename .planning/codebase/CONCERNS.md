@@ -1,193 +1,222 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-03-27
-
----
+**Analysis Date:** 2026-08-09
 
 ## Tech Debt
 
-**All-rows-in-memory filtering for paginated endpoint:**
-- Issue: `GET /api/transactions/` fetches up to 1,000,000 rows from the database and filters/paginates them in Python instead of pushing predicates into SQL. The `has_filters` branch in `transaction_read_routes.py` explicitly sets `limit=1000000`.
-- Files: `backend/src/apis/routes/transaction_read_routes.py` lines 91-108 and 289-303
-- Impact: Memory usage scales linearly with transaction count. A single filter query already fetches and deserializes the entire transactions table plus JOINs. The endpoint also executes a second full-table scan just to get `total_count` even when no filters apply (lines 289-303).
-- Fix approach: Move all filter conditions (account, category, tag, direction, search, participant, is_flagged, etc.) into parameterised SQL WHERE clauses inside `TransactionOperations`. Return `(rows, total_count)` from a single query using a window function or `COUNT(*) OVER()`.
+### Monolithic Database Operations File
+- **Issue:** `transaction_operations.py` is 2,217 lines, `statement_workflow.py` is 2,080 lines, `email_ingestion/client.py` is 1,457 lines. These files are impossible to test, review, or maintain in isolation.
+- **Files:** `src/services/database_manager/operations/transaction_operations.py`, `src/services/orchestrator/statement_workflow.py`, `src/services/email_ingestion/client.py`
+- **Impact:** High cognitive load, difficult to add features, hard to locate bugs, slow development velocity
+- **Fix approach:** Split these files into smaller, cohesive modules. For `transaction_operations.py`: create separate classes for each entity (TransactionOps, TagOps, etc. are already there but in same file). For `statement_workflow.py`: extract extraction logic, standardization logic, and helpers into separate modules. For `email_ingestion/client.py`: separate Gmail API wrapping from business logic.
 
-**`order_by` parameter interpolated directly into SQL strings:**
-- Issue: `get_all_transactions` and `get_transactions_by_date_range` accept an `order_by: str` parameter that is inserted into SQL via an f-string (`ORDER BY t.transaction_date {order_by}`). The callers only ever pass `"ASC"` or `"DESC"`, but the value is never validated before reaching the database.
-- Files: `backend/src/services/database_manager/operations/transaction_operations.py` lines 195, 209, 258, 273
-- Impact: Low risk in current single-user context, but technically allows SQL injection if the parameter origin ever changes.
-- Fix approach: Validate `order_by` against an allowlist `{"ASC", "DESC"}` before interpolation, or use SQLAlchemy's `asc()`/`desc()` column expressions.
+### Async/Sync Boundary Violations
+- **Issue:** `asyncio.run()` and `asyncio.new_event_loop()` are being used inside async functions, blocking the event loop.
+- **Files:** `src/services/email_ingestion/client.py:1399`, `src/services/statement_processor/pdf_unlocker.py:93`
+- **Impact:** Blocks async event loop, prevents concurrent operations, poor performance under load
+- **Fix approach:** Remove sync boundary violations. `EmailClient._generate_normalized_filename()` should be async, or the calling sync code should await it. For `PDFUnlocker`, make it fully async by refactoring `_get_password_for_bank()`.
 
-**Duplicate `extract_search_pattern_from_csv_filename` function:**
-- Issue: The same function body exists in two places: `statement_workflow.py` (module-level function) and `data_standardizer_helper.py` (module-level function `_extract_search_pattern_from_csv_filename`).
-- Files: `backend/src/services/orchestrator/statement_workflow.py` lines 49-75, `backend/src/services/orchestrator/data_standardizer_helper.py` lines 16-38
-- Impact: Risk of drift — bug fixes to one copy may not be applied to the other.
-- Fix approach: Remove the copy in `statement_workflow.py` and import the helper's version.
+### Broad Exception Handling
+- **Issue:** Many route handlers catch bare `Exception` without specific error handling, swallowing all errors into generic "Internal server error" responses.
+- **Files:** `src/apis/routes/transaction_split_routes.py:53,196,198,276,278,358,360,474,520,522`, `src/apis/routes/transaction_write_routes.py:95,210,230,252,347,349,370,419,468,496,538,556`
+- **Impact:** Makes debugging difficult, hides real errors from logs, poor user feedback on what went wrong
+- **Fix approach:** Replace with specific exception handlers for expected errors (e.g., `ValueError`, `KeyError`, database errors). Only catch and log truly unexpected exceptions. Return meaningful error details in HTTP responses.
 
-**`_deduplicate_grouped_expense_collapsed` workaround in memory:**
-- Issue: The method exists specifically to fix duplicate `is_grouped_expense = TRUE` rows that appeared after a migration. The comment says "fixes duplicate display from migration". This is a workaround for a data quality issue rather than a structural fix.
-- Files: `backend/src/services/database_manager/operations/transaction_operations.py` lines 63-83
-- Impact: Applied on every read path that calls `_process_transactions`. If the underlying data issue (multiple collapsed rows per group) can be fully resolved by data cleanup, this loop becomes dead weight on every query.
-- Fix approach: Run a one-time data migration to soft-delete extra collapsed rows per group, verify, then remove the in-memory deduplication.
+### SQL Injection Risk in Query Construction
+- **Issue:** `order_by` parameter is used directly in f-strings with `text()` queries without validation. Users can inject arbitrary SQL if this parameter reaches the query.
+- **Files:** `src/services/database_manager/operations/transaction_operations.py:189-210`, `src/apis/routes/transaction_read_routes.py:430,447`
+- **Impact:** SQL injection vulnerability allowing unauthorized data access or modification
+- **Fix approach:** Validate `order_by` against whitelist of allowed values (e.g., `{"ASC", "DESC"}`) before using in query. Use SQLAlchemy expression language (not `text()`) for dynamic parts when possible, or use parameterized placeholders.
 
-**Splitwise API client uses synchronous `requests` in async FastAPI context:**
-- Issue: `SplitwiseAPIClient` uses the blocking `requests` library with `requests.get()`. This is called from async service code inside `asyncio` tasks (the workflow background task).
-- Files: `backend/src/services/splitwise_processor/client.py` lines 50, 75, 103, 160
-- Impact: Each Splitwise API call blocks the asyncio event loop thread for the duration of the HTTP round-trip. During bulk expense fetches with pagination this can cause noticeable delays and prevent other async work from running.
-- Fix approach: Replace `requests` with `httpx.AsyncClient` and make all methods `async`.
+## Known Issues & Limitations
 
-**`sys.path.insert` scattered across source files:**
-- Issue: Production source files (`document_extractor.py`, `pdf_page_filter.py`) use `sys.path.insert(0, str(backend_path))` to patch the import path at module load time. This is a script-oriented workaround that conflicts with the package being installed via `poetry`.
-- Files: `backend/src/services/statement_processor/document_extractor.py` line 24, `backend/src/services/statement_processor/pdf_page_filter.py` line 24
-- Impact: Makes import resolution non-deterministic when modules are imported in different contexts.
-- Fix approach: Remove `sys.path.insert` from library modules; only scripts in `backend/scripts/` and tests need it.
+### Unresolved Statement Backlog Scripts
+- **Problem:** Two operational scripts in `backend/scripts/` appear to be one-off reconciliation tools:
+  - `compare_cashback_sbi_statement.py`: Hardcoded bank password (line 29: `PASSWORD = "201219985750"`), hardcoded dates (April-June 2026), never updated after 2026-05-24
+  - `process_statement_only_backlog.py`: One-time processor for retired review-queue type, last modified 2026-08-08
+- **Files:** `backend/scripts/compare_cashback_sbi_statement.py`, `backend/scripts/process_statement_only_backlog.py`
+- **Blocks:** Cannot validate statement extraction quality or reconcile backlog without manually running these scripts
+- **Recommended action:** Document these as one-off tools, move to `/docs/reconciliation/` directory, or implement as proper internal API endpoints if they need to run regularly.
 
-**Alembic `sqlalchemy.url` hard-codes user and database name:**
-- Issue: `alembic.ini` contains `sqlalchemy.url = postgresql://chaitanya:@localhost:5432/expense_tracker`. The `Settings` model defaults to `DB_NAME = "expense_tracker"` but the CLAUDE.md documentation references `expense_db`. If the database is ever renamed the alembic URL will diverge from the application URL.
-- Files: `backend/alembic.ini` line 59, `backend/src/utils/settings.py` line 33
-- Impact: Running `alembic upgrade head` against a different database than the running app would create migrations on the wrong schema.
-- Fix approach: Follow the Alembic docs pattern of reading `DATABASE_URL` from the same `Settings` object in `migrations/env.py` so there is a single source of truth.
-
----
-
-## Security Considerations
-
-**CORS set to `allow_origins=["*"]`:**
-- Risk: The FastAPI app accepts cross-origin requests from any domain. Credentials are also allowed (`allow_credentials=True`). Any website visited by the user on the same machine can make authenticated requests to the API.
-- Files: `backend/main.py` lines 29-35
-- Current mitigation: Personal tool running on localhost; not publicly exposed.
-- Recommendations: Restrict `allow_origins` to `["http://localhost:3000"]` or read from an env var. If deploying to Oracle Free / Hetzner, set the production frontend origin.
-
-**No API-level authentication on any route:**
-- Risk: All FastAPI routes have no authentication middleware, token validation, or session checks. Any process with network access to port 8000 can read, create, update, or delete all financial data.
-- Files: `backend/main.py`, all `backend/src/apis/routes/` files
-- Current mitigation: Personal tool on localhost only.
-- Recommendations: Add a static API key or HTTP Basic Auth as a minimum before any external deployment. This is a blocker for the planned Oracle Free / Hetzner migration.
-
-**`statement_password` stored in plaintext in the `accounts` table:**
-- Risk: Bank statement unlock passwords are stored as plaintext strings in the PostgreSQL `accounts` table and read via `BankPasswordManager.get_password_for_sender_async()`.
-- Files: `backend/src/utils/password_manager.py`, `backend/src/services/database_manager/operations/account_operations.py`
-- Current mitigation: Database is localhost-only.
-- Recommendations: Encrypt at rest using a key stored in env (e.g. Fernet/AES) or use OS keychain/Vault before any deployment.
-
-**Gmail OAuth refresh tokens stored in plaintext env file:**
-- Risk: `configs/secrets/.env` contains `GOOGLE_REFRESH_TOKEN` (and `_2` variant). The `TokenManager.save_refreshed_tokens()` method writes updated tokens back to this file as plaintext.
-- Files: `backend/src/services/email_ingestion/token_manager.py` lines 169-212
-- Current mitigation: File is not committed to git (gitignored).
-- Recommendations: Acceptable for local dev; must be addressed before deployment (use Secret Manager, Vault, or encrypted file).
-
----
+### Backend Restart Required After Code Changes
+- **Problem:** Development setup runs backend via Docker Compose without `--reload` flag, so code changes don't auto-reload. Frontend has hot reload via Turbopack, but backend requires manual restart.
+- **Impact:** Slow development loop, easy to forget restart and test against stale code
+- **Workaround:** Currently documented in CLAUDE.md; users must manually `docker compose restart backend`
+- **Fix approach:** Add `--reload` to uvicorn command in docker-compose.yml for development, or provide a dev convenience script.
 
 ## Performance Bottlenecks
 
-**Double full-table scan on every paginated transaction read without filters:**
-- Problem: The no-filter path in `GET /transactions/` fetches the paginated page (correct) but then immediately fetches all transactions again with `limit=1000000` just to compute `total_count` (lines 289-303). This means every un-filtered page load hits the database twice.
-- Files: `backend/src/apis/routes/transaction_read_routes.py` lines 285-304
-- Cause: `total_count` needs to span the whole dataset, not just the current page. The workaround was to re-fetch all.
-- Improvement path: Add `SELECT COUNT(*) FROM transactions WHERE is_deleted = false AND <visibility_filter>` as a dedicated count query, or use `COUNT(*) OVER()` window function in the existing query.
+### Settlement Calculations Done in Python, Not Database
+- **Problem:** `settlement_routes.py` queries transactions with splits, then performs all aggregation and balance calculations in Python using loops and dicts.
+- **Files:** `src/apis/routes/settlement_routes.py:1-614`
+- **Cause:** Complex split_breakdown JSONB structure and participant name normalization aren't easily expressed in SQL
+- **Impact:** O(n) memory overhead, slow for large transaction sets (>10k transactions with splits). No query caching on database side.
+- **Improvement path:** Create database views or stored procedures for settlement calculations. Cache aggregated balances in a separate `settlement_cache` table updated via triggers or background job.
 
-**Settlement calculations done entirely in Python over all shared transactions:**
-- Problem: `settlement_routes.py` pulls every shared transaction (with no date or amount bounds when called from the summary endpoint) and loops over them in Python to compute net balances.
-- Files: `backend/src/apis/routes/settlement_routes.py` lines 150-430
-- Cause: The `split_breakdown` JSONB structure makes SQL-level aggregation non-trivial.
-- Improvement path: For the summary-only view, a PostgreSQL `jsonb_array_elements` query can aggregate per-participant directly in the database.
+### N+1 Risk in Email Ingestion and PDF Extraction
+- **Problem:** Statement workflow downloads PDFs one at a time in a sequential loop rather than batching operations.
+- **Files:** `src/services/orchestrator/statement_workflow.py:557-600` (PDF extraction loop)
+- **Impact:** Email API rate limiting, slow statement processing (especially for multiple accounts/months)
+- **Improvement path:** Implement concurrent PDF extraction (e.g., with `asyncio.gather()`). Batch email queries where possible.
 
-**LLM extraction blocks during workflow; no streaming result buffering:**
-- Problem: `DocumentExtractor` calls `agentic-doc`'s `parse()` synchronously wrapped in `asyncio.to_thread()`. For multi-page PDFs, the entire parse result is held in memory before any CSV is written.
-- Files: `backend/src/services/statement_processor/document_extractor.py`
-- Cause: `agentic-doc` API is synchronous and page-at-a-time streaming is not exposed.
-- Improvement path: This is mostly a library limitation. Ensure statement PDFs are filtered to transaction pages only (already done via `PDFPageFilter`) to minimize document size sent to the API.
+### Missing Database Indexes for Common Queries
+- **Problem:** Transaction table has indexes on single columns (account, date, direction, etc.) but no composite indexes for common filter combinations.
+- **Files:** `src/services/database_manager/models/transaction.py:62-72`
+- **Impact:** Slow queries on filtered transactions (e.g., account + date range + is_deleted), query planner chooses suboptimal plans
+- **Improvement path:** Add composite indexes:
+  - `(account, transaction_date, is_deleted)` for account-scoped date-range queries
+  - `(category_id, transaction_date, is_deleted)` for category analytics
+  - `(email_message_id, is_deleted)` for email dedup
 
----
+### Connection Pool Size May Be Insufficient
+- **Problem:** Connection pool configured with `pool_size=10, max_overflow=20`. Under concurrent workflow + API load, this might exhaust connections.
+- **Files:** `src/services/database_manager/connection.py:37-49`
+- **Impact:** Potential "connection pool exhausted" errors during peak load
+- **Improvement path:** Monitor connection pool utilization in production. Consider increasing to `pool_size=20, max_overflow=40` if concurrent workflows are common.
+
+## Security Considerations
+
+### Hardcoded Passwords in One-Off Scripts
+- **Risk:** Bank statement passwords are hardcoded in `compare_cashback_sbi_statement.py`. If this script is committed or shared, passwords are exposed.
+- **Files:** `backend/scripts/compare_cashback_sbi_statement.py:28-30`
+- **Workaround:** Script is development-only and not in production
+- **Recommendations:** Remove hardcoded credentials. Move to database-backed password manager or environment variables. Never commit credentials even in branch.
+
+### JWT Token Validation Missing Expiry Check in Some Paths
+- **Problem:** `verify_access_token()` catches all `JWTError` but doesn't explicitly validate exp claim before returning.
+- **Files:** `src/utils/jwt_utils.py:18-21`
+- **Current mitigation:** PyJWT library validates exp by default
+- **Recommendations:** Add explicit check and logging for token expiry events. Consider adding token rotation for long-lived sessions.
+
+### No Rate Limiting on API Endpoints
+- **Problem:** No global rate limiter. Endpoints like `/transactions` can be queried unlimited times, `/workflow/run` can spawn unlimited jobs.
+- **Impact:** Vulnerability to denial-of-service attacks, API abuse
+- **Recommendations:** Implement `slowapi` (already in dependencies) or similar rate limiter. Set sensible limits: 100 req/min for read APIs, 10 req/min for write APIs, 1 active workflow job.
+
+### Credentials Cache in EmailClient May Hold Stale Tokens
+- **Problem:** Class-level cache in `EmailClient._credentials_cache` can hold expired tokens if `_is_token_expired()` check fails or token is revoked server-side.
+- **Files:** `src/services/email_ingestion/client.py:33-129`
+- **Current mitigation:** Cache checks expiry with 5-min proactive window
+- **Recommendations:** Add TTL to cached credentials (e.g., 55 min). Implement token revocation detection (e.g., 401 response triggers cache invalidation).
 
 ## Fragile Areas
 
-**In-memory workflow job store lost on server restart:**
-- Files: `backend/src/apis/routes/workflow_routes.py` lines 72-73 (`_jobs: Dict`, `_active_job_id`)
-- Why fragile: Any running workflow job is orphaned when the server process restarts. The SSE stream subscribers receive no signal and the client hangs. The `_active_job_id` guard also persists across restarts in the absence of a restart, so a crashed run cannot be restarted without a fresh process.
-- Safe modification: The comment "single-user personal tool — no Redis needed" is correct for current use; document the known behaviour clearly. Before deployment, consider storing job state in a `workflow_jobs` PostgreSQL table.
-- Test coverage: No tests for SSE streaming or job state persistence.
+### Statement Processing Workflow State Is In-Memory Only
+- **Files:** `src/apis/routes/workflow_routes.py:80-99`
+- **Why fragile:** Job state (`_jobs` dict, `_active_job_id` global) is lost on backend restart. Frontend cannot resume interrupted workflows. Long-running workflows are vulnerable to connection loss.
+- **Safe modification:** Add database table `workflow_jobs` to persist job state (id, mode, status, started_at, completed_at, events). Update `workflow_routes.py` to load/save state from DB. Implement job resume logic on backend startup.
+- **Test coverage:** No tests for job state recovery, multi-job concurrency limits
 
-**Bank schema registry is a manual dictionary requiring code changes to add accounts:**
-- Files: `backend/src/services/statement_processor/schemas.py` (BANK_STATEMENT_MODELS dict), `backend/src/services/statement_processor/document_extractor.py` (`_map_nickname_to_schema`)
-- Why fragile: Adding a new bank card requires: (1) a new Pydantic model in `schemas.py`, (2) a new entry in `BANK_STATEMENT_MODELS`, (3) a new entry in `PAGE_FILTER_CONFIGS`, (4) a case in `_map_nickname_to_schema` in `document_extractor.py`. Missing any step silently falls back to no extraction schema and the statement is skipped.
-- Safe modification: Add a new entry to all four locations together. When adding, validate against a sample PDF before committing.
-- Test coverage: None for schema dispatch logic.
+### Review Queue Dedup Key Is Fragile to Schema Changes
+- **Files:** `src/services/database_manager/operations/review_queue_operations.py` (dedup ON CONFLICT index)
+- **Why fragile:** Recent migration `n9o0p1q2r3s4_narrow_review_queue_dedup_index.py` changed the index to include `transaction_time` and `normalized_description`. If normalization logic changes, duplicate rows can leak through.
+- **Safe modification:** Document the exact normalization steps (title case, trim whitespace) in the model or migration comments. Add integration tests that verify dedup catches intentional duplicates.
+- **Test coverage:** `tests/test_review_queue.py` exists but doesn't test all dedup scenarios (e.g., same transaction entered twice in succession)
 
-**`StatementWorkflow.__init__` constructs `EmailClient` eagerly:**
-- Files: `backend/src/services/orchestrator/statement_workflow.py` lines 113-116
-- Why fragile: Gmail credentials are validated and an HTTP call is made on construction (in `_get_credentials()`). If credentials are not configured, the constructor raises before any workflow logic runs. This means `StatementWorkflow(enable_secondary_account=True)` will fail hard at construction if the secondary account env vars are absent.
-- Safe modification: Lazy-initialize clients, or catch credential errors per-account and mark that account as unavailable rather than aborting construction.
-- Test coverage: `test_complete_workflow.py` mocks at a high level; no unit tests for partial-credential construction.
+### Split Transaction Accounting Correctness
+- **Files:** `src/apis/routes/transaction_split_routes.py`, `src/services/database_manager/operations/transaction_operations.py` (split_breakdown updates)
+- **Why fragile:** `split_breakdown` JSONB structure has no database constraints. Inconsistent splits can be inserted (sum != amount, negative shares, etc.).
+- **Safe modification:** Add validation function to verify `split_breakdown` before insert/update:
+  - All entries sum to transaction amount (within 1 paisa tolerance for rounding)
+  - All amounts are non-negative
+  - Participants exist in the database
+  - No duplicate participant entries
+- **Test coverage:** `tests/test_settlement_calculations.py` tests read-side; no tests for write-side validation
 
-**Duplicate-detection key in bulk insert is fuzzy and can miss real duplicates:**
-- Files: `backend/src/services/database_manager/operations/transaction_operations.py` lines 1082-1095
-- Why fragile: The composite key includes `source_file` and `str(raw_data)`. Two identical transactions from the same bank imported from slightly different CSVs (e.g. one with a GCS path, one from a temp path) produce different keys and both get inserted.
-- Safe modification: The key should use only `(transaction_date, amount, account, description)`. `source_file` and `raw_data` introduce unnecessary entropy.
-- Test coverage: No dedicated unit tests for the composite key collision logic.
+### Soft-Delete Cascade Incomplete
+- **Problem:** When a transaction is soft-deleted, related split rows or grouped expense rows are not automatically soft-deleted. This can leave orphaned rows.
+- **Files:** `src/apis/routes/transaction_write_routes.py` (delete handler), `src/services/database_manager/operations/transaction_operations.py:delete_transaction()`
+- **Impact:** Orphaned rows show up in aggregations, settlement calculations include deleted transactions' splits
+- **Safe modification:** Update `delete_transaction()` to soft-delete all rows with matching `transaction_group_id`. Add database trigger to enforce cascade on is_deleted.
+- **Test coverage:** No test for soft-delete cascade
 
-**`_deduplicate_grouped_expense_collapsed` uses string comparison of UUIDs for ordering:**
-- Files: `backend/src/services/database_manager/operations/transaction_operations.py` lines 74-76
-- Why fragile: `t_id < group_collapsed[group_id]` compares UUID strings lexicographically to pick the "smallest" ID. UUIDs are not lexicographically ordered by creation time (v4 UUIDs are random). The intent is "keep the oldest row" but the mechanism is wrong — it keeps the lexicographically-first UUID which is arbitrary.
-- Safe modification: Compare by `created_at` timestamp instead of UUID string. Requires fetching `created_at` in the same query.
-- Test coverage: None.
-
----
-
-## Missing Critical Features
-
-**Budgets feature has no backend implementation:**
-- Problem: The frontend exposes a full `/budgets` page with `BudgetsOverview` and `BudgetsList` components. `use-budgets.ts` calls `apiClient.getBudgets()`, `createBudget()`, `updateBudget()`, and `deleteBudget()`. These endpoints hit `/api/budgets` which does not exist in the backend — there is no budget model, migration, or router mounted in `main.py`.
-- Blocks: Every budget API call returns a network error. The entire Budgets page is non-functional.
-- Files: `frontend/src/app/budgets/page.tsx`, `frontend/src/hooks/use-budgets.ts`, `frontend/src/lib/api/client.ts` lines 338-361
-
-**Review queue page has no dedicated backend endpoint:**
-- Problem: `frontend/src/app/review/page.tsx` renders a `ReviewQueue` component. There is no `GET /api/review` or equivalent route in the backend. Review/flagged transactions are surfaced via the standard `GET /transactions/?is_flagged=true` parameter, but there is no backend concept of a "review queue" with dedicated status management.
-- Blocks: Any review workflow beyond filtering by `is_flagged` cannot be built without a backend model for review state.
-- Files: `frontend/src/components/review/review-queue.tsx`
-
----
-
-## Test Coverage Gaps
-
-**Statement pipeline has no integration tests against real or fixture PDFs:**
-- What's not tested: `DocumentExtractor._get_schema_from_filename()`, `PDFPageFilter`, `PDFUnlocker`, the full `StatementWorkflow.run_complete_workflow()` path.
-- Files: `backend/tests/test_complete_workflow.py` (mocks the entire workflow at a high level), `backend/src/services/statement_processor/document_extractor.py`
-- Risk: Silent extraction failures when a bank changes its PDF format; schema dispatch bugs go undetected.
-- Priority: High
-
-**Transaction operation methods have no unit tests:**
-- What's not tested: `bulk_insert_transactions`, `_filter_duplicate_transactions`, `_prepare_transaction_for_insert`, `get_expense_analytics`, `soft_delete_splitwise_by_expense_ids`.
-- Files: `backend/src/services/database_manager/operations/transaction_operations.py` (1,977 lines, zero test file coverage of internal methods)
-- Risk: Duplicate-detection regressions, data corruption on bulk inserts, and analytics calculation errors go undetected until visible in the UI.
-- Priority: High
-
-**Settlement calculation logic is lightly tested:**
-- What's not tested: `_infer_paid_by`, edge cases for multi-participant custom splits, the `has_discrepancy` threshold calculation, and the `get_participant_settlement` endpoint.
-- Files: `backend/tests/test_settlement_calculations.py` (94 lines), `backend/src/apis/routes/settlement_routes.py` (614 lines)
-- Risk: Net balance rounding errors or participant name normalization bugs surface silently.
-- Priority: Medium
-
-**Frontend has no test files at all:**
-- What's not tested: All React components, all hooks, all API client methods.
-- Files: `frontend/src/` — no `*.test.*` or `*.spec.*` files found
-- Risk: UI regressions after component refactors are only caught manually.
-- Priority: Medium
-
----
+### Email Dedup Service Relies on Message ID Uniqueness
+- **Problem:** Email dedup uses `email_message_id` as the key. If an email is re-indexed or Gmail returns different message IDs, dedup fails.
+- **Files:** `src/services/email_ingestion/dedup_service.py`
+- **Impact:** Duplicate transactions from the same email
+- **Workaround:** Gmail message IDs are stable per account
+- **Recommendations:** Add email subject + date + sender as fallback dedup key. Log mismatches for investigation.
 
 ## Scaling Limits
 
-**In-memory job store:**
-- Current capacity: One concurrent job, unbounded history in `_jobs` dict.
-- Limit: `_jobs` is never pruned; long-running instances accumulate job objects indefinitely.
-- Scaling path: Prune completed jobs older than N hours, or move to a database-backed store.
+### Single Active Workflow Job
+- **Current capacity:** Only 1 workflow job can run at a time (enforced by `_active_job_id` global)
+- **Limit:** If you want to run multiple statement ingestions concurrently (e.g., two Gmail accounts simultaneously), this will queue them
+- **Scaling path:** Move job state to database with proper locking. Implement queue-based job system (e.g., Celery, RQ, or simple poll-based fetcher). Set max concurrent jobs per account.
 
-**Transaction table has no index on `(account, transaction_date)`:**
-- Current capacity: Not measured, but repeated `WHERE account = X AND transaction_date BETWEEN` queries (settlement, analytics, duplicate detection) rely on sequential scans unless PostgreSQL's planner picks a partial index.
-- Limit: Query time degrades as transaction count grows beyond ~100k rows.
-- Scaling path: Add composite indexes on `(account, transaction_date)` and `(transaction_date, is_deleted)` via Alembic migration.
+### Fixed Email Search Window
+- **Current behavior:** Workflow scans statements from 10th of current month to 10th of previous month (~30 days). Hardcoded in `statement_workflow.py`.
+- **Scaling limit:** If you add more than ~3 Gmail accounts with daily statements, API rate limiting becomes an issue
+- **Scaling path:** Implement incremental sync using `updated_at` from email metadata. Cache last-scanned-date per sender per account. Resume from last known date, not fixed window.
+
+### Splitwise Sync Is Limited to 30 Days or Cursor
+- **Problem:** Splitwise service supports two sync modes: (1) past 30 days, (2) cursor-based from updated_at. No full reconciliation mode.
+- **Files:** `src/services/splitwise_processor/service.py:37-96`
+- **Impact:** Cannot recover from missed transactions older than 30 days without manual intervention
+- **Scaling path:** Add full sync mode that walks all expenses via pagination. Store last-sync cursor and allow manual reset. Implement delta detection to avoid re-inserting unchanged transactions.
+
+## Dependencies at Risk
+
+### agentic-doc (LandingAI) Heavy Dependency
+- **Risk:** Relies on closed-source `landingai-ade` package for PDF/image extraction. If service goes down or API changes, document extraction breaks.
+- **Impact:** Core workflow feature (statement extraction) depends on external AI service
+- **Migration plan:** Have fallback to Tesseract OCR + regex parsing. Keep sample PDFs for regression testing. Monitor LandingAI service status.
+
+### langchain Rapid Development Cycle
+- **Current:** `langchain ^0.2.6` with many point releases per month
+- **Risk:** Breaking changes in minor versions possible
+- **Mitigation:** Pin to `langchain ~0.2.6` (not `^`) to avoid auto-upgrade. Implement integration tests for LLM-based features.
+
+## Missing Critical Features / Known Gaps
+
+### No Transaction Reconciliation UI
+- **Problem:** Users cannot see a statement PDF side-by-side with extracted transactions to verify correctness. The `compare_cashback_sbi_statement.py` script does this, but it's CLI-only and one-off.
+- **Blocks:** Validating statement extraction quality, catching extraction bugs early
+- **Recommendation:** Build a review interface that shows statement PDF thumbnail + extracted table + matched transactions in the UI.
+
+### No Bulk Error Recovery
+- **Problem:** If a workflow fails mid-way (e.g., at standardization step), there's no way to retry just the failed stage without re-downloading PDFs.
+- **Blocks:** Efficient error recovery
+- **Recommendation:** Implement `resume` mode that skips download/unlock and re-runs failed stages. Persist intermediate CSVs to GCS for resumption.
+
+### No Audit Trail for Transaction Changes
+- **Problem:** When a transaction is edited, created, or deleted, there's no log of who did what and when (beyond soft-delete timestamp).
+- **Impact:** Cannot trace data lineage, audit for reconciliation
+- **Recommendation:** Add `transaction_audit_log` table with (transaction_id, action, old_value, new_value, changed_by, changed_at). Record all mutations.
+
+### Statement Sender Address Changes Not Tracked
+- **Problem:** Recent issue (2026-08-08): Axis Bank and Yes Bank changed statement sender email addresses. Accounts table has old sender addresses, so new statements aren't recognized.
+- **Files:** `src/services/database_manager/models/account.py:statement_sender`, `src/services/orchestrator/statement_workflow.py` (sender matching logic)
+- **Impact:** Missed statements from accounts with changed sender addresses
+- **Status:** Already detected and noted in MEMORY.md; senders fixed 2026-08-08, backlog runs still pending
+- **Recommendation:** Add `statement_sender_aliases` array to accounts table. Update workflow to match on any alias. Monitor for future sender changes by logging unmatched senders.
+
+## Test Coverage Gaps
+
+### Email Ingestion Workflow
+- **Untested area:** End-to-end Gmail OAuth flow, email search, PDF download, and attachment extraction
+- **Files:** `src/services/email_ingestion/`, `src/services/orchestrator/statement_workflow.py` (email search block)
+- **Risk:** Changes to Gmail API integration could break silently
+- **Recommendation:** Add integration tests with mock Gmail API responses. Test edge cases: empty search results, malformed PDFs, missing attachments, rate limiting.
+
+### Splitwise Sync
+- **Untested area:** Splitwise data reconciliation, split_breakdown construction, participant matching
+- **Files:** `src/services/splitwise_processor/`
+- **Risk:** Splitwise API changes or edge cases (group expenses, payment settlements, deleted expenses) could corrupt data
+- **Recommendation:** Add mock-based tests for all Splitwise expense types. Test split_breakdown calculation against known examples.
+
+### Statement Extraction & Standardization
+- **Untested area:** LLM-based extraction accuracy, CSV parsing, transaction standardization with edge cases (multi-currency, negative amounts, blank fields)
+- **Files:** `src/services/orchestrator/transaction_standardizer.py`, `src/services/statement_processor/document_extractor.py`
+- **Risk:** Bad data can be inserted silently if standardizer has bugs
+- **Recommendation:** Create unit tests with sample CSVs from each supported bank. Test edge cases: zero amount, null description, malformed date, duplicate reference numbers.
+
+### Settlement Calculation Edge Cases
+- **Untested area:** Circular debts, participants entering/leaving groups mid-month, refund scenarios, rounding accuracy
+- **Files:** `src/apis/routes/settlement_routes.py`
+- **Risk:** Settlement balances could be incorrect, causing misunderstandings between participants
+- **Recommendation:** Add property-based tests using hypothesis to generate random transaction/split combinations. Verify settlements balance to zero. Test specific scenarios: refunds, group transfers, one-time vs. recurring.
 
 ---
 
-*Concerns audit: 2026-03-27*
+*Concerns audit: 2026-08-09*
