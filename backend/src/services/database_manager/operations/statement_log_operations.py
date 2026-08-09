@@ -9,23 +9,6 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Ordered list used to determine whether a status is "earlier" or "later" in the pipeline.
-_STATUS_ORDER = [
-    "downloaded",
-    "pdf_unlocked",
-    "pdf_stored",
-    "csv_extracted",
-    "csv_stored",
-    "db_inserted",
-]
-
-
-def _status_rank(status: str) -> int:
-    try:
-        return _STATUS_ORDER.index(status)
-    except ValueError:
-        return -1
-
 
 class StatementLogOperations:
     """DB operations for the statement_processing_log table.
