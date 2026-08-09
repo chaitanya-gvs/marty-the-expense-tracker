@@ -4,7 +4,6 @@ PDF Unlocker Service
 Handles unlocking password-protected PDF statements and saves them
 to the unlocked_statements directory.
 """
-import asyncio
 import re
 import shutil
 from datetime import datetime
@@ -27,37 +26,6 @@ class PDFUnlocker:
         self.password_manager = get_password_manager()
         self.unlocked_dir = Path("/tmp/statements/unlocked_statements")
         self.unlocked_dir.mkdir(parents=True, exist_ok=True)
-
-    def unlock_pdf(self, pdf_path: str) -> Dict[str, Any]:
-        """
-        Unlock a password-protected PDF statement.
-
-        Returns a dict with 'success' bool and either 'unlocked_path' or 'error'.
-        """
-        try:
-            pdf_path = Path(pdf_path)
-            if not pdf_path.exists():
-                return {"success": False, "error": f"PDF file not found: {pdf_path}"}
-
-            logger.info(f"Unlocking PDF: {pdf_path.name}")
-
-            password = self._get_password_for_bank(pdf_path.name)
-            if not password:
-                return {"success": False, "error": "No password found for this PDF"}
-
-            logger.info("Password found, proceeding with unlock")
-
-            if self._unlock_pdf_with_password(pdf_path, password):
-                saved_path = self._save_unlocked_pdf(pdf_path)
-                if saved_path:
-                    logger.info(f"Unlocked PDF saved to: {saved_path}")
-                    return {"success": True, "unlocked_path": saved_path}
-                return {"success": False, "error": "Failed to save unlocked PDF"}
-            return {"success": False, "error": "Password authentication failed"}
-
-        except Exception as e:
-            logger.error(f"Error unlocking PDF {pdf_path}", exc_info=True)
-            return {"success": False, "error": str(e)}
 
     def unlock_pdf_with_password(self, pdf_path: Path, password: str, account_nickname: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -83,17 +51,6 @@ class PDFUnlocker:
         except Exception as e:
             logger.error("Error unlocking PDF", exc_info=True)
             return {"success": False, "error": str(e)}
-
-    def _get_password_for_bank(self, filename: str) -> Optional[str]:
-        """Resolve sender email from filename and look up the statement password."""
-        try:
-            sender_email = self._get_sender_email_from_filename(filename)
-            if not sender_email:
-                return None
-            return asyncio.run(self.password_manager.get_password_for_sender_async(sender_email))
-        except Exception:
-            logger.error("Error getting password", exc_info=True)
-            return None
 
     def _get_sender_email_from_filename(self, filename: str) -> Optional[str]:
         """Map bank name in filename to the known statement sender email."""
