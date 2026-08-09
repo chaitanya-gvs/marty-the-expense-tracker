@@ -44,6 +44,19 @@ def _normalize_reference_number(ref: Any) -> Optional[str]:
     return s
 
 
+def _validate_order_by(order_by: str) -> str:
+    """Whitelist order_by before it's interpolated into a SQL ORDER BY clause.
+
+    Raises ValueError for anything other than ASC/DESC (case-insensitive) —
+    this string is placed directly into a `text()` query via f-string, so it
+    must never be allowed to carry unvalidated user input.
+    """
+    order_by = order_by.upper()
+    if order_by not in ("ASC", "DESC"):
+        raise ValueError(f"order_by must be 'ASC' or 'DESC', got: {order_by!r}")
+    return order_by
+
+
 class TransactionOperations:
     """Operations for managing transactions"""
 
@@ -189,6 +202,7 @@ class TransactionOperations:
         order_by: str = "ASC"  # "ASC" for chronological, "DESC" for newest first
     ) -> List[Dict[str, Any]]:
         """Get all transactions with configurable sorting"""
+        order_by = _validate_order_by(order_by)
         session_factory = get_session_factory()
         async with session_factory() as session:
             result = await session.execute(
@@ -252,6 +266,7 @@ class TransactionOperations:
         order_by: str = "ASC"  # "ASC" for chronological, "DESC" for newest first
     ) -> List[Dict[str, Any]]:
         """Get transactions within a date range"""
+        order_by = _validate_order_by(order_by)
         session_factory = get_session_factory()
         async with session_factory() as session:
             result = await session.execute(
