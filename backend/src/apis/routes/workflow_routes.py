@@ -20,8 +20,10 @@ from datetime import datetime, date
 from typing import Any, AsyncGenerator, Dict, Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import text
 
 from src.apis.schemas.workflow import (
@@ -71,6 +73,7 @@ def _resolve_toggles(req: WorkflowRunRequest) -> tuple[bool, bool, bool, bool]:
 
 
 router = APIRouter(prefix="/workflow", tags=["workflow"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +297,8 @@ async def _sse_generator(job: _JobState) -> AsyncGenerator[str, None]:
 # ---------------------------------------------------------------------------
 
 @router.post("/run", response_model=WorkflowRunResponse, status_code=202)
-async def start_workflow(req: WorkflowRunRequest):
+@limiter.limit("5/minute")
+async def start_workflow(request: Request, req: WorkflowRunRequest):
     """
     Start a workflow job.
 
