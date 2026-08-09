@@ -134,7 +134,7 @@ flowchart TD
 | `/transactions` | Virtualized table, filters, stats, inline edit, bulk actions, splits, grouping, email/PDF drawers |
 | `/settlements` | Summary cards, tabbed detail (implementation in `settlements/page.tsx` and components) |
 | `/analytics` | Charts and filters (`analytics-*` components) |
-| `/budgets` | Budget overview and list; **requires backend `/budgets` API** — not implemented in FastAPI yet (see [../README.md](../README.md)) |
+| `/budgets` | Budget overview and list (backed by `/api/budgets` — CRUD, period summaries, coverage gaps, overrides) |
 | `/review` | Review queue for uncertain transactions |
 | `/settings` | Categories and tags managers (tabs) |
 
@@ -151,7 +151,7 @@ The `ApiClient` class in [client.ts](src/lib/api/client.ts) is grouped roughly a
 - **Accounts / participants:** as exposed by backend.
 - **Emails:** search, link, unlink, fetch email body, source PDF.
 - **Splitwise:** friends, friend expenses (proxy API).
-- **Budgets:** create, read, update, delete — **backend routes may be missing**; expect errors until implemented.
+- **Budgets:** create, read, update, delete, period summaries, coverage gaps, per-period overrides.
 
 Authoritative HTTP contract: [http://localhost:8000/docs](http://localhost:8000/docs).
 
@@ -202,7 +202,6 @@ Canonical interfaces live in [src/lib/types/index.ts](src/lib/types/index.ts): `
 
 | Issue | What to check |
 |-------|----------------|
-| `API Error: 404` on budgets | Backend budgets router not implemented — see root README |
 | CORS / network errors | Backend running; `NEXT_PUBLIC_API_URL` includes `/api` and matches backend origin |
 | Hydration warnings | Date/currency formatting — use `formatDate` / `formatCurrency` helpers |
 | SSE workflow stuck | Backend single-job rule; refresh status endpoint; backend logs |

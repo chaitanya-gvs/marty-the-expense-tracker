@@ -13,7 +13,7 @@ A personal expense-tracking application that ingests transactions from bank stat
 - **Categories & tags:** Hierarchical categories and tags with CRUD and search; used across the transaction UI.
 - **Analytics:** Expense analytics API consumed by charts in the app.
 - **Review queue:** UI for transactions that need human review (flags/uncertainty).
-- **Budgets (UI):** The frontend includes budget screens and API client methods for `/budgets`. **There is no budgets router mounted in the backend yet** — those calls will fail until a backend implementation is added. See [Known gaps](#known-gaps).
+- **Budgets:** Budget templates with period-based spend computation, coverage-gap detection (recurring/variable spend without a budget), and per-period overrides. Full CRUD via `/api/budgets` (see [backend/src/apis/routes/budget_routes.py](backend/src/apis/routes/budget_routes.py)).
 
 ## Architecture
 
@@ -151,13 +151,8 @@ Balances are computed in Python from transactions that carry `split_breakdown` (
 |---------|-----------------|
 | DB connection errors | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`; PostgreSQL running; database created |
 | Alembic vs app mismatch | [backend/alembic.ini](backend/alembic.ini) `sqlalchemy.url` must point at the same DB you configure in `.env` (Alembic uses sync `postgresql://`; the app uses async `postgresql+asyncpg://` built from `DB_*`) |
-| 404 on `/budgets` | Expected until backend budgets API exists — see [Known gaps](#known-gaps) |
 | Statement extraction fails | `VISION_AGENT_API_KEY`, PDF unlock password on `accounts`, Gmail tokens |
 | Splitwise errors | `SPLITWISE_API_KEY` set for routes that instantiate [SplitwiseAPIClient](backend/src/services/splitwise_processor/client.py) |
-
-## Known gaps
-
-- **Budgets API:** The frontend [ApiClient](frontend/src/lib/api/client.ts) calls `/budgets` endpoints. The FastAPI app in [backend/main.py](backend/main.py) does not mount a budgets router yet. Budget UI may error at runtime until the backend is implemented or the client is adjusted.
 
 ## License
 
