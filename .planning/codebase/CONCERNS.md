@@ -32,7 +32,7 @@
 
 ### Unresolved Statement Backlog Scripts
 - **Problem:** Two operational scripts in `backend/scripts/` appear to be one-off reconciliation tools:
-  - `compare_cashback_sbi_statement.py`: Hardcoded bank password (line 29: `PASSWORD = "<redacted-statement-password>"`), hardcoded dates (April-June 2026), never updated after 2026-05-24
+  - `compare_cashback_sbi_statement.py`: ~~Hardcoded bank password~~ (fixed 2026-08-09, now resolved via `BankPasswordManager` DB lookup — see Security Considerations below), hardcoded dates (April-June 2026), never updated after 2026-05-24
   - `process_statement_only_backlog.py`: One-time processor for retired review-queue type, last modified 2026-08-08
 - **Files:** `backend/scripts/compare_cashback_sbi_statement.py`, `backend/scripts/process_statement_only_backlog.py`
 - **Blocks:** Cannot validate statement extraction quality or reconcile backlog without manually running these scripts
@@ -76,11 +76,10 @@
 
 ## Security Considerations
 
-### Hardcoded Passwords in One-Off Scripts
-- **Risk:** Bank statement passwords are hardcoded in `compare_cashback_sbi_statement.py`. If this script is committed or shared, passwords are exposed.
-- **Files:** `backend/scripts/compare_cashback_sbi_statement.py:28-30`
-- **Workaround:** Script is development-only and not in production
-- **Recommendations:** Remove hardcoded credentials. Move to database-backed password manager or environment variables. Never commit credentials even in branch.
+### Hardcoded Passwords in One-Off Scripts — FIXED 2026-08-09
+- **Risk (resolved):** Bank statement passwords were hardcoded in `compare_cashback_sbi_statement.py`. If this script was committed or shared, passwords were exposed.
+- **Files:** `backend/scripts/compare_cashback_sbi_statement.py`
+- **Fix:** The password is now resolved at runtime via `BankPasswordManager.get_password_for_sender_async()` (the same DB-backed lookup the production PDF-unlock path already used) instead of a hardcoded literal. Landed in `fix/backend-quick-wins` (commit `d0b37ec`); the leaked literal that had also leaked into this doc was redacted separately (commit `c3d2fd2`).
 
 ### JWT Token Validation Missing Expiry Check in Some Paths
 - **Problem:** `verify_access_token()` catches all `JWTError` but doesn't explicitly validate exp claim before returning.
