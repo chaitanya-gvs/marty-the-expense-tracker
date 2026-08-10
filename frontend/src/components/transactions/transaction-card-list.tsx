@@ -59,7 +59,8 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
         groups.push(current);
       }
       current.rows.push(t);
-      if (t.direction === "debit") current.dailyTotal += t.amount;
+      const amount = t.is_shared && t.split_share_amount ? t.split_share_amount : t.amount;
+      if (t.direction === "debit") current.dailyTotal += amount;
     }
     return groups;
   }, [allTransactions]);
@@ -153,7 +154,7 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
                     "font-mono text-sm font-semibold tabular-nums shrink-0",
                     t.direction === "credit" ? "text-emerald-500" : "text-foreground"
                   )}>
-                    {t.direction === "credit" ? "+" : "−"}{formatCurrency(t.amount)}
+                    {t.direction === "credit" ? "+" : "−"}{formatCurrency(t.is_shared && t.split_share_amount ? t.split_share_amount : t.amount)}
                   </span>
                 </button>
               ))}
