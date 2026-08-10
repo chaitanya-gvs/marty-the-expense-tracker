@@ -29,7 +29,7 @@ export function TransactionDetailsDrawer({
 
     return (
         <Sheet open={isOpen} onOpenChange={onClose}>
-            <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto">
+            <SheetContent className="w-full sm:w-[540px] overflow-y-auto">
                 <SheetHeader>
                     <SheetTitle>Transaction Details</SheetTitle>
                     <SheetDescription>

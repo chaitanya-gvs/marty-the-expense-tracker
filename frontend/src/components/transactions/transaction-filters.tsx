@@ -18,6 +18,8 @@ import { useParticipants } from "@/hooks/use-participants";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useLocalStorage } from "@/hooks/use-local-storage";
+import { useIsMobile } from "@/hooks/use-is-mobile";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 // Helper to check if two arrays are equal
 function arraysEqual(a: string[] | undefined, b: string[] | undefined) {
@@ -45,6 +47,7 @@ export function TransactionFilters({
   const [expanded, setExpanded] = useState(false);
   const filtersButtonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
 
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [searchInput, setSearchInput] = useState(filters.search || "");
@@ -541,74 +544,7 @@ export function TransactionFilters({
 
   const activeFilterBadges = getActiveFilterBadges();
 
-  return (
-    <div className="rounded-xl border border-border overflow-hidden">
-      {/* Collapsed Bar (Always Visible) */}
-      <div className="sticky top-0 z-20 bg-card backdrop-blur px-4 py-2 flex items-center gap-2 text-sm">
-        <button
-          ref={filtersButtonRef}
-          onClick={() => setExpanded(!expanded)}
-          aria-expanded={expanded}
-          aria-controls="transaction-filter-panel"
-          className="rounded-full bg-muted hover:bg-primary/10 hover:text-primary px-3 py-1 text-foreground flex items-center gap-1 transition-colors"
-        >
-          Filters
-          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        </button>
-
-        {/* Active Filter Chips */}
-        <div className="flex flex-wrap gap-2 items-center">
-          {activeFilterBadges.length === 0 ? (
-            <span className="text-xs text-muted-foreground/40 italic">All transactions shown</span>
-          ) : (
-            activeFilterBadges.map((badge) => (
-              <button
-                key={badge.key}
-                onClick={() => expandAndFocusControl(badge.key)}
-                className="rounded-full bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 text-[11px] font-medium flex items-center gap-1 hover:bg-primary/20 hover:border-primary/40 transition-all duration-150"
-              >
-                {badge.label}
-                <X
-                  className="h-3 w-3 hover:text-primary"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    clearFilter(badge.key as keyof TransactionFilters);
-                  }}
-                />
-              </button>
-            ))
-          )}
-        </div>
-
-        {/* Clear Filters */}
-        {hasActiveFilters && (
-          <div className="ml-auto flex items-center">
-            <button
-              onClick={onClearFilters}
-              className="rounded-md px-2 py-1 text-xs bg-muted hover:bg-accent text-foreground transition-colors flex items-center gap-1"
-            >
-              <X className="h-3 w-3" />
-              Clear filters
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Expanded Panel (Animated) */}
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <motion.div
-            id="transaction-filter-panel"
-            role="region"
-            aria-label="Filter options"
-            ref={panelRef}
-            key="filter-panel"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 400, damping: 40, mass: 0.8 }}
-            style={{ overflow: "hidden" }}
-          >
+  const filterPanelBody = (
         <div className="bg-card p-4 border-t border-border">
 
           {/* Filter Grid */}
@@ -1349,9 +1285,91 @@ export function TransactionFilters({
           </div>
 
         </div>
-          </motion.div>
+  );
+
+  return (
+    <div className="rounded-xl border border-border overflow-hidden">
+      {/* Collapsed Bar (Always Visible) */}
+      <div className="sticky top-0 z-20 bg-card backdrop-blur px-4 py-2 flex items-center gap-2 text-sm">
+        <button
+          ref={filtersButtonRef}
+          onClick={() => setExpanded(!expanded)}
+          aria-expanded={expanded}
+          aria-controls="transaction-filter-panel"
+          className="rounded-full bg-muted hover:bg-primary/10 hover:text-primary px-3 py-1 text-foreground flex items-center gap-1 transition-colors"
+        >
+          Filters
+          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+
+        {/* Active Filter Chips */}
+        <div className="flex flex-wrap gap-2 items-center">
+          {activeFilterBadges.length === 0 ? (
+            <span className="text-xs text-muted-foreground/40 italic">All transactions shown</span>
+          ) : (
+            activeFilterBadges.map((badge) => (
+              <button
+                key={badge.key}
+                onClick={() => expandAndFocusControl(badge.key)}
+                className="rounded-full bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 text-[11px] font-medium flex items-center gap-1 hover:bg-primary/20 hover:border-primary/40 transition-all duration-150"
+              >
+                {badge.label}
+                <X
+                  className="h-3 w-3 hover:text-primary"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    clearFilter(badge.key as keyof TransactionFilters);
+                  }}
+                />
+              </button>
+            ))
+          )}
+        </div>
+
+        {/* Clear Filters */}
+        {hasActiveFilters && (
+          <div className="ml-auto flex items-center">
+            <button
+              onClick={onClearFilters}
+              className="rounded-md px-2 py-1 text-xs bg-muted hover:bg-accent text-foreground transition-colors flex items-center gap-1"
+            >
+              <X className="h-3 w-3" />
+              Clear filters
+            </button>
+          </div>
         )}
-      </AnimatePresence>
+      </div>
+
+      {/* Expanded Panel */}
+      {isMobile ? (
+        <Sheet open={expanded} onOpenChange={setExpanded}>
+          <SheetContent side="bottom" className="w-full sm:max-w-full max-h-[85vh] overflow-y-auto rounded-t-xl">
+            <SheetHeader>
+              <SheetTitle>Filters</SheetTitle>
+            </SheetHeader>
+            {filterPanelBody}
+          </SheetContent>
+        </Sheet>
+      ) : (
+        <AnimatePresence initial={false}>
+          {expanded && (
+            <motion.div
+              id="transaction-filter-panel"
+              role="region"
+              aria-label="Filter options"
+              ref={panelRef}
+              key="filter-panel"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 400, damping: 40, mass: 0.8 }}
+              style={{ overflow: "hidden" }}
+            >
+              {filterPanelBody}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
     </div>
   );
 }

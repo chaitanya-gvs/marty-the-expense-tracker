@@ -19,6 +19,8 @@ const _itemVariants = {
 };
 import { TransactionFilters } from "@/components/transactions/transaction-filters";
 import { TransactionsTable } from "@/components/transactions/transactions-table";
+import { TransactionCardList } from "@/components/transactions/transaction-card-list";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import { AddTransactionModal } from "@/components/transactions/add-transaction-modal";
 import { TransactionFilters as TransactionFiltersType, TransactionSort } from "@/lib/types";
 import { useInfiniteTransactions } from "@/hooks/use-transactions";
@@ -84,6 +86,7 @@ export function TransactionsPage() {
   const [sort, setSort] = useState<TransactionSort | undefined>();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isWorkflowOpen, setIsWorkflowOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   // Restore filters from localStorage after mount (must be client-only to avoid hydration mismatch)
   useEffect(() => {
@@ -186,7 +189,7 @@ export function TransactionsPage() {
       </motion.div>
 
       {/* Stats Bar */}
-      <motion.div variants={_itemVariants} className="grid grid-cols-2 sm:grid-cols-4 rounded-lg border border-border overflow-hidden bg-border gap-px shadow-[0_1px_8px_oklch(0%_0_0_/_0.08)] dark:shadow-[0_1px_16px_oklch(0%_0_0_/_0.4)]">
+      <motion.div variants={_itemVariants} className="grid grid-cols-1 sm:grid-cols-4 rounded-lg border border-border overflow-hidden bg-border gap-px shadow-[0_1px_8px_oklch(0%_0_0_/_0.08)] dark:shadow-[0_1px_16px_oklch(0%_0_0_/_0.4)]">
         <div
           className="bg-card px-4 py-4 min-w-0 overflow-hidden transition-colors duration-150 hover:bg-muted/60 cursor-default group relative before:absolute before:inset-0 before:pointer-events-none before:opacity-0 hover:before:opacity-100 before:transition-opacity before:duration-300 before:bg-[radial-gradient(circle_at_var(--mouse-x,50%)_var(--mouse-y,50%),oklch(from_var(--color-primary)_l_c_h_/_0.07),transparent_70%)]"
           onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); e.currentTarget.style.setProperty("--mouse-x", `${((e.clientX - r.left) / r.width) * 100}%`); e.currentTarget.style.setProperty("--mouse-y", `${((e.clientY - r.top) / r.height) * 100}%`); }}
@@ -245,7 +248,11 @@ export function TransactionsPage() {
           onClearFilters={handleClearFilters}
         />
       </motion.div>
-      <TransactionsTable filters={filters} sort={sort} />
+      {isMobile ? (
+        <TransactionCardList filters={filters} sort={sort} />
+      ) : (
+        <TransactionsTable filters={filters} sort={sort} />
+      )}
 
       <AddTransactionModal
         isOpen={isAddModalOpen}
