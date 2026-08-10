@@ -18,10 +18,10 @@ function getHealthStroke(pct: number): string {
 export function BudgetsOverview({ data, isLoading }: BudgetsOverviewProps) {
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-border bg-card p-5 flex gap-6 items-center">
+      <div className="rounded-xl border border-border bg-card p-5 flex flex-col md:flex-row gap-6 items-center">
         <div className="w-24 h-24 rounded-full bg-muted animate-pulse shrink-0" />
-        <div className="w-px self-stretch bg-border shrink-0" />
-        <div className="flex-1 grid grid-cols-2 gap-x-6 gap-y-4">
+        <div className="h-px w-full md:h-auto md:w-px md:self-stretch bg-border shrink-0" />
+        <div className="flex-1 w-full grid grid-cols-2 gap-x-6 gap-y-4">
           {[...Array(4)].map((_, i) => (
             <div key={i} className="space-y-1.5">
               <div className="h-2 bg-muted rounded animate-pulse w-16" />
@@ -75,7 +75,7 @@ export function BudgetsOverview({ data, isLoading }: BudgetsOverviewProps) {
 
   return (
     <div className="rounded-xl border border-border bg-card p-5">
-      <div className="flex items-center gap-6">
+      <div className="flex flex-col md:flex-row items-center gap-6">
 
         {/* Ring chart */}
         <div className="relative w-24 h-24 shrink-0">
@@ -126,11 +126,11 @@ export function BudgetsOverview({ data, isLoading }: BudgetsOverviewProps) {
           </div>
         </div>
 
-        {/* Vertical divider */}
-        <div className="w-px self-stretch bg-border shrink-0" />
+        {/* Divider — horizontal on mobile (stacked layout), vertical on desktop */}
+        <div className="h-px w-full md:h-auto md:w-px md:self-stretch bg-border shrink-0" />
 
         {/* Stats 2×2 grid */}
-        <div className="flex-1 grid grid-cols-2 gap-x-6 gap-y-4">
+        <div className="flex-1 w-full grid grid-cols-2 gap-x-6 gap-y-4">
           {stats.map(stat => (
             <div key={stat.label}>
               <div className="text-[9px] uppercase tracking-wider text-muted-foreground mb-0.5">
