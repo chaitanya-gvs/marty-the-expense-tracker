@@ -43,7 +43,7 @@ function AnalyticsSkeleton() {
   return (
     <div className="space-y-5">
       {/* KPI Card skeletons */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[0, 1, 2].map((i) => (
           <Card key={i} className="py-5">
             <CardContent className="px-5 space-y-3">
@@ -114,7 +114,7 @@ function SummaryCards({ analytics }: { analytics: ExpenseAnalytics }) {
   const topItem = [...analytics.data].sort((a, b) => b.amount - a.amount)[0];
 
   return (
-    <div className="grid grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       <Card className="py-5">
         <CardContent className="px-5 space-y-3">
           <div className="flex items-center justify-between">
