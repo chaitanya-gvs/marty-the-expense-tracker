@@ -168,7 +168,7 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
       </div>
 
       {selectMode && selectedIds.size > 0 && (
-        <div className="fixed bottom-14 left-0 right-0 z-40 flex items-center justify-between px-4 py-2.5 bg-primary/10 border-t border-primary/25 backdrop-blur-sm">
+        <div className="fixed left-0 right-0 z-40 flex items-center justify-between px-4 py-2.5 bg-primary/10 border-t border-primary/25 backdrop-blur-sm" style={{ bottom: "calc(3.5rem + env(safe-area-inset-bottom))" }}>
           <span className="text-xs font-medium text-primary">{selectedIds.size} selected</span>
           <div className="flex items-center gap-1">
             <Button size="sm" variant="ghost" className="h-7 text-xs px-2 text-primary" onClick={() => setIsBulkEditOpen(true)}>Edit</Button>

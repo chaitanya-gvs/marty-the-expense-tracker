@@ -14,7 +14,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   if (isMobile) {
     return (
       <div className="relative flex flex-col min-h-screen bg-background">
-        <main className="flex-1 overflow-auto pb-16">
+        <main className="flex-1 overflow-auto pb-16" style={{ paddingBottom: "calc(4rem + env(safe-area-inset-bottom))" }}>
           <div className="p-4">
             {children}
           </div>

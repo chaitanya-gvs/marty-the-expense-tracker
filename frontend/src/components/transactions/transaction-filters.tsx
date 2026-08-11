@@ -544,7 +544,7 @@ export function TransactionFilters({
 
   const activeFilterBadges = getActiveFilterBadges();
 
-  const filterPanelBody = (
+  const renderFilterPanelBody = () => (
         <div className="bg-card p-4 border-t border-border">
 
           {/* Filter Grid */}
@@ -1347,7 +1347,7 @@ export function TransactionFilters({
             <SheetHeader>
               <SheetTitle>Filters</SheetTitle>
             </SheetHeader>
-            {filterPanelBody}
+            {renderFilterPanelBody()}
           </SheetContent>
         </Sheet>
       ) : (
@@ -1365,7 +1365,7 @@ export function TransactionFilters({
               transition={{ type: "spring", stiffness: 400, damping: 40, mass: 0.8 }}
               style={{ overflow: "hidden" }}
             >
-              {filterPanelBody}
+              {renderFilterPanelBody()}
             </motion.div>
           )}
         </AnimatePresence>
