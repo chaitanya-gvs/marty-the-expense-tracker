@@ -1,10 +1,23 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { useInfiniteTransactions, useBulkDeleteTransactions } from "@/hooks/use-transactions";
+import {
+  useInfiniteTransactions,
+  useBulkDeleteTransactions,
+  useUpdateTransactionSplit,
+  useClearTransactionSplit,
+  useUpdateTransaction,
+  useDeleteTransaction,
+} from "@/hooks/use-transactions";
 import { TransactionDetailsDrawer } from "./transaction-details-drawer";
 import { BulkEditModal } from "./bulk-edit-modal";
 import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
+import { SharedExpenseEditor } from "./shared-expense-editor";
+import { SplitTransactionModal } from "./split-transaction-modal";
+import { GroupExpenseSearchModal } from "./group-expense-search-modal";
+import { RecurringModal } from "./recurring-modal";
+import { EmailLinksDrawer } from "./email-links-drawer";
+import { PdfViewer } from "./pdf-viewer";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatCurrency } from "@/lib/format-utils";
@@ -84,6 +97,10 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
     useInfiniteTransactions(filters, sort);
   const bulkDeleteTransactions = useBulkDeleteTransactions();
   const categoryColorMap = useCategoryColorMap();
+  const updateTransactionSplit = useUpdateTransactionSplit();
+  const clearTransactionSplit = useClearTransactionSplit();
+  const updateTransaction = useUpdateTransaction();
+  const deleteTransaction = useDeleteTransaction();
 
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -93,6 +110,9 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
   const [panelTransaction, setPanelTransaction] = useState<Transaction | null>(null);
   const [panelAnchorTop, setPanelAnchorTop] = useState<number | null>(null);
   const [drawerInitialMode, setDrawerInitialMode] = useState<"view" | "edit">("view");
+  const [activeSubModal, setActiveSubModal] = useState<TransactionActionType | null>(null);
+  const [subModalTransaction, setSubModalTransaction] = useState<Transaction | null>(null);
+  const [singleDeleteTransaction, setSingleDeleteTransaction] = useState<Transaction | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const allTransactions = useMemo(
@@ -167,6 +187,42 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
     const listRect = listEl.getBoundingClientRect();
     setPanelAnchorTop(rowRect.bottom - listRect.top + listEl.scrollTop + 6);
     setPanelTransaction(t);
+  };
+
+  const handleAction = (type: TransactionActionType, t: Transaction) => {
+    if (type === "flag") {
+      updateTransaction.mutate(
+        { id: t.id, updates: { is_flagged: !(t.is_flagged === true) } },
+        {
+          onSuccess: () => toast.success(t.is_flagged ? "Warning removed" : "Transaction marked for review"),
+          onError: () => toast.error("Failed to update warning status"),
+        }
+      );
+      return;
+    }
+    if (type === "direction") {
+      const nextDirection = t.direction === "debit" ? "credit" : "debit";
+      updateTransaction.mutate(
+        { id: t.id, updates: { direction: nextDirection } },
+        {
+          onSuccess: () => toast.success(`Marked as ${nextDirection === "credit" ? "credit (money in)" : "debit (money out)"}`),
+          onError: () => toast.error("Failed to toggle transaction direction"),
+        }
+      );
+      return;
+    }
+    if (type === "delete") {
+      setSingleDeleteTransaction(t);
+      return;
+    }
+    // shared, split, group, recurring, links, pdf all open a sub-modal
+    setSubModalTransaction(t);
+    setActiveSubModal(type);
+  };
+
+  const closeSubModal = () => {
+    setActiveSubModal(null);
+    setSubModalTransaction(null);
   };
 
   const handleBulkDelete = async () => {
@@ -260,14 +316,14 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
           setSelectMode(true);
           setSelectedIds(new Set([t.id]));
         }}
-        onAction={() => { /* wired in Task 12 */ }}
+        onAction={handleAction}
       />
       <TransactionDetailsDrawer
         transaction={openTransaction}
         isOpen={openTransaction !== null}
         onClose={() => setOpenTransaction(null)}
         initialMode={drawerInitialMode}
-        onAction={() => { /* wired in Task 12 */ }}
+        onAction={handleAction}
       />
       <BulkEditModal
         selectedTransactions={selectedTransactions}
@@ -281,6 +337,103 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
         transactions={selectedTransactions}
         isLoading={bulkDeleteTransactions.isPending}
       />
+
+      {subModalTransaction && activeSubModal === "shared" && (
+        <SharedExpenseEditor
+          transaction={subModalTransaction}
+          isOpen={true}
+          isLoading={updateTransactionSplit.isPending || clearTransactionSplit.isPending}
+          onClose={closeSubModal}
+          onSave={async (splitBreakdown, myShareAmount) => {
+            try {
+              await updateTransactionSplit.mutateAsync({ id: subModalTransaction.id, splitBreakdown, myShareAmount });
+              closeSubModal();
+            } catch {
+              toast.error("Failed to save split breakdown");
+            }
+          }}
+          onClearSplit={async () => {
+            try {
+              await clearTransactionSplit.mutateAsync(subModalTransaction.id);
+              closeSubModal();
+            } catch {
+              toast.error("Failed to clear split");
+            }
+          }}
+        />
+      )}
+
+      {subModalTransaction && activeSubModal === "split" && (
+        <SplitTransactionModal
+          transaction={subModalTransaction}
+          isOpen={true}
+          onClose={closeSubModal}
+        />
+      )}
+
+      {subModalTransaction && activeSubModal === "group" && (
+        <GroupExpenseSearchModal
+          isOpen={true}
+          onClose={closeSubModal}
+          initialTransaction={subModalTransaction}
+          existingGroupMembers={
+            subModalTransaction.transaction_group_id
+              ? allTransactions.filter((tx) => tx.transaction_group_id === subModalTransaction.transaction_group_id)
+              : undefined
+          }
+          onSelectTransactions={() => closeSubModal()}
+          onUngroup={async () => {
+            // Grouping/ungrouping mutations live behind GroupExpenseSearchModal's
+            // own flow; this slice only wires the entry point per the design
+            // spec's explicit deferral of Group modal internals to its own slice.
+            closeSubModal();
+          }}
+        />
+      )}
+
+      {subModalTransaction && activeSubModal === "recurring" && (
+        <RecurringModal
+          key={subModalTransaction.id}
+          transaction={subModalTransaction}
+          open={true}
+          onClose={closeSubModal}
+        />
+      )}
+
+      {subModalTransaction && activeSubModal === "links" && (
+        <EmailLinksDrawer
+          transaction={subModalTransaction}
+          isOpen={true}
+          onClose={closeSubModal}
+          onTransactionUpdate={() => closeSubModal()}
+        />
+      )}
+
+      {subModalTransaction && activeSubModal === "pdf" && (
+        <PdfViewer
+          transactionId={subModalTransaction.id}
+          open={true}
+          onOpenChange={(open) => { if (!open) closeSubModal(); }}
+        />
+      )}
+
+      {singleDeleteTransaction && (
+        <DeleteConfirmationDialog
+          isOpen={true}
+          onClose={() => setSingleDeleteTransaction(null)}
+          onConfirm={async () => {
+            try {
+              await deleteTransaction.mutateAsync(singleDeleteTransaction.id);
+              toast.success("Transaction deleted");
+              setSingleDeleteTransaction(null);
+            } catch {
+              toast.error("Failed to delete transaction");
+            }
+          }}
+          transactions={[singleDeleteTransaction]}
+          isLoading={deleteTransaction.isPending}
+        />
+      )}
     </div>
   );
 }
