@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 interface UseLongPressOptions {
   onLongPress: () => void;
@@ -14,6 +14,7 @@ interface LongPressHandlers {
   onPointerUp: (e: React.PointerEvent) => void;
   onPointerMove: (e: React.PointerEvent) => void;
   onPointerLeave: (e: React.PointerEvent) => void;
+  onPointerCancel: (e: React.PointerEvent) => void;
   onContextMenu: (e: React.MouseEvent) => void;
 }
 
@@ -32,6 +33,7 @@ export function useLongPress({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startPos = useRef<{ x: number; y: number } | null>(null);
   const firedLongPress = useRef(false);
+  const cancelled = useRef(false);
 
   const clear = useCallback(() => {
     if (timerRef.current) {
@@ -46,6 +48,7 @@ export function useLongPress({
       // Only primary button / primary touch contact
       if (e.button !== undefined && e.button !== 0) return;
       firedLongPress.current = false;
+      cancelled.current = false;
       startPos.current = { x: e.clientX, y: e.clientY };
       timerRef.current = setTimeout(() => {
         firedLongPress.current = true;
@@ -61,6 +64,7 @@ export function useLongPress({
       const dx = Math.abs(e.clientX - startPos.current.x);
       const dy = Math.abs(e.clientY - startPos.current.y);
       if (dx > moveThreshold || dy > moveThreshold) {
+        cancelled.current = true;
         clear();
       }
     },
@@ -69,13 +73,21 @@ export function useLongPress({
 
   const onPointerUp = useCallback(() => {
     const wasLongPress = firedLongPress.current;
+    const wasCancelled = cancelled.current;
     clear();
-    if (!wasLongPress) {
+    if (!wasLongPress && !wasCancelled) {
       onClick?.();
     }
   }, [clear, onClick]);
 
   const onPointerLeave = useCallback(() => {
+    clear();
+  }, [clear]);
+
+  const onPointerCancel = useCallback(() => {
+    // Browser recognized the touch as a scroll/other gesture; no pointerup
+    // will follow. Behave like onPointerLeave: clear without firing either
+    // callback.
     clear();
   }, [clear]);
 
@@ -85,5 +97,20 @@ export function useLongPress({
     e.preventDefault();
   }, []);
 
-  return { onPointerDown, onPointerUp, onPointerMove, onPointerLeave, onContextMenu };
+  // Ensure a pending timer doesn't fire onLongPress after the component
+  // (e.g. a list row) unmounts mid-press.
+  useEffect(() => {
+    return () => {
+      clear();
+    };
+  }, [clear]);
+
+  return {
+    onPointerDown,
+    onPointerUp,
+    onPointerMove,
+    onPointerLeave,
+    onPointerCancel,
+    onContextMenu,
+  };
 }
