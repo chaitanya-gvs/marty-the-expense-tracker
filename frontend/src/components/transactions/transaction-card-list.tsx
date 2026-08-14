@@ -255,7 +255,12 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
     <div className="flex flex-col">
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs text-muted-foreground">{allTransactions.length} transactions</span>
-        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setSelectMode((v) => !v); setSelectedIds(new Set()); }}>
+        <Button
+          size="sm"
+          variant={selectMode ? "secondary" : "ghost"}
+          className="h-7 text-xs"
+          onClick={() => { setSelectMode((v) => !v); setSelectedIds(new Set()); }}
+        >
           {selectMode ? "Cancel" : "Select"}
         </Button>
       </div>
@@ -293,11 +298,11 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
       </div>
 
       {selectMode && selectedIds.size > 0 && (
-        <div className="fixed left-0 right-0 z-40 flex items-center justify-between px-4 py-2.5 bg-primary/10 border-t border-primary/25 backdrop-blur-sm" style={{ bottom: "calc(3.5rem + env(safe-area-inset-bottom))" }}>
-          <span className="text-xs font-medium text-primary">{selectedIds.size} selected</span>
-          <div className="flex items-center gap-1">
-            <Button size="sm" variant="ghost" className="h-7 text-xs px-2 text-primary" onClick={() => setIsBulkEditOpen(true)}>Edit</Button>
-            <Button size="sm" variant="ghost" className="h-7 text-xs px-2 text-destructive" onClick={() => setIsDeleteConfirmOpen(true)}>Delete</Button>
+        <div className="fixed left-0 right-0 z-40 flex items-center justify-between px-4 py-3 bg-card border-t border-border shadow-[0_-4px_16px_rgba(0,0,0,0.25)]" style={{ bottom: "calc(3.5rem + env(safe-area-inset-bottom))" }}>
+          <span className="text-xs font-semibold text-foreground">{selectedIds.size} selected</span>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" className="h-8 text-xs px-3" onClick={() => setIsBulkEditOpen(true)}>Edit</Button>
+            <Button size="sm" className="h-8 text-xs px-3 bg-destructive/10 text-destructive hover:bg-destructive/15" onClick={() => setIsDeleteConfirmOpen(true)}>Delete</Button>
           </div>
         </div>
       )}
