@@ -195,6 +195,7 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
         transaction={openTransaction}
         isOpen={openTransaction !== null}
         onClose={() => setOpenTransaction(null)}
+        onAction={() => { /* wired in Task 12 */ }}
       />
       <BulkEditModal
         selectedTransactions={selectedTransactions}

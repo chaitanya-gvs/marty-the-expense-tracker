@@ -15,6 +15,8 @@ import { formatCurrency, formatDate } from "@/lib/format-utils";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Layers, ChevronDown, Loader2 } from "lucide-react";
+import { Users, Split, RefreshCw, Mail, AlertTriangle, ArrowLeftRight, FileText } from "lucide-react";
+import { ActionTileGrid, type TransactionActionType } from "./action-tile-grid";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { useCategoryColorMap } from "@/hooks/use-category-color-map";
 import { useUpdateTransaction } from "@/hooks/use-transactions";
@@ -30,6 +32,7 @@ interface TransactionDetailsDrawerProps {
     onClose: () => void;
     onUngroupExpense?: (transaction: Transaction) => Promise<void>;
     initialMode?: "view" | "edit";
+    onAction: (type: TransactionActionType, transaction: Transaction) => void;
 }
 
 interface EditFormState {
@@ -68,6 +71,7 @@ export function TransactionDetailsDrawer({
     onClose,
     onUngroupExpense,
     initialMode = "view",
+    onAction,
 }: TransactionDetailsDrawerProps) {
     const isMobile = useIsMobile();
     const categoryColorMap = useCategoryColorMap();
@@ -210,6 +214,20 @@ export function TransactionDetailsDrawer({
                         <Button className="w-full" onClick={() => setMode("edit")}>
                             Edit
                         </Button>
+
+                        <ActionTileGrid
+                            tiles={[
+                                { key: "shared", label: "Shared", icon: Users, active: transaction.is_shared, onClick: () => onAction("shared", transaction) },
+                                { key: "group", label: "Group", icon: Layers, active: !!transaction.transaction_group_id, onClick: () => onAction("group", transaction) },
+                                { key: "split", label: "Split", icon: Split, active: transaction.is_split, onClick: () => onAction("split", transaction) },
+                                { key: "recurring", label: "Recurring", icon: RefreshCw, active: transaction.is_recurring === true, onClick: () => onAction("recurring", transaction) },
+                                { key: "links", label: "Links", icon: Mail, active: !!(transaction.related_mails && transaction.related_mails.length > 0), onClick: () => onAction("links", transaction) },
+                                { key: "flag", label: "Flag", icon: AlertTriangle, active: transaction.is_flagged === true, onClick: () => onAction("flag", transaction) },
+                                { key: "direction", label: "Swap ±", icon: ArrowLeftRight, onClick: () => onAction("direction", transaction) },
+                                { key: "pdf", label: "PDF", icon: FileText, disabled: !transaction.source_file, onClick: () => onAction("pdf", transaction) },
+                            ]}
+                            onDelete={() => onAction("delete", transaction)}
+                        />
 
                         {transaction.is_grouped_expense && (
                             <div className="rounded-lg bg-primary/10 border border-primary/20 p-4">
