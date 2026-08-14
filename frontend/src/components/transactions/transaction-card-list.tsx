@@ -10,12 +10,73 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { formatCurrency } from "@/lib/format-utils";
 import { cn } from "@/lib/utils";
 import { useCategoryColorMap } from "@/hooks/use-category-color-map";
+import { useLongPress } from "@/hooks/use-long-press";
+import { TransactionQuickActionsPanel } from "./transaction-quick-actions-panel";
+import type { TransactionActionType } from "./action-tile-grid";
 import type { Transaction, TransactionFilters as TransactionFiltersType, TransactionSort } from "@/lib/types";
 import { toast } from "sonner";
 
 interface TransactionCardListProps {
   filters: TransactionFiltersType;
   sort?: TransactionSort;
+}
+
+function TransactionRow({
+  transaction: t,
+  dotColor,
+  selected,
+  selectMode,
+  onTap,
+  onLongPress,
+  onToggleSelected,
+}: {
+  transaction: Transaction;
+  dotColor: string;
+  selected: boolean;
+  selectMode: boolean;
+  onTap: () => void;
+  onLongPress: (rowEl: HTMLButtonElement) => void;
+  onToggleSelected: () => void;
+}) {
+  const rowRef = useRef<HTMLButtonElement>(null);
+  const longPress = useLongPress({
+    onLongPress: () => {
+      if (rowRef.current) onLongPress(rowRef.current);
+    },
+    onClick: onTap,
+  });
+  const amount = t.is_shared && t.split_share_amount ? t.split_share_amount : t.amount;
+
+  return (
+    <button
+      ref={rowRef}
+      type="button"
+      {...longPress}
+      className={cn(
+        "w-full flex items-center gap-2.5 py-2.5 px-1 text-left border-b border-border last:border-b-0 transition-colors min-h-11",
+        selected && "bg-primary/[0.06]"
+      )}
+    >
+      {selectMode && (
+        <Checkbox checked={selected} onCheckedChange={onToggleSelected} onClick={(e) => e.stopPropagation()} />
+      )}
+      <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
+      <p className="flex-1 min-w-0 text-[12.5px] font-medium text-foreground truncate">
+        {t.description}
+      </p>
+      <div className="text-right shrink-0">
+        <p className={cn(
+          "font-mono text-[12.5px] font-semibold tabular-nums",
+          t.direction === "credit" ? "text-emerald-500" : "text-foreground"
+        )}>
+          {t.direction === "credit" ? "+" : "−"}{formatCurrency(amount)}
+        </p>
+        <p className="text-[9px] text-muted-foreground truncate max-w-[110px]">
+          {t.category}{t.is_shared ? " · Split" : ""}
+        </p>
+      </div>
+    </button>
+  );
 }
 
 export function TransactionCardList({ filters, sort }: TransactionCardListProps) {
@@ -29,6 +90,9 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
   const [openTransaction, setOpenTransaction] = useState<Transaction | null>(null);
   const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [panelTransaction, setPanelTransaction] = useState<Transaction | null>(null);
+  const [panelAnchorTop, setPanelAnchorTop] = useState<number | null>(null);
+  const [drawerInitialMode, setDrawerInitialMode] = useState<"view" | "edit">("view");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const allTransactions = useMemo(
@@ -82,11 +146,27 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
   };
 
   const handleCardTap = (t: Transaction) => {
+    // In selection mode every touch — tap or long-press — just toggles the
+    // checkbox (see design spec Component 4: no mode-switch ambiguity).
     if (selectMode) {
       toggleSelected(t.id);
-    } else {
-      setOpenTransaction(t);
+      return;
     }
+    setDrawerInitialMode("view");
+    setOpenTransaction(t);
+  };
+
+  const handleLongPress = (t: Transaction, rowEl: HTMLButtonElement) => {
+    if (selectMode) {
+      toggleSelected(t.id);
+      return;
+    }
+    const listEl = scrollRef.current;
+    if (!listEl) return;
+    const rowRect = rowEl.getBoundingClientRect();
+    const listRect = listEl.getBoundingClientRect();
+    setPanelAnchorTop(rowRect.bottom - listRect.top + listEl.scrollTop + 6);
+    setPanelTransaction(t);
   };
 
   const handleBulkDelete = async () => {
@@ -135,43 +215,18 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
               )}
             </div>
             <div className="space-y-1.5 mb-3">
-              {group.rows.map((t) => {
-                const dotColor = categoryColorMap[t.category] ?? "var(--muted-foreground)";
-                const amount = t.is_shared && t.split_share_amount ? t.split_share_amount : t.amount;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => handleCardTap(t)}
-                    className={cn(
-                      "w-full flex items-center gap-2.5 py-2.5 px-1 text-left border-b border-border last:border-b-0 transition-colors min-h-11",
-                      selectedIds.has(t.id) && "bg-primary/[0.06]"
-                    )}
-                  >
-                    {selectMode && (
-                      <Checkbox checked={selectedIds.has(t.id)} onCheckedChange={() => toggleSelected(t.id)} onClick={(e) => e.stopPropagation()} />
-                    )}
-                    <span
-                      className="h-2 w-2 rounded-full shrink-0"
-                      style={{ backgroundColor: dotColor }}
-                    />
-                    <p className="flex-1 min-w-0 text-[12.5px] font-medium text-foreground truncate">
-                      {t.description}
-                    </p>
-                    <div className="text-right shrink-0">
-                      <p className={cn(
-                        "font-mono text-[12.5px] font-semibold tabular-nums",
-                        t.direction === "credit" ? "text-emerald-500" : "text-foreground"
-                      )}>
-                        {t.direction === "credit" ? "+" : "−"}{formatCurrency(amount)}
-                      </p>
-                      <p className="text-[9px] text-muted-foreground truncate max-w-[110px]">
-                        {t.category}{t.is_shared ? " · Split" : ""}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
+              {group.rows.map((t) => (
+                <TransactionRow
+                  key={t.id}
+                  transaction={t}
+                  dotColor={categoryColorMap[t.category] ?? "var(--muted-foreground)"}
+                  selected={selectedIds.has(t.id)}
+                  selectMode={selectMode}
+                  onTap={() => handleCardTap(t)}
+                  onLongPress={(rowEl) => handleLongPress(t, rowEl)}
+                  onToggleSelected={() => toggleSelected(t.id)}
+                />
+              ))}
             </div>
           </div>
         ))}
@@ -191,10 +246,27 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
         </div>
       )}
 
+      <TransactionQuickActionsPanel
+        transaction={panelTransaction}
+        anchorTop={panelAnchorTop}
+        onClose={() => setPanelTransaction(null)}
+        onEdit={(t) => {
+          setPanelTransaction(null);
+          setDrawerInitialMode("edit");
+          setOpenTransaction(t);
+        }}
+        onSelect={(t) => {
+          setPanelTransaction(null);
+          setSelectMode(true);
+          setSelectedIds(new Set([t.id]));
+        }}
+        onAction={() => { /* wired in Task 12 */ }}
+      />
       <TransactionDetailsDrawer
         transaction={openTransaction}
         isOpen={openTransaction !== null}
         onClose={() => setOpenTransaction(null)}
+        initialMode={drawerInitialMode}
         onAction={() => { /* wired in Task 12 */ }}
       />
       <BulkEditModal
