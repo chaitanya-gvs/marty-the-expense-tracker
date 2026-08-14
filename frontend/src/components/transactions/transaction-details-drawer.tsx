@@ -96,7 +96,7 @@ export function TransactionDetailsDrawer({
 
     if (!transaction || !form) return null;
 
-    const categoryColor = categoryColorMap[transaction.category];
+    const categoryColor = categoryColorMap[form.category];
 
     const handleSave = async () => {
         try {
@@ -148,20 +148,20 @@ export function TransactionDetailsDrawer({
                 {mode === "view" ? (
                     <div className="mt-6 space-y-6">
                         <div className="flex flex-col gap-2">
-                            <h2 className="text-2xl font-bold">{transaction.description}</h2>
+                            <h2 className="text-2xl font-bold">{form.description}</h2>
                             <div className="flex items-center gap-2">
-                                <span className={`text-xl font-semibold ${transaction.direction === 'debit' ? 'text-destructive' : 'text-emerald-500'
+                                <span className={`text-xl font-semibold ${form.direction === 'debit' ? 'text-destructive' : 'text-emerald-500'
                                     }`}>
-                                    {transaction.direction === 'debit' ? '-' : '+'}{formatCurrency(transaction.amount)}
+                                    {form.direction === 'debit' ? '-' : '+'}{formatCurrency(form.amount)}
                                 </span>
-                                <Badge variant="outline">{transaction.account}</Badge>
+                                <Badge variant="outline">{form.account}</Badge>
                             </div>
                             <div className="flex items-center gap-1.5">
                                 <span
                                     className="h-2 w-2 rounded-full shrink-0"
                                     style={{ backgroundColor: categoryColor ?? "var(--muted-foreground)" }}
                                 />
-                                <span className="text-sm text-muted-foreground">{transaction.category || "Uncategorized"}</span>
+                                <span className="text-sm text-muted-foreground">{form.category || "Uncategorized"}</span>
                             </div>
                         </div>
 
@@ -170,7 +170,7 @@ export function TransactionDetailsDrawer({
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <p className="text-sm font-medium text-muted-foreground">Date</p>
-                                <p>{formatDate(transaction.date)}</p>
+                                <p>{formatDate(form.date)}</p>
                             </div>
                             {transaction.subcategory && (
                                 <div>
@@ -182,7 +182,7 @@ export function TransactionDetailsDrawer({
                                 <p className="text-sm font-medium text-muted-foreground">Status</p>
                                 <div className="flex gap-1 mt-1 flex-wrap">
                                     {transaction.is_flagged && <Badge variant="destructive">Flagged</Badge>}
-                                    {transaction.is_shared && <Badge variant="secondary">Shared</Badge>}
+                                    {form.is_shared && <Badge variant="secondary">Shared</Badge>}
                                     {transaction.is_split && <Badge variant="secondary">Split</Badge>}
                                     {transaction.is_grouped_expense && (
                                         <Badge variant="outline" className="bg-primary/10 border-primary/30">
@@ -194,12 +194,12 @@ export function TransactionDetailsDrawer({
                             </div>
                         </div>
 
-                        {transaction.tags && transaction.tags.length > 0 && (
+                        {selectedTags.length > 0 && (
                             <div>
                                 <h3 className="text-sm font-medium text-muted-foreground mb-2">Tags</h3>
                                 <div className="flex flex-wrap gap-2">
-                                    {transaction.tags.map(tag => (
-                                        <Badge key={tag} variant="secondary">{tag}</Badge>
+                                    {selectedTags.map(tag => (
+                                        <Badge key={tag.id} variant="secondary">{tag.name}</Badge>
                                     ))}
                                 </div>
                             </div>
@@ -247,11 +247,11 @@ export function TransactionDetailsDrawer({
                             </div>
                         )}
 
-                        {transaction.notes && (
+                        {form.notes && (
                             <div>
                                 <h3 className="text-sm font-medium text-muted-foreground mb-1">Notes</h3>
                                 <p className="text-sm bg-slate-50 dark:bg-slate-900 p-3 rounded-md">
-                                    {transaction.notes}
+                                    {form.notes}
                                 </p>
                             </div>
                         )}
