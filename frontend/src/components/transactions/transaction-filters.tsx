@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Calendar, Search, X, RotateCcw, Check, ChevronDown, ChevronUp, AlertTriangle, ChevronsUpDown, Plus } from "lucide-react";
+import { Calendar, Search, X, RotateCcw, Check, ChevronDown, ChevronUp, AlertTriangle, ChevronsUpDown, Plus, Filter } from "lucide-react";
 import type { TransactionFilters } from "@/lib/types";
 import { useCategories } from "@/hooks/use-categories";
 import { useTags } from "@/hooks/use-tags";
@@ -1291,52 +1291,92 @@ export function TransactionFilters({
     <div className="rounded-xl border border-border overflow-hidden">
       {/* Collapsed Bar (Always Visible) */}
       <div className="sticky top-0 z-20 bg-card backdrop-blur px-4 py-2 flex items-center gap-2 text-sm">
-        <button
-          ref={filtersButtonRef}
-          onClick={() => setExpanded(!expanded)}
-          aria-expanded={expanded}
-          aria-controls="transaction-filter-panel"
-          className="rounded-full bg-muted hover:bg-primary/10 hover:text-primary px-3 py-1 text-foreground flex items-center gap-1 transition-colors"
-        >
-          Filters
-          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        </button>
-
-        {/* Active Filter Chips */}
-        <div className="flex flex-wrap gap-2 items-center">
-          {activeFilterBadges.length === 0 ? (
-            <span className="text-xs text-muted-foreground/40 italic">All transactions shown</span>
-          ) : (
-            activeFilterBadges.map((badge) => (
-              <button
-                key={badge.key}
-                onClick={() => expandAndFocusControl(badge.key)}
-                className="rounded-full bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 text-[11px] font-medium flex items-center gap-1 hover:bg-primary/20 hover:border-primary/40 transition-all duration-150"
-              >
-                {badge.label}
-                <X
-                  className="h-3 w-3 hover:text-primary"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    clearFilter(badge.key as keyof TransactionFilters);
-                  }}
-                />
-              </button>
-            ))
-          )}
-        </div>
-
-        {/* Clear Filters */}
-        {hasActiveFilters && (
-          <div className="ml-auto flex items-center">
+        {isMobile ? (
+          <>
             <button
-              onClick={onClearFilters}
-              className="rounded-md px-2 py-1 text-xs bg-muted hover:bg-accent text-foreground transition-colors flex items-center gap-1"
+              ref={filtersButtonRef}
+              onClick={() => setExpanded(!expanded)}
+              aria-expanded={expanded}
+              aria-controls="transaction-filter-panel"
+              className="relative shrink-0 rounded-full bg-muted hover:bg-primary/10 hover:text-primary h-8 w-8 flex items-center justify-center transition-colors"
             >
-              <X className="h-3 w-3" />
-              Clear filters
+              <Filter className="h-3.5 w-3.5" />
+              {activeFilterBadges.length > 0 && (
+                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center">
+                  {activeFilterBadges.length}
+                </span>
+              )}
             </button>
-          </div>
+
+            {activeFilterBadges.length > 0 && (
+              <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto">
+                {activeFilterBadges.map((badge) => (
+                  <button
+                    key={badge.key}
+                    onClick={() => expandAndFocusControl(badge.key)}
+                    className="shrink-0 rounded-full bg-primary/10 text-primary border border-primary/20 px-2.5 py-1 text-[11px] font-medium flex items-center gap-1"
+                  >
+                    {badge.label}
+                    <X
+                      className="h-3 w-3"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        clearFilter(badge.key as keyof TransactionFilters);
+                      }}
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <button
+              ref={filtersButtonRef}
+              onClick={() => setExpanded(!expanded)}
+              aria-expanded={expanded}
+              aria-controls="transaction-filter-panel"
+              className="rounded-full bg-muted hover:bg-primary/10 hover:text-primary px-3 py-1 text-foreground flex items-center gap-1 transition-colors"
+            >
+              Filters
+              {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+
+            <div className="flex flex-wrap gap-2 items-center">
+              {activeFilterBadges.length === 0 ? (
+                <span className="text-xs text-muted-foreground/40 italic">All transactions shown</span>
+              ) : (
+                activeFilterBadges.map((badge) => (
+                  <button
+                    key={badge.key}
+                    onClick={() => expandAndFocusControl(badge.key)}
+                    className="rounded-full bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 text-[11px] font-medium flex items-center gap-1 hover:bg-primary/20 hover:border-primary/40 transition-all duration-150"
+                  >
+                    {badge.label}
+                    <X
+                      className="h-3 w-3 hover:text-primary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        clearFilter(badge.key as keyof TransactionFilters);
+                      }}
+                    />
+                  </button>
+                ))
+              )}
+            </div>
+
+            {hasActiveFilters && (
+              <div className="ml-auto flex items-center">
+                <button
+                  onClick={onClearFilters}
+                  className="rounded-md px-2 py-1 text-xs bg-muted hover:bg-accent text-foreground transition-colors flex items-center gap-1"
+                >
+                  <X className="h-3 w-3" />
+                  Clear filters
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
