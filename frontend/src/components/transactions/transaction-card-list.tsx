@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatCurrency } from "@/lib/format-utils";
 import { cn } from "@/lib/utils";
+import { useCategoryColorMap } from "@/hooks/use-category-color-map";
 import type { Transaction, TransactionFilters as TransactionFiltersType, TransactionSort } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -21,6 +22,7 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
   const { data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useInfiniteTransactions(filters, sort);
   const bulkDeleteTransactions = useBulkDeleteTransactions();
+  const categoryColorMap = useCategoryColorMap();
 
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -133,31 +135,43 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
               )}
             </div>
             <div className="space-y-1.5 mb-3">
-              {group.rows.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => handleCardTap(t)}
-                  className={cn(
-                    "w-full flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 text-left transition-colors",
-                    selectedIds.has(t.id) && "border-primary bg-primary/5"
-                  )}
-                >
-                  {selectMode && (
-                    <Checkbox checked={selectedIds.has(t.id)} onCheckedChange={() => toggleSelected(t.id)} onClick={(e) => e.stopPropagation()} />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{t.description}</p>
-                    <p className="text-xs text-muted-foreground truncate">{t.category}{t.is_shared ? " · Split" : ""}</p>
-                  </div>
-                  <span className={cn(
-                    "font-mono text-sm font-semibold tabular-nums shrink-0",
-                    t.direction === "credit" ? "text-emerald-500" : "text-foreground"
-                  )}>
-                    {t.direction === "credit" ? "+" : "−"}{formatCurrency(t.is_shared && t.split_share_amount ? t.split_share_amount : t.amount)}
-                  </span>
-                </button>
-              ))}
+              {group.rows.map((t) => {
+                const dotColor = categoryColorMap[t.category] ?? "var(--muted-foreground)";
+                const amount = t.is_shared && t.split_share_amount ? t.split_share_amount : t.amount;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => handleCardTap(t)}
+                    className={cn(
+                      "w-full flex items-center gap-2.5 py-2.5 px-1 text-left border-b border-border last:border-b-0 transition-colors min-h-11",
+                      selectedIds.has(t.id) && "bg-primary/[0.06]"
+                    )}
+                  >
+                    {selectMode && (
+                      <Checkbox checked={selectedIds.has(t.id)} onCheckedChange={() => toggleSelected(t.id)} onClick={(e) => e.stopPropagation()} />
+                    )}
+                    <span
+                      className="h-2 w-2 rounded-full shrink-0"
+                      style={{ backgroundColor: dotColor }}
+                    />
+                    <p className="flex-1 min-w-0 text-[12.5px] font-medium text-foreground truncate">
+                      {t.description}
+                    </p>
+                    <div className="text-right shrink-0">
+                      <p className={cn(
+                        "font-mono text-[12.5px] font-semibold tabular-nums",
+                        t.direction === "credit" ? "text-emerald-500" : "text-foreground"
+                      )}>
+                        {t.direction === "credit" ? "+" : "−"}{formatCurrency(amount)}
+                      </p>
+                      <p className="text-[9px] text-muted-foreground truncate max-w-[110px]">
+                        {t.category}{t.is_shared ? " · Split" : ""}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         ))}
