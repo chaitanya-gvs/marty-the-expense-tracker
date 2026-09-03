@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     Sheet,
     SheetContent,
@@ -83,9 +83,30 @@ export function TransactionDetailsDrawer({
     const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
     const [advancedOpen, setAdvancedOpen] = useState(false);
 
+    // Mirror `mode` and `transaction` for the late-hydration effect below, so
+    // that effect's deps can stay [allTags, transaction?.id] without eslint
+    // flagging a "missing dependency" for the full objects — reading through
+    // a ref also means `mode` changing (e.g. Cancel, back to view) doesn't
+    // re-fire the effect and clobber selectedTags mid-transition.
+    const modeRef = useRef(mode);
+    modeRef.current = mode;
+    const transactionRef = useRef(transaction);
+    transactionRef.current = transaction;
+
+    // Tracks whether selectedTags has actually been resolved against a
+    // loaded allTags list (as opposed to defaulting to [] because allTags
+    // hasn't loaded yet). Read by handleSave to avoid saving an empty tags
+    // array over a transaction that really does have tags.
+    const tagsHydratedRef = useRef(false);
+
     // Reset local edit state whenever a different transaction is opened, or
     // the drawer is asked to open directly into edit mode (from the
-    // quick-actions panel's Edit tile).
+    // quick-actions panel's Edit tile). Deliberately does NOT depend on
+    // allTags — MultiTagSelector's useCreateTag() invalidates the ["tags"]
+    // query on every new tag, and if allTags were a dep here this effect
+    // would re-fire mid-edit and reset mode/form, discarding unsaved changes.
+    // Late tag hydration (once allTags resolves) is handled by the second
+    // effect below instead.
     useEffect(() => {
         if (!transaction) return;
         setMode(isOpen ? initialMode : "view");
@@ -102,9 +123,27 @@ export function TransactionDetailsDrawer({
         } else {
             setSelectedTags([]);
         }
+        tagsHydratedRef.current = allTags.length > 0;
         setAdvancedOpen(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [transaction?.id, isOpen, initialMode, allTags]);
+    }, [transaction?.id, isOpen, initialMode]);
+
+    // Late tag hydration: if allTags resolves/refetches after the reset
+    // effect above already ran (initial load still in flight, or a tag
+    // query invalidation while the drawer is open), pick up the resolved
+    // tag objects. Guarded to view mode only (via modeRef, not a `mode` dep)
+    // so it can never overwrite the tag buffer the user is actively editing.
+    useEffect(() => {
+        const currentTransaction = transactionRef.current;
+        if (!currentTransaction || modeRef.current === "edit") return;
+        if (currentTransaction.tags?.length && allTags.length > 0) {
+            const tagObjects = currentTransaction.tags
+                .map((name) => allTags.find((tag) => tag.name === name))
+                .filter((tag): tag is Tag => tag !== undefined);
+            setSelectedTags(tagObjects);
+            tagsHydratedRef.current = true;
+        }
+    }, [allTags, transaction?.id]);
 
     if (!transaction || !form) return null;
 
@@ -126,7 +165,16 @@ export function TransactionDetailsDrawer({
                     is_shared: form.is_shared,
                     is_refund: form.is_refund,
                     is_transfer: form.is_transfer,
-                    tags: selectedTags.map((t) => t.name),
+                    // Only send `tags` once allTags has actually resolved and been
+                    // matched against this transaction's tag names, or the
+                    // transaction never had tags to begin with. Otherwise
+                    // selectedTags may still be [] purely because useTags() (or a
+                    // refetch triggered by MultiTagSelector's useCreateTag()) hasn't
+                    // resolved yet, and sending tags: [] would silently wipe real
+                    // tags server-side.
+                    ...(tagsHydratedRef.current || (transaction.tags ?? []).length === 0
+                        ? { tags: selectedTags.map((t) => t.name) }
+                        : {}),
                 },
             });
             toast.success("Transaction updated");
