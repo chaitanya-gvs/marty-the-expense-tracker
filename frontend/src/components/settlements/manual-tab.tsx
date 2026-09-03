@@ -26,7 +26,7 @@ function ParticipantRow({ settlement, isExpanded, onToggle }: ParticipantRowProp
     <div className="border border-border rounded-xl overflow-hidden">
       {/* Collapsed header — always visible */}
       <button
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors cursor-pointer"
+        className="w-full flex items-center justify-between px-4 py-3 min-h-11 md:min-h-0 hover:bg-muted/30 transition-colors cursor-pointer"
         onClick={onToggle}
         aria-expanded={isExpanded}
       >
@@ -319,7 +319,7 @@ export function ManualTab() {
           {settledSettlements.length > 0 && (
             <>
               <button
-                className="w-full flex items-center gap-1.5 px-1 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                className="w-full flex items-center gap-1.5 px-1 py-1 min-h-11 md:min-h-0 text-sm md:text-xs text-muted-foreground hover:text-foreground transition-colors"
                 onClick={() => setSettledExpanded(v => !v)}
               >
                 <ChevronDown className={cn('h-3 w-3 transition-transform duration-200', settledExpanded && 'rotate-180')} />

@@ -5,7 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  ResponsivePopover as Popover,
+  ResponsivePopoverContent as PopoverContent,
+  ResponsivePopoverTrigger as PopoverTrigger,
+} from "@/components/ui/responsive-popover";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, X, RotateCcw, Check } from "lucide-react";
 import { useSettlementParticipants } from "@/hooks/use-settlements";
@@ -161,7 +165,7 @@ export function SettlementFilters({
         <div className="flex items-center bg-muted/50 rounded-md p-0.5 gap-0.5">
           <button
             className={cn(
-              "px-2.5 h-7 text-xs font-medium rounded transition-colors",
+              "px-2.5 h-7 min-h-11 md:min-h-0 text-xs font-medium rounded transition-colors",
               showOwedToMeOnly
                 ? "bg-foreground/10 text-foreground"
                 : "text-muted-foreground hover:text-foreground"
@@ -175,7 +179,7 @@ export function SettlementFilters({
           </button>
           <button
             className={cn(
-              "px-2.5 h-7 text-xs font-medium rounded transition-colors",
+              "px-2.5 h-7 min-h-11 md:min-h-0 text-xs font-medium rounded transition-colors",
               showSharedOnly
                 ? "bg-foreground/10 text-foreground"
                 : "text-muted-foreground hover:text-foreground"
@@ -189,7 +193,7 @@ export function SettlementFilters({
           </button>
           <button
             className={cn(
-              "px-2.5 h-7 text-xs font-medium rounded transition-colors",
+              "px-2.5 h-7 min-h-11 md:min-h-0 text-xs font-medium rounded transition-colors",
               selectedDatePreset === "this_month"
                 ? "bg-foreground/10 text-foreground"
                 : "text-muted-foreground hover:text-foreground"
@@ -210,7 +214,7 @@ export function SettlementFilters({
               variant="outline"
               size="sm"
               onClick={resetAllFilters}
-              className="h-7 px-2.5 text-xs gap-1"
+              className="h-7 min-h-11 md:min-h-0 px-2.5 text-xs gap-1"
             >
               <RotateCcw className="h-3 w-3" />
               Reset
@@ -219,7 +223,7 @@ export function SettlementFilters({
               size="sm"
               onClick={applyAllFilters}
               disabled={!hasUnappliedChanges}
-              className="h-7 px-2.5 text-xs gap-1"
+              className="h-7 min-h-11 md:min-h-0 px-2.5 text-xs gap-1"
             >
               <Check className="h-3 w-3" />
               Apply
@@ -232,7 +236,7 @@ export function SettlementFilters({
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground uppercase tracking-wider">Participant</Label>
             <Select value={selectedParticipant} onValueChange={setSelectedParticipant}>
-              <SelectTrigger className="h-9 text-sm">
+              <SelectTrigger className="h-11 md:h-9 text-base md:text-sm">
                 <SelectValue placeholder="All participants" />
               </SelectTrigger>
               <SelectContent>
@@ -249,12 +253,12 @@ export function SettlementFilters({
             <Label className="text-xs text-muted-foreground uppercase tracking-wider">Date Range</Label>
             <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="h-9 text-sm justify-start w-full font-normal">
+                <Button variant="outline" className="h-9 min-h-11 md:min-h-0 text-sm justify-start w-full font-normal">
                   <Calendar className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
                   {dateLabel}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-72" align="start">
+              <PopoverContent className="w-72" align="start" title="Filter settlements">
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Quick Presets</p>
@@ -270,7 +274,7 @@ export function SettlementFilters({
                           size="sm"
                           variant={selectedDatePreset === preset.value ? "default" : "outline"}
                           onClick={() => handleDatePreset(preset.value)}
-                          className="h-8 text-xs"
+                          className="h-8 min-h-11 md:min-h-0 text-xs"
                         >
                           {preset.label}
                         </Button>
@@ -287,7 +291,7 @@ export function SettlementFilters({
                           type="date"
                           value={dateRangeStartInput}
                           onChange={e => setDateRangeStartInput(e.target.value)}
-                          className="w-full bg-muted/40 border border-border/60 rounded-md px-2.5 h-8 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                          className="w-full bg-muted/40 border border-border/60 rounded-md px-2.5 h-11 md:h-8 text-base md:text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                         />
                       </div>
                       <div className="space-y-1">
@@ -296,7 +300,7 @@ export function SettlementFilters({
                           type="date"
                           value={dateRangeEndInput}
                           onChange={e => setDateRangeEndInput(e.target.value)}
-                          className="w-full bg-muted/40 border border-border/60 rounded-md px-2.5 h-8 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                          className="w-full bg-muted/40 border border-border/60 rounded-md px-2.5 h-11 md:h-8 text-base md:text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                         />
                       </div>
                     </div>
@@ -311,10 +315,11 @@ export function SettlementFilters({
             <Label className="text-xs text-muted-foreground uppercase tracking-wider">Min Amount</Label>
             <Input
               type="number"
+              inputMode="decimal"
               placeholder="₹0.00"
               value={minAmountInput}
               onChange={e => setMinAmountInput(e.target.value)}
-              className="h-9 text-sm"
+              className="h-11 md:h-9 text-base md:text-sm"
             />
           </div>
 
@@ -345,7 +350,7 @@ export function SettlementFilters({
             </Badge>
           ))}
           <button
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors min-h-11 md:min-h-0"
             onClick={onClearFilters}
           >
             Clear all
