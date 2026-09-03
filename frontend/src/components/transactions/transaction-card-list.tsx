@@ -242,11 +242,12 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
       return;
     }
     // Every remaining action type opens a sub-modal (or the delete-confirm
-    // dialog) on top of the drawer. The shared Modal primitive those
-    // sub-modals use renders at z-40, below the drawer Sheet's z-50 overlay,
-    // so it's invisible unless the drawer closes first (C1). Flag/direction
-    // above are deliberately excluded — I2 requires the drawer to stay open
-    // and reflect those mutations live (openTransaction is now reactive).
+    // dialog) on top of the drawer. The drawer is closed first so only one
+    // overlay owns the screen at a time — independent of z-order, this keeps
+    // focus, scroll-lock, and animation from fighting between the Sheet and
+    // the sub-modal (C1). Flag/direction above are deliberately excluded —
+    // I2 requires the drawer to stay open and reflect those mutations live
+    // (openTransaction is now reactive).
     setOpenTransactionId(null);
 
     if (type === "delete") {
@@ -257,6 +258,10 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
     setSubModalTransaction(t);
     setActiveSubModal(type);
   };
+
+  // Stable identity so TransactionQuickActionsPanel's Escape-listener effect
+  // (keyed on onClose) doesn't tear down and re-subscribe on every render (M7).
+  const closePanel = useCallback(() => setPanelTransaction(null), []);
 
   const closeSubModal = () => {
     setActiveSubModal(null);
@@ -347,7 +352,7 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
       <TransactionQuickActionsPanel
         transaction={panelTransaction}
         anchorTop={panelAnchorTop}
-        onClose={() => setPanelTransaction(null)}
+        onClose={closePanel}
         onEdit={(t) => {
           setPanelTransaction(null);
           setDrawerInitialMode("edit");

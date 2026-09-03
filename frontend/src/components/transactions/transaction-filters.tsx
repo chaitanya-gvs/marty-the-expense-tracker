@@ -1308,13 +1308,13 @@ export function TransactionFilters({
               )}
             </button>
 
-            {activeFilterBadges.length > 0 && (
+            {(activeFilterBadges.length > 0 || hasActiveFilters) && (
               <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto">
                 {activeFilterBadges.map((badge) => (
                   <button
                     key={badge.key}
                     onClick={() => expandAndFocusControl(badge.key)}
-                    className="shrink-0 rounded-full bg-primary/10 text-primary border border-primary/20 px-2.5 py-1 text-[11px] font-medium flex items-center gap-1"
+                    className="shrink-0 rounded-full bg-primary/10 text-primary border border-primary/20 px-2.5 py-1 min-h-9 text-[11px] font-medium flex items-center gap-1"
                   >
                     {badge.label}
                     <X
@@ -1330,7 +1330,7 @@ export function TransactionFilters({
                   <button
                     type="button"
                     onClick={onClearFilters}
-                    className="shrink-0 rounded-full bg-muted text-muted-foreground px-2.5 py-1 text-[11px] font-medium flex items-center gap-1"
+                    className="shrink-0 rounded-full bg-muted text-muted-foreground px-2.5 py-1 min-h-9 text-[11px] font-medium flex items-center gap-1"
                   >
                     <X className="h-3 w-3" />
                     Clear

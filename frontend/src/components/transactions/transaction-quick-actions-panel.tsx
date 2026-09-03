@@ -35,7 +35,11 @@ export function TransactionQuickActionsPanel({
   useEffect(() => {
     if (!isOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      // Mirrors the shared Modal's Escape guard: a nested Radix dismissable
+      // layer (Select/Popover/Dialog) calls preventDefault on its own
+      // capture-phase listener, and honouring that keeps Escape from closing
+      // this panel too (M7).
+      if (e.key === "Escape" && !e.defaultPrevented) onClose();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
