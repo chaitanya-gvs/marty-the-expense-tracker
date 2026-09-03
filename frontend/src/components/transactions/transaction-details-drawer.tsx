@@ -65,16 +65,42 @@ function toFormState(t: Transaction): EditFormState {
     };
 }
 
-// Resolves a transaction's tag names against the loaded tag list. Shared by
-// the reset effect, the late-hydration effect, and handleCancel so there's
-// a single place that defines what "this transaction's tags" means.
-function deriveTags(transaction: Transaction, allTags: Tag[]): Tag[] {
-    if (!transaction.tags || transaction.tags.length === 0 || allTags.length === 0) {
-        return [];
+// Splits a list of tag names into the Tag objects that could be resolved
+// against the loaded tag list, and the names that could not be (because
+// allTags hasn't loaded yet, or hasn't picked up a just-created tag yet).
+// Shared by the reset effect, the late-hydration effect, and handleCancel
+// so there's a single place that defines what "this transaction's tags"
+// means at any given moment.
+function splitTags(names: string[] | undefined, allTags: Tag[]): { resolved: Tag[]; unresolved: string[] } {
+    if (!names || names.length === 0) {
+        return { resolved: [], unresolved: [] };
     }
-    return transaction.tags
-        .map((name) => allTags.find((tag) => tag.name === name))
-        .filter((tag): tag is Tag => tag !== undefined);
+    const resolved: Tag[] = [];
+    const unresolved: string[] = [];
+    for (const name of names) {
+        const tag = allTags.find((t) => t.name === name);
+        if (tag) {
+            resolved.push(tag);
+        } else {
+            unresolved.push(name);
+        }
+    }
+    return { resolved, unresolved };
+}
+
+// Dedupes names across multiple lists, preserving first-seen order.
+function uniqueNames(...lists: string[][]): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const list of lists) {
+        for (const name of list) {
+            if (!seen.has(name)) {
+                seen.add(name);
+                result.push(name);
+            }
+        }
+    }
+    return result;
 }
 
 export function TransactionDetailsDrawer({
@@ -93,23 +119,18 @@ export function TransactionDetailsDrawer({
     const [mode, setMode] = useState<"view" | "edit">(initialMode);
     const [form, setForm] = useState<EditFormState | null>(null);
     const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
+    // Names on the transaction that couldn't be resolved against allTags yet
+    // (when allTags is empty, this is ALL of transaction.tags). Never shown
+    // as editable chips, but preserved on Save and surfaced to the user so
+    // nothing silently disappears while tags load.
+    const [unresolvedTagNames, setUnresolvedTagNames] = useState<string[]>([]);
     const [advancedOpen, setAdvancedOpen] = useState(false);
 
-    // Mirror `mode` and `transaction` for the late-hydration effect below, so
-    // that effect's deps can stay [allTags, transaction?.id] without eslint
-    // flagging a "missing dependency" for the full objects — reading through
-    // a ref also means `mode` changing (e.g. Cancel, back to view) doesn't
-    // re-fire the effect and clobber selectedTags mid-transition.
-    const modeRef = useRef(mode);
-    modeRef.current = mode;
-    const transactionRef = useRef(transaction);
-    transactionRef.current = transaction;
-
-    // Tracks whether selectedTags has actually been resolved against a
-    // loaded allTags list (as opposed to defaulting to [] because allTags
-    // hasn't loaded yet). Read by handleSave to avoid saving an empty tags
-    // array over a transaction that really does have tags.
-    const tagsHydratedRef = useRef(false);
+    // Mirrors unresolvedTagNames for the late-hydration effect below, so
+    // that effect's deps can stay [allTags] — it always reads the latest
+    // buffer without needing unresolvedTagNames itself in the dep array.
+    const unresolvedRef = useRef<string[]>(unresolvedTagNames);
+    unresolvedRef.current = unresolvedTagNames;
 
     // Reset local edit state whenever a different transaction is opened, or
     // the drawer is asked to open directly into edit mode (from the
@@ -123,29 +144,30 @@ export function TransactionDetailsDrawer({
         if (!transaction) return;
         setMode(isOpen ? initialMode : "view");
         setForm(toFormState(transaction));
-        // Guard against allTags not having resolved yet (useTags() still
-        // loading) — without this, selectedTags silently becomes [] and a
-        // subsequent Save would wipe the transaction's tags (I3 / Minor #4).
-        // Mirrors transaction-edit-modal.tsx's tag-derivation guard.
-        setSelectedTags(deriveTags(transaction, allTags));
-        tagsHydratedRef.current = allTags.length > 0;
+        const { resolved, unresolved } = splitTags(transaction.tags, allTags);
+        setSelectedTags(resolved);
+        setUnresolvedTagNames(unresolved);
         setAdvancedOpen(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [transaction?.id, isOpen, initialMode]);
 
-    // Late tag hydration: if allTags resolves/refetches after the reset
-    // effect above already ran (initial load still in flight, or a tag
-    // query invalidation while the drawer is open), pick up the resolved
-    // tag objects. Guarded to view mode only (via modeRef, not a `mode` dep)
-    // so it can never overwrite the tag buffer the user is actively editing.
+    // Late tag hydration: whenever allTags resolves or refetches (initial
+    // load still in flight, or a tag query invalidation while the drawer is
+    // open — e.g. the user creates a new tag mid-edit), try to resolve any
+    // still-unresolved names and MERGE the newly-resolved ones into the
+    // current selectedTags buffer. Never replaces the buffer, never touches
+    // mode/form, and runs in any mode — including edit — since merging can
+    // only add tags the user already had, never drop or overwrite ones
+    // they're actively editing.
     useEffect(() => {
-        const currentTransaction = transactionRef.current;
-        if (!currentTransaction || modeRef.current === "edit") return;
-        if (currentTransaction.tags?.length && allTags.length > 0) {
-            setSelectedTags(deriveTags(currentTransaction, allTags));
-            tagsHydratedRef.current = true;
-        }
-    }, [allTags, transaction?.id]);
+        if (unresolvedRef.current.length === 0) return;
+        const { resolved, unresolved } = splitTags(unresolvedRef.current, allTags);
+        setSelectedTags((prev) => [
+            ...prev,
+            ...resolved.filter((t) => !prev.some((p) => p.id === t.id)),
+        ]);
+        setUnresolvedTagNames(unresolved);
+    }, [allTags]);
 
     if (!transaction || !form) return null;
 
@@ -167,16 +189,12 @@ export function TransactionDetailsDrawer({
                     is_shared: form.is_shared,
                     is_refund: form.is_refund,
                     is_transfer: form.is_transfer,
-                    // Only send `tags` once allTags has actually resolved and been
-                    // matched against this transaction's tag names, or the
-                    // transaction never had tags to begin with. Otherwise
-                    // selectedTags may still be [] purely because useTags() (or a
-                    // refetch triggered by MultiTagSelector's useCreateTag()) hasn't
-                    // resolved yet, and sending tags: [] would silently wipe real
-                    // tags server-side.
-                    ...(tagsHydratedRef.current || (transaction.tags ?? []).length === 0
-                        ? { tags: selectedTags.map((t) => t.name) }
-                        : {}),
+                    // Always send tags: resolved names reflect the user's edits
+                    // (including a deliberate clear to [] when nothing is
+                    // unresolved), while unresolved names — tags the user never
+                    // saw as editable chips because allTags hadn't hydrated yet —
+                    // are carried through untouched so they can't be lost.
+                    tags: uniqueNames(selectedTags.map((t) => t.name), unresolvedTagNames),
                 },
             });
             toast.success("Transaction updated");
@@ -192,7 +210,9 @@ export function TransactionDetailsDrawer({
     // edit buffer back to the transaction's actual persisted state first.
     const handleCancel = () => {
         setForm(toFormState(transaction));
-        setSelectedTags(deriveTags(transaction, allTags));
+        const { resolved, unresolved } = splitTags(transaction.tags, allTags);
+        setSelectedTags(resolved);
+        setUnresolvedTagNames(unresolved);
         setAdvancedOpen(false);
         setMode("view");
     };
@@ -265,12 +285,15 @@ export function TransactionDetailsDrawer({
                             </div>
                         </div>
 
-                        {selectedTags.length > 0 && (
+                        {(selectedTags.length > 0 || unresolvedTagNames.length > 0) && (
                             <div>
                                 <h3 className="text-sm font-medium text-muted-foreground mb-2">Tags</h3>
                                 <div className="flex flex-wrap gap-2">
                                     {selectedTags.map(tag => (
                                         <Badge key={tag.id} variant="secondary">{tag.name}</Badge>
+                                    ))}
+                                    {unresolvedTagNames.map(name => (
+                                        <Badge key={name} variant="secondary">{name}</Badge>
                                     ))}
                                 </div>
                             </div>
@@ -377,12 +400,13 @@ export function TransactionDetailsDrawer({
                             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Tags</label>
                             <MultiTagSelector
                                 selectedTags={selectedTags}
-                                onTagsChange={(tags) => {
-                                    // user edited tags → always send them
-                                    tagsHydratedRef.current = true;
-                                    setSelectedTags(tags);
-                                }}
+                                onTagsChange={setSelectedTags}
                             />
+                            {unresolvedTagNames.length > 0 && (
+                                <p className="text-xs text-muted-foreground mt-1.5">
+                                    {unresolvedTagNames.length} tag{unresolvedTagNames.length === 1 ? "" : "s"} will be kept: {unresolvedTagNames.join(", ")}
+                                </p>
+                            )}
                         </div>
 
                         <div>
