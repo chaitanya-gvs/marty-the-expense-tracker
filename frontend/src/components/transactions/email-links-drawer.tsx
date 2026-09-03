@@ -306,13 +306,14 @@ export function EmailLinksDrawer({
               value={customSearchTerm}
               onChange={(e) => setCustomSearchTerm(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="pl-9 pr-24 h-10 bg-muted/50 border-border/50"
+              inputMode="search"
+              className="pl-9 pr-24 h-11 md:h-10 text-base md:text-sm bg-muted/50 border-border/50"
             />
             <Button
               size="sm"
               onClick={handleSearch}
               disabled={isSearching}
-              className="absolute right-1.5 h-7 text-xs px-3"
+              className="absolute right-1.5 h-7 min-h-11 md:min-h-0 text-sm md:text-xs px-3"
             >
               {isSearching ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -326,7 +327,7 @@ export function EmailLinksDrawer({
           <button
             type="button"
             onClick={() => setShowAdvanced((v) => !v)}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors mt-2.5"
+            className="flex items-center gap-1.5 min-h-11 md:min-h-0 text-sm md:text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors mt-2.5"
           >
             <SlidersHorizontal className="h-3 w-3" />
             {showAdvanced ? "Hide filters" : "Advanced filters"}
@@ -368,7 +369,8 @@ export function EmailLinksDrawer({
                           onChange={(e) =>
                             setDateOffsetDays(parseInt(e.target.value) || 1)
                           }
-                          className="w-14 h-8 text-xs text-center"
+                          inputMode="decimal"
+                          className="w-14 h-11 md:h-8 text-base md:text-xs text-center"
                         />
                         <span className="text-xs text-muted-foreground">days</span>
                       </div>
@@ -386,7 +388,7 @@ export function EmailLinksDrawer({
                         transition={{ type: "spring", stiffness: 400, damping: 40 }}
                         style={{ overflow: "hidden" }}
                       >
-                        <div className="grid grid-cols-2 gap-3 pt-1">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                           <div>
                             <Label
                               htmlFor="start-date"
@@ -399,7 +401,7 @@ export function EmailLinksDrawer({
                               type="date"
                               value={customStartDate}
                               onChange={(e) => setCustomStartDate(e.target.value)}
-                              className="h-9 text-sm"
+                              className="h-11 md:h-9 text-base md:text-sm"
                             />
                           </div>
                           <div>
@@ -414,7 +416,7 @@ export function EmailLinksDrawer({
                               type="date"
                               value={customEndDate}
                               onChange={(e) => setCustomEndDate(e.target.value)}
-                              className="h-9 text-sm"
+                              className="h-11 md:h-9 text-base md:text-sm"
                             />
                           </div>
                         </div>
@@ -488,7 +490,7 @@ export function EmailLinksDrawer({
       </Modal.Body>
 
       <Modal.Footer>
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="outline" onClick={onClose} className="min-h-11 md:min-h-0">
           Close
         </Button>
       </Modal.Footer>

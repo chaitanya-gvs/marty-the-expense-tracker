@@ -143,7 +143,7 @@ export function EmailCard({
       )}
     >
       {/* ── Header ─────────────────────────────────────────────────── */}
-      <div className="px-4 py-3">
+      <div className="px-4 py-3 min-h-11 md:min-h-0">
         <div className="flex items-center gap-2 min-w-0">
           {/* Subject */}
           <Mail className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
@@ -169,7 +169,7 @@ export function EmailCard({
               onClick={handleLinkToggle}
               disabled={isLinking}
               aria-label="Unlink email"
-              className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors flex-shrink-0"
+              className="h-9 w-9 md:h-6 md:w-6 flex items-center justify-center rounded text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors flex-shrink-0"
             >
               {isLinking ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -183,7 +183,7 @@ export function EmailCard({
               size="sm"
               onClick={handleLinkToggle}
               disabled={isLinking}
-              className="h-6 text-xs px-2 flex-shrink-0"
+              className="h-6 min-h-11 md:min-h-0 text-sm md:text-xs px-2 flex-shrink-0"
             >
               {isLinking ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -200,7 +200,7 @@ export function EmailCard({
           <button
             type="button"
             onClick={handleToggleExpand}
-            className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted/60 transition-colors flex-shrink-0"
+            className="h-9 w-9 md:h-6 md:w-6 flex items-center justify-center rounded text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted/60 transition-colors flex-shrink-0"
           >
             {isExpanded ? (
               <ChevronUp className="h-3.5 w-3.5" />
