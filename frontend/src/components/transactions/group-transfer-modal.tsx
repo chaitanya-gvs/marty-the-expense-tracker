@@ -233,7 +233,7 @@ export function GroupTransferModal({
                   await onUngroup();
                   onClose();
                 }}
-                className="rounded-lg bg-[var(--modal-danger)] hover:bg-red-500 text-white px-3 py-1 text-xs"
+                className="rounded-lg bg-[var(--modal-danger)] hover:bg-red-500 text-white px-3 py-1 min-h-11 md:min-h-0 text-sm md:text-xs"
               >
                 <Trash2 className="h-3 w-3 mr-1" />
                 Ungroup All
@@ -244,7 +244,7 @@ export function GroupTransferModal({
               {transferGroup.map((t) => (
                 <div
                   key={t.id}
-                  className="rounded-xl bg-slate-900/70 border border-slate-800 p-3"
+                  className="rounded-xl bg-slate-900/70 border border-slate-800 p-3 min-h-11 md:min-h-0"
                 >
                   <div className="flex items-center gap-3">
                     <div className="flex-1 min-w-0">
@@ -338,7 +338,8 @@ export function GroupTransferModal({
                   ? "Search for transactions to add..."
                   : "Search by description, amount, or account..."
               }
-              className="pl-9 h-10 bg-slate-800/60 border-slate-700 rounded-lg text-[var(--modal-text)]"
+              inputMode="search"
+              className="pl-9 h-11 md:h-10 text-base md:text-sm bg-slate-800/60 border-slate-700 rounded-lg text-[var(--modal-text)]"
             />
           </div>
         </div>
@@ -373,8 +374,9 @@ export function GroupTransferModal({
               <ResultItem
                 key={sug.id}
                 selected={selectedIds.has(sug.id)}
+                className="min-h-11 md:min-h-0"
               >
-                <label className="flex items-center gap-3 cursor-pointer">
+                <label className="flex flex-wrap md:flex-nowrap items-center gap-3 cursor-pointer">
                   <Checkbox
                     checked={selectedIds.has(sug.id)}
                     onCheckedChange={() => handleSelectTransaction(sug.id)}
@@ -419,7 +421,7 @@ export function GroupTransferModal({
         <Button
           variant="secondary"
           onClick={onClose}
-          className="rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2"
+          className="rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 min-h-11 md:min-h-0"
         >
           Cancel
         </Button>
@@ -429,7 +431,7 @@ export function GroupTransferModal({
             onClick={handleGroupSelected}
             disabled={selectedIds.size === 0}
             className={cn(
-              "rounded-lg px-4 py-2",
+              "rounded-lg px-4 py-2 min-h-11 md:min-h-0",
               selectedIds.size > 0
                 ? "bg-[var(--modal-accent-2)] hover:bg-cyan-500 text-white"
                 : "bg-slate-700 text-slate-400 cursor-not-allowed"
@@ -444,7 +446,7 @@ export function GroupTransferModal({
             onClick={handleAddToGroup}
             disabled={selectedIds.size === 0}
             className={cn(
-              "rounded-lg px-4 py-2",
+              "rounded-lg px-4 py-2 min-h-11 md:min-h-0",
               selectedIds.size > 0
                 ? "bg-[var(--modal-accent-2)] hover:bg-cyan-500 text-white"
                 : "bg-slate-700 text-slate-400 cursor-not-allowed"
