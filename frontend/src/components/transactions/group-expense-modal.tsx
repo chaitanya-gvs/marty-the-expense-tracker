@@ -106,7 +106,7 @@ export function GroupExpenseModal({
       <Modal.Body className="space-y-6">
         {/* Net Amount Summary */}
         <div className="rounded-xl bg-muted/40 border border-border/60 p-4">
-          <div className="grid grid-cols-2 md:grid-cols-3 divide-x divide-border/60">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-0 md:divide-x divide-border/60">
             <div className="pr-4">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Credits</p>
               <p className="font-mono text-sm font-semibold text-emerald-500 tabular-nums">
@@ -131,7 +131,7 @@ export function GroupExpenseModal({
                 )}
               </p>
             </div>
-            <div className="pl-4 text-right">
+            <div className="col-span-2 md:col-span-1 border-t md:border-t-0 pt-3 md:pt-0 pl-4 text-right">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Net Amount</p>
               <p className={cn(
                 "font-mono text-base font-bold tabular-nums tracking-tight",

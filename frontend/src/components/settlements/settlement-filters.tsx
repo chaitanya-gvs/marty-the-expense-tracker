@@ -332,10 +332,10 @@ export function SettlementFilters({
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs text-muted-foreground">Active:</span>
           {activeFilterBadges.map(badge => (
-            <Badge key={badge.key} variant="secondary" className="gap-1 text-xs h-6 px-2">
+            <Badge key={badge.key} variant="secondary" className="gap-1 text-xs h-6 px-2 overflow-visible">
               {badge.label}
               <button
-                className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity"
+                className="relative ml-0.5 opacity-60 hover:opacity-100 transition-opacity before:absolute before:-inset-2.5 before:content-['']"
                 onClick={() => {
                   if (badge.key === "participant") updateFilter("participant", undefined);
                   else if (badge.key === "date_range") {

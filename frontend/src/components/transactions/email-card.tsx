@@ -169,7 +169,7 @@ export function EmailCard({
               onClick={handleLinkToggle}
               disabled={isLinking}
               aria-label="Unlink email"
-              className="h-9 w-9 md:h-6 md:w-6 flex items-center justify-center rounded text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors flex-shrink-0"
+              className="h-11 w-11 md:h-6 md:w-6 flex items-center justify-center rounded text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors flex-shrink-0"
             >
               {isLinking ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -200,7 +200,7 @@ export function EmailCard({
           <button
             type="button"
             onClick={handleToggleExpand}
-            className="h-9 w-9 md:h-6 md:w-6 flex items-center justify-center rounded text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted/60 transition-colors flex-shrink-0"
+            className="h-11 w-11 md:h-6 md:w-6 flex items-center justify-center rounded text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted/60 transition-colors flex-shrink-0"
           >
             {isExpanded ? (
               <ChevronUp className="h-3.5 w-3.5" />
