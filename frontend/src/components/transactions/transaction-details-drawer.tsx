@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
     Sheet,
     SheetContent,
@@ -25,6 +25,10 @@ import { CategorySelector } from "./category-selector";
 import { MultiTagSelector } from "./multi-tag-selector";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface TransactionDetailsDrawerProps {
     transaction: Transaction | null;
@@ -107,6 +111,15 @@ function uniqueNames(...lists: string[][]): string[] {
         }
     }
     return result;
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+    return (
+        <div>
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">{label}</Label>
+            {children}
+        </div>
+    );
 }
 
 export function TransactionDetailsDrawer({
@@ -388,27 +401,23 @@ export function TransactionDetailsDrawer({
                     </div>
                 ) : (
                     <div className="mt-6 space-y-4">
-                        <div>
-                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Description</label>
-                            <input
-                                type="text"
+                        <Field label="Description">
+                            <Input
                                 value={form.description}
                                 onChange={(e) => setForm({ ...form, description: e.target.value })}
-                                className="w-full h-10 px-3 rounded-md bg-muted border border-border text-sm"
+                                className="h-11 text-base"
                             />
-                        </div>
+                        </Field>
 
-                        <div>
-                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Category</label>
+                        <Field label="Category">
                             <CategorySelector
                                 value={form.category}
                                 onValueChange={(value) => setForm({ ...form, category: value })}
                                 transactionDirection={form.direction}
                             />
-                        </div>
+                        </Field>
 
-                        <div>
-                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Tags</label>
+                        <Field label="Tags">
                             <MultiTagSelector
                                 selectedTags={selectedTags}
                                 onTagsChange={setSelectedTags}
@@ -440,22 +449,22 @@ export function TransactionDetailsDrawer({
                                     </div>
                                 </div>
                             )}
-                        </div>
+                        </Field>
 
-                        <div>
-                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Notes</label>
+                        <Field label="Notes">
                             <Textarea
                                 value={form.notes}
                                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
                                 placeholder="Add a note…"
                                 rows={3}
+                                className="text-base"
                             />
-                        </div>
+                        </Field>
 
                         <button
                             type="button"
                             onClick={() => setAdvancedOpen(!advancedOpen)}
-                            className="w-full flex items-center justify-between py-2.5 border-t border-border text-xs font-semibold text-muted-foreground"
+                            className="w-full min-h-11 flex items-center justify-between py-2.5 border-t border-border text-xs font-semibold text-muted-foreground"
                         >
                             <span>Advanced (date, account, amount, flags)</span>
                             <ChevronDown className={cn("h-4 w-4 transition-transform", advancedOpen && "rotate-180")} />
@@ -463,70 +472,69 @@ export function TransactionDetailsDrawer({
 
                         {advancedOpen && (
                             <div className="space-y-4 pt-1">
+                                <Field label="Date">
+                                    <Input
+                                        type="date"
+                                        value={form.date}
+                                        onChange={(e) => setForm({ ...form, date: e.target.value })}
+                                        className="h-11 text-base"
+                                    />
+                                </Field>
+                                <Field label="Account">
+                                    <Input
+                                        value={form.account}
+                                        onChange={(e) => setForm({ ...form, account: e.target.value })}
+                                        className="h-11 text-base"
+                                    />
+                                </Field>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Date</label>
-                                        <input
-                                            type="date"
-                                            value={form.date}
-                                            onChange={(e) => setForm({ ...form, date: e.target.value })}
-                                            className="w-full h-10 px-3 rounded-md bg-muted border border-border text-sm"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Account</label>
-                                        <input
-                                            type="text"
-                                            value={form.account}
-                                            onChange={(e) => setForm({ ...form, account: e.target.value })}
-                                            className="w-full h-10 px-3 rounded-md bg-muted border border-border text-sm"
-                                        />
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Direction</label>
-                                        <select
+                                    <Field label="Direction">
+                                        <Select
                                             value={form.direction}
-                                            onChange={(e) => setForm({ ...form, direction: e.target.value as "debit" | "credit" })}
-                                            className="w-full h-10 px-3 rounded-md bg-muted border border-border text-sm"
+                                            onValueChange={(value) => setForm({ ...form, direction: value as "debit" | "credit" })}
                                         >
-                                            <option value="debit">Debit (money out)</option>
-                                            <option value="credit">Credit (money in)</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Amount</label>
-                                        <input
+                                            <SelectTrigger className="h-11 text-base">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="debit">Debit (money out)</SelectItem>
+                                                <SelectItem value="credit">Credit (money in)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </Field>
+                                    <Field label="Amount">
+                                        <Input
                                             type="number"
+                                            inputMode="decimal"
+                                            step="0.01"
                                             value={form.amount}
                                             onChange={(e) => setForm({ ...form, amount: parseFloat(e.target.value) || 0 })}
-                                            className="w-full h-10 px-3 rounded-md bg-muted border border-border text-sm"
+                                            className="h-11 text-base font-mono tabular-nums"
                                         />
-                                    </div>
+                                    </Field>
                                 </div>
-                                <div className="flex flex-wrap gap-4">
-                                    <label className="flex items-center gap-2 text-sm">
-                                        <input type="checkbox" checked={form.is_shared} onChange={(e) => setForm({ ...form, is_shared: e.target.checked })} />
-                                        Shared
+                                <div className="divide-y divide-border rounded-md border border-border">
+                                    <label className="flex items-center justify-between min-h-11 px-3 text-sm">
+                                        <span>Shared</span>
+                                        <Switch checked={form.is_shared} onCheckedChange={(checked) => setForm({ ...form, is_shared: checked })} />
                                     </label>
-                                    <label className="flex items-center gap-2 text-sm">
-                                        <input type="checkbox" checked={form.is_refund} onChange={(e) => setForm({ ...form, is_refund: e.target.checked })} />
-                                        Refund
+                                    <label className="flex items-center justify-between min-h-11 px-3 text-sm">
+                                        <span>Refund</span>
+                                        <Switch checked={form.is_refund} onCheckedChange={(checked) => setForm({ ...form, is_refund: checked })} />
                                     </label>
-                                    <label className="flex items-center gap-2 text-sm">
-                                        <input type="checkbox" checked={form.is_transfer} onChange={(e) => setForm({ ...form, is_transfer: e.target.checked })} />
-                                        Transfer
+                                    <label className="flex items-center justify-between min-h-11 px-3 text-sm">
+                                        <span>Transfer</span>
+                                        <Switch checked={form.is_transfer} onCheckedChange={(checked) => setForm({ ...form, is_transfer: checked })} />
                                     </label>
                                 </div>
                             </div>
                         )}
 
                         <div className="flex gap-2 pt-2">
-                            <Button variant="outline" className="flex-1" onClick={handleCancel} disabled={updateTransaction.isPending}>
+                            <Button variant="outline" className="flex-1 h-11" onClick={handleCancel} disabled={updateTransaction.isPending}>
                                 Cancel
                             </Button>
-                            <Button className="flex-1" onClick={handleSave} disabled={updateTransaction.isPending}>
+                            <Button className="flex-1 h-11" onClick={handleSave} disabled={updateTransaction.isPending}>
                                 {updateTransaction.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
                             </Button>
                         </div>
