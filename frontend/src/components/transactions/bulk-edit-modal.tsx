@@ -189,7 +189,7 @@ export function BulkEditModal({
           <div className="space-y-2">
             {/* Description Field */}
             <div className="p-3 rounded-lg bg-muted/40 border border-border/50">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 min-h-11 md:min-h-0">
                 <Switch
                   checked={updateFields.has("description")}
                   onCheckedChange={() => handleFieldToggle("description")}
@@ -203,7 +203,7 @@ export function BulkEditModal({
                         type="button"
                         onClick={() => setDescriptionMode("set")}
                         className={cn(
-                          "px-2 py-0.5 text-xs rounded transition-colors",
+                          "px-3 py-1.5 md:px-2 md:py-0.5 text-xs rounded transition-colors",
                           descriptionMode === "set" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                         )}
                       >
@@ -213,7 +213,7 @@ export function BulkEditModal({
                         type="button"
                         onClick={() => setDescriptionMode("find-replace")}
                         className={cn(
-                          "flex items-center gap-1 px-2 py-0.5 text-xs rounded transition-colors",
+                          "flex items-center gap-1 px-3 py-1.5 md:px-2 md:py-0.5 text-xs rounded transition-colors",
                           descriptionMode === "find-replace" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                         )}
                       >
@@ -240,17 +240,17 @@ export function BulkEditModal({
                         value={formData.description || ""}
                         onChange={(e) => handleInputChange("description", e.target.value)}
                         placeholder="Enter new description for all selected"
-                        className="mt-2 h-10"
+                        className="mt-2 h-11 md:h-10 text-base md:text-sm"
                       />
                     ) : (
                       <div className="mt-2 space-y-2">
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted-foreground w-14 shrink-0">Find</span>
-                          <Input value={findText} onChange={(e) => setFindText(e.target.value)} placeholder="Text to find…" className="h-10 text-sm" />
+                          <Input value={findText} onChange={(e) => setFindText(e.target.value)} placeholder="Text to find…" className="h-11 md:h-10 text-base md:text-sm" />
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted-foreground w-14 shrink-0">Replace</span>
-                          <Input value={replaceText} onChange={(e) => setReplaceText(e.target.value)} placeholder="Replace with…" className="h-10 text-sm" />
+                          <Input value={replaceText} onChange={(e) => setReplaceText(e.target.value)} placeholder="Replace with…" className="h-11 md:h-10 text-base md:text-sm" />
                         </div>
                         {findText && (
                           <p className="text-xs text-muted-foreground pl-16">
@@ -276,7 +276,7 @@ export function BulkEditModal({
 
             {/* Category Field */}
             <div className="p-3 rounded-lg bg-muted/40 border border-border/50">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 min-h-11 md:min-h-0">
                 <Switch
                   checked={updateFields.has("category")}
                   onCheckedChange={() => handleFieldToggle("category")}
@@ -286,8 +286,8 @@ export function BulkEditModal({
                   <label className="text-sm font-medium text-foreground">Category</label>
                   {updateFields.has("category") && (
                     <div className="flex items-center gap-0.5 rounded-md border border-border/60 bg-muted/60 p-0.5">
-                      <button type="button" onClick={() => setCategoryMode("set")} className={cn("px-2 py-0.5 text-xs rounded transition-colors", categoryMode === "set" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>Set</button>
-                      <button type="button" onClick={() => setCategoryMode("clear")} className={cn("px-2 py-0.5 text-xs rounded transition-colors", categoryMode === "clear" ? "bg-background text-destructive shadow-sm" : "text-muted-foreground hover:text-foreground")}>Clear</button>
+                      <button type="button" onClick={() => setCategoryMode("set")} className={cn("px-3 py-1.5 md:px-2 md:py-0.5 text-xs rounded transition-colors", categoryMode === "set" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>Set</button>
+                      <button type="button" onClick={() => setCategoryMode("clear")} className={cn("px-3 py-1.5 md:px-2 md:py-0.5 text-xs rounded transition-colors", categoryMode === "clear" ? "bg-background text-destructive shadow-sm" : "text-muted-foreground hover:text-foreground")}>Clear</button>
                     </div>
                   )}
                 </div>
@@ -307,7 +307,7 @@ export function BulkEditModal({
 
             {/* Tags Field */}
             <div className="p-3 rounded-lg bg-muted/40 border border-border/50">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 min-h-11 md:min-h-0">
                 <Switch
                   checked={updateFields.has("tags")}
                   onCheckedChange={() => handleFieldToggle("tags")}
@@ -317,9 +317,9 @@ export function BulkEditModal({
                   <label className="text-sm font-medium text-foreground">Tags</label>
                   {updateFields.has("tags") && (
                     <div className="flex items-center gap-0.5 rounded-md border border-border/60 bg-muted/60 p-0.5">
-                      <button type="button" onClick={() => setTagsMode("add")} className={cn("px-2 py-0.5 text-xs rounded transition-colors", tagsMode === "add" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>Add</button>
-                      <button type="button" onClick={() => setTagsMode("replace")} className={cn("px-2 py-0.5 text-xs rounded transition-colors", tagsMode === "replace" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>Replace</button>
-                      <button type="button" onClick={() => setTagsMode("clear")} className={cn("px-2 py-0.5 text-xs rounded transition-colors", tagsMode === "clear" ? "bg-background text-destructive shadow-sm" : "text-muted-foreground hover:text-foreground")}>Clear</button>
+                      <button type="button" onClick={() => setTagsMode("add")} className={cn("px-3 py-1.5 md:px-2 md:py-0.5 text-xs rounded transition-colors", tagsMode === "add" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>Add</button>
+                      <button type="button" onClick={() => setTagsMode("replace")} className={cn("px-3 py-1.5 md:px-2 md:py-0.5 text-xs rounded transition-colors", tagsMode === "replace" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>Replace</button>
+                      <button type="button" onClick={() => setTagsMode("clear")} className={cn("px-3 py-1.5 md:px-2 md:py-0.5 text-xs rounded transition-colors", tagsMode === "clear" ? "bg-background text-destructive shadow-sm" : "text-muted-foreground hover:text-foreground")}>Clear</button>
                     </div>
                   )}
                 </div>
@@ -344,7 +344,7 @@ export function BulkEditModal({
             <button
               type="button"
               onClick={() => setIsTransactionsExpanded(!isTransactionsExpanded)}
-              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors min-h-11 md:min-h-0"
             >
               {isTransactionsExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
               <span>{selectedTransactions.length} selected transactions</span>
@@ -352,7 +352,7 @@ export function BulkEditModal({
             {isTransactionsExpanded && (
               <div className="max-h-48 overflow-y-auto space-y-1 mt-2">
                 {selectedTransactions.map((transaction) => (
-                  <div key={transaction.id} className="p-2 rounded-md bg-muted/30 border border-border/40 text-xs">
+                  <div key={transaction.id} className="p-2.5 md:p-2 min-h-11 md:min-h-0 rounded-md bg-muted/30 border border-border/40 text-sm md:text-xs">
                     <span className="font-medium text-foreground">{transaction.description}</span>
                     <span className="text-muted-foreground font-mono"> · {transaction.date} · ₹{transaction.amount}</span>
                   </div>
