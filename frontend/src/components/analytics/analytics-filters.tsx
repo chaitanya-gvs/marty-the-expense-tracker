@@ -79,7 +79,7 @@ export function AnalyticsFilters({ filters, onFiltersChange }: AnalyticsFiltersP
       <div className="flex flex-col gap-2 px-5 py-3 md:flex-row md:items-center md:justify-between md:gap-3">
 
         {/* Date preset segmented group */}
-        <div className="flex items-center bg-muted/50 rounded-md p-0.5 gap-0.5 overflow-x-auto max-w-full md:overflow-visible [&>*]:shrink-0">
+        <div className="flex items-center bg-muted/50 rounded-md p-0.5 gap-0.5 overflow-x-auto max-w-full md:overflow-visible md:shrink-0 [&>*]:shrink-0">
           {DATE_PRESETS.map((preset) => (
             <button
               key={preset.value}
@@ -101,7 +101,7 @@ export function AnalyticsFilters({ filters, onFiltersChange }: AnalyticsFiltersP
         </div>
 
         {/* Right side: date display + direction */}
-        <div className="flex items-center gap-2 flex-wrap md:flex-nowrap">
+        <div className="flex items-center gap-2 flex-wrap md:flex-nowrap md:shrink-0">
           {/* Date range display / toggle custom dates */}
           <button
             onClick={() => setShowCustomDates((v) => !v)}
