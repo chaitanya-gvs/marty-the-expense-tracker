@@ -158,14 +158,23 @@ export function MultiTagSelector({
               {allTags.length === 0 && !tagsLoading ? (
                 <div className="p-2 text-sm text-muted-foreground">No tags found</div>
               ) : (
-                <div className="space-y-1 max-h-60 overflow-y-auto">
+                <div className="space-y-1 max-h-60 overflow-y-auto" role="listbox" aria-label="Tags">
                   {allTags.map((tag) => {
                     const isSelected = selectedTags.some(s => s.id === tag.id);
                     return (
                       <div
                         key={tag.id}
-                        className="flex items-center space-x-2 p-2 hover:bg-primary/10 rounded cursor-pointer"
+                        role="option"
+                        aria-selected={isSelected}
+                        tabIndex={0}
+                        className="flex items-center space-x-2 p-2 min-h-11 md:min-h-0 hover:bg-primary/10 rounded cursor-pointer"
                         onClick={() => handleSelectTag(tag)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleSelectTag(tag);
+                          }
+                        }}
                       >
                         <div className="flex items-center gap-2 flex-1">
                           {tag.color && (
