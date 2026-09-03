@@ -174,7 +174,7 @@ export function GroupExpenseModal({
             onSave={async (val) => setCategory(val ?? "")}
             onCancel={() => {}}
             autoFocus={false}
-            className="h-11 md:h-8 text-base md:text-xs"
+            className="h-11 md:h-8 text-base md:text-sm"
           />
           {selectedTransactions[0]?.category && !category && (
             <p className="text-xs text-muted-foreground">
