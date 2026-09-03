@@ -110,7 +110,7 @@ export function BudgetCard({ budget, period, onEdit, onDelete, onOverride }: Bud
       >
         {/* Card header */}
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-h-11 md:min-h-0">
 
             {/* Name + Override badge */}
             <div className="flex items-center gap-1.5 min-w-0 flex-1">
@@ -144,7 +144,7 @@ export function BudgetCard({ budget, period, onEdit, onDelete, onOverride }: Bud
             <div className="flex items-center gap-0.5 shrink-0">
               <Button
                 variant="ghost" size="sm"
-                className="h-7 w-7 p-0 rounded-md"
+                className="h-9 w-9 md:h-7 md:w-7 p-0 rounded-md"
                 onClick={(e) => { e.stopPropagation(); onOverride(budget); }}
                 title="Set monthly override"
               >
@@ -152,7 +152,7 @@ export function BudgetCard({ budget, period, onEdit, onDelete, onOverride }: Bud
               </Button>
               <Button
                 variant="ghost" size="sm"
-                className="h-7 w-7 p-0 rounded-md"
+                className="h-9 w-9 md:h-7 md:w-7 p-0 rounded-md"
                 onClick={(e) => { e.stopPropagation(); onEdit(budget); }}
                 title="Edit budget"
               >
@@ -160,7 +160,7 @@ export function BudgetCard({ budget, period, onEdit, onDelete, onOverride }: Bud
               </Button>
               <Button
                 variant="ghost" size="sm"
-                className="h-7 w-7 p-0 rounded-md text-destructive/60 hover:text-destructive"
+                className="h-9 w-9 md:h-7 md:w-7 p-0 rounded-md text-destructive/60 hover:text-destructive"
                 onClick={(e) => { e.stopPropagation(); onDelete(budget.id); }}
                 title="Delete budget"
               >

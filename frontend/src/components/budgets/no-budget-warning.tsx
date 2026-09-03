@@ -25,7 +25,7 @@ export function NoBudgetWarning({ coverageGaps, onCreateBudget }: NoBudgetWarnin
           </div>
           <div className="space-y-1">
             {recurring_gaps.map((gap) => (
-              <div key={gap.id} className="flex items-center justify-between text-xs gap-3">
+              <div key={gap.id} className="flex flex-wrap items-center justify-between gap-2 text-xs md:flex-nowrap md:gap-3">
                 <span className="text-muted-foreground min-w-0 truncate">
                   <span className="text-foreground font-medium">{gap.name}</span>
                   {" "}— {gap.recurring_count} recurring transaction{gap.recurring_count !== 1 ? "s" : ""}
@@ -33,7 +33,7 @@ export function NoBudgetWarning({ coverageGaps, onCreateBudget }: NoBudgetWarnin
                 </span>
                 <button
                   type="button"
-                  className="shrink-0 text-yellow-400/80 hover:text-yellow-300 transition-colors"
+                  className="shrink-0 min-h-11 md:min-h-0 text-yellow-400/80 hover:text-yellow-300 transition-colors"
                   onClick={() => onCreateBudget(gap.id)}
                 >
                   Create budget →
@@ -53,7 +53,7 @@ export function NoBudgetWarning({ coverageGaps, onCreateBudget }: NoBudgetWarnin
           </div>
           <div className="space-y-1">
             {variable_gaps.map((gap) => (
-              <div key={gap.id} className="flex items-center justify-between text-xs gap-3">
+              <div key={gap.id} className="flex flex-wrap items-center justify-between gap-2 text-xs md:flex-nowrap md:gap-3">
                 <span className="text-muted-foreground min-w-0 truncate">
                   <span className="text-foreground font-medium">{gap.name}</span>
                   {" "}— {formatCurrency(gap.variable_spend)} spent,{" "}
@@ -61,7 +61,7 @@ export function NoBudgetWarning({ coverageGaps, onCreateBudget }: NoBudgetWarnin
                 </span>
                 <button
                   type="button"
-                  className="shrink-0 text-yellow-400/80 hover:text-yellow-300 transition-colors"
+                  className="shrink-0 min-h-11 md:min-h-0 text-yellow-400/80 hover:text-yellow-300 transition-colors"
                   onClick={() => onCreateBudget(gap.id)}
                 >
                   Create budget →

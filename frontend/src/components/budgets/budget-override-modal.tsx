@@ -95,6 +95,8 @@ export function BudgetOverrideModal({ isOpen, onClose, budget, period }: BudgetO
                 onChange={(e) => setLimit(e.target.value)}
                 placeholder="0.00"
                 min={0.01}
+                inputMode="decimal"
+                className="h-11 md:h-10"
               />
             </FieldRow>
           </div>
@@ -105,17 +107,17 @@ export function BudgetOverrideModal({ isOpen, onClose, budget, period }: BudgetO
             <Button
               type="button"
               variant="outline"
-              className="mr-auto text-destructive hover:text-destructive"
+              className="mr-auto min-h-11 md:min-h-0 text-destructive hover:text-destructive"
               onClick={handleRemove}
               disabled={isPending}
             >
               {deleteOverride.isPending ? "Removing…" : "Remove Override"}
             </Button>
           )}
-          <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+          <Button type="button" variant="outline" className="min-h-11 md:min-h-0" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
-          <Button type="submit" disabled={isPending}>
+          <Button type="submit" className="min-h-11 md:min-h-0" disabled={isPending}>
             {upsert.isPending ? "Saving…" : hasExistingOverride ? "Update Override" : "Set Override"}
           </Button>
         </Modal.Footer>

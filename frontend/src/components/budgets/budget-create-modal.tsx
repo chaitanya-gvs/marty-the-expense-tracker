@@ -114,7 +114,7 @@ export function BudgetCreateModal({
             ) : (
               <FieldRow label="Category" required>
                 <Select value={categoryId} onValueChange={setCategoryId}>
-                  <SelectTrigger className="text-sm">
+                  <SelectTrigger className="h-11 md:h-9 text-base md:text-sm">
                     <SelectValue placeholder="Select a category…" />
                   </SelectTrigger>
                   <SelectContent>
@@ -135,6 +135,8 @@ export function BudgetCreateModal({
                 onChange={(e) => setMonthlyLimit(e.target.value)}
                 placeholder="0.00"
                 min={0.01}
+                inputMode="decimal"
+                className="h-11 md:h-10"
               />
             </FieldRow>
 
@@ -144,17 +146,17 @@ export function BudgetCreateModal({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Dining out cap"
-                className="text-sm"
+                className="h-11 md:h-9 text-base md:text-sm"
               />
             </FieldRow>
           </div>
         </Modal.Body>
 
         <Modal.Footer>
-          <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+          <Button type="button" variant="outline" className="min-h-11 md:min-h-0" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
-          <Button type="submit" disabled={isPending}>
+          <Button type="submit" className="min-h-11 md:min-h-0" disabled={isPending}>
             {isPending ? (isEditing ? "Saving…" : "Creating…") : isEditing ? "Save Changes" : "Create Budget"}
           </Button>
         </Modal.Footer>

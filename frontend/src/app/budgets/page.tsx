@@ -68,18 +68,18 @@ export default function BudgetsPage() {
     <MainLayout>
       <div className="space-y-6 p-6">
         {/* Header + period nav */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground tracking-tight">Budgets</h1>
             <p className="text-xs text-muted-foreground/70 mt-0.5">
               Manage your monthly spending limits and track progress
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-center gap-2 md:justify-end">
             <Button
               variant="outline"
               size="sm"
-              className="h-8 w-8 p-0"
+              className="h-11 w-11 md:h-8 md:w-8 p-0"
               onClick={() => setMonthOffset((o) => o - 1)}
             >
               <ChevronLeft className="h-4 w-4" />
@@ -90,7 +90,7 @@ export default function BudgetsPage() {
             <Button
               variant="outline"
               size="sm"
-              className="h-8 w-8 p-0"
+              className="h-11 w-11 md:h-8 md:w-8 p-0"
               onClick={() => setMonthOffset((o) => o + 1)}
               disabled={monthOffset >= 0}
             >

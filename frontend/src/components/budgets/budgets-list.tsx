@@ -73,14 +73,14 @@ export function BudgetsList({
 
   return (
     <>
-      <div className="flex items-center justify-between mb-4 gap-3">
-        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex-1">
+      <div className="flex flex-wrap items-center gap-2 mb-4 md:flex-nowrap md:justify-between md:gap-3">
+        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider w-full md:flex-1">
           Monthly Budgets · {budgets.length} active
         </h2>
         <select
           value={sortKey}
           onChange={(e) => setSortKey(e.target.value as SortKey)}
-          className="text-xs bg-transparent text-muted-foreground border border-border rounded-md px-2 py-1 cursor-pointer hover:border-border/80 focus:outline-none"
+          className="flex-1 md:flex-none h-11 md:h-9 text-base md:text-xs bg-transparent text-muted-foreground border border-border rounded-md px-2 py-1 cursor-pointer hover:border-border/80 focus:outline-none"
           aria-label="Sort budgets"
         >
           <option value="utilisation_desc">↓ Utilisation %</option>
@@ -88,7 +88,7 @@ export function BudgetsList({
           <option value="spend_desc">↓ Amount spent</option>
           <option value="headroom_asc">↑ Headroom</option>
         </select>
-        <Button size="sm" onClick={onAddBudget}>
+        <Button size="sm" className="shrink-0 min-h-11 md:min-h-0" onClick={onAddBudget}>
           <Plus className="h-3.5 w-3.5 mr-1" /> Add Budget
         </Button>
       </div>
@@ -104,7 +104,7 @@ export function BudgetsList({
           </div>
           <Button
             size="sm"
-            className="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+            className="mt-2 min-h-11 md:min-h-0 bg-indigo-600 hover:bg-indigo-700 text-white"
             onClick={onAddBudget}
           >
             <Plus className="h-3.5 w-3.5 mr-1" /> Add Budget
