@@ -14,7 +14,7 @@ export default function SettlementsPage() {
           <p className="text-sm text-muted-foreground mt-1">Track what you owe and what others owe you</p>
         </div>
         <Tabs defaultValue="splitwise">
-          <TabsList className="w-full grid grid-cols-2 md:inline-flex md:w-auto">
+          <TabsList className="w-full grid grid-cols-2 h-auto md:inline-flex md:w-fit md:h-9">
             <TabsTrigger value="splitwise" className="min-h-11 md:min-h-0">Splitwise</TabsTrigger>
             <TabsTrigger value="manual" className="min-h-11 md:min-h-0">Manual Computation</TabsTrigger>
           </TabsList>

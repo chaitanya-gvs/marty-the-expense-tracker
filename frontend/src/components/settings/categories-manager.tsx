@@ -197,7 +197,7 @@ export function CategoriesManager() {
         <div className="space-y-4">
           {/* Filter Tabs */}
           <Tabs value={transactionTypeFilter} onValueChange={(value) => setTransactionTypeFilter(value as TransactionTypeFilter)}>
-            <TabsList className="w-full grid grid-cols-3 md:inline-flex md:w-fit">
+            <TabsList className="w-full grid grid-cols-3 h-auto md:inline-flex md:w-fit md:h-9">
               <TabsTrigger value="all" className="min-h-11 md:min-h-0">All Categories</TabsTrigger>
               <TabsTrigger value="debit" className="min-h-11 md:min-h-0">Debit Only</TabsTrigger>
               <TabsTrigger value="credit" className="min-h-11 md:min-h-0">Credit Only</TabsTrigger>

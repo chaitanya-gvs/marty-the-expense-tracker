@@ -15,9 +15,9 @@ export default function SettingsPage() {
         </div>
         
         <Tabs defaultValue="categories" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="categories">Categories</TabsTrigger>
-            <TabsTrigger value="tags">Tags</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 h-auto md:h-9">
+            <TabsTrigger value="categories" className="min-h-11 md:min-h-0">Categories</TabsTrigger>
+            <TabsTrigger value="tags" className="min-h-11 md:min-h-0">Tags</TabsTrigger>
           </TabsList>
           <TabsContent value="categories" className="space-y-4">
             <CategoriesManager />

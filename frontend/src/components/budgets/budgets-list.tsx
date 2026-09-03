@@ -80,7 +80,7 @@ export function BudgetsList({
         <select
           value={sortKey}
           onChange={(e) => setSortKey(e.target.value as SortKey)}
-          className="flex-1 md:flex-none h-11 md:h-9 text-base md:text-xs bg-transparent text-muted-foreground border border-border rounded-md px-2 py-1 cursor-pointer hover:border-border/80 focus:outline-none"
+          className="flex-1 md:flex-none h-11 md:h-auto text-base md:text-xs bg-transparent text-muted-foreground border border-border rounded-md px-2 py-1 cursor-pointer hover:border-border/80 focus:outline-none"
           aria-label="Sort budgets"
         >
           <option value="utilisation_desc">↓ Utilisation %</option>
