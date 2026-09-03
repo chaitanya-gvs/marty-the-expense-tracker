@@ -41,6 +41,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import {
   useStartWorkflow,
   useCancelWorkflow,
@@ -1176,6 +1177,7 @@ export function WorkflowSheet({
   onOpenChange: (open: boolean) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const isMobile = useIsMobile();
 
   // Config state
   const [includeEmail, setIncludeEmail] = useState(true);
@@ -1274,11 +1276,11 @@ export function WorkflowSheet({
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent
-        side="right"
+        side={isMobile ? "bottom" : "right"}
         hideCloseButton
         className={cn(
           "flex flex-col max-w-full sm:max-w-full p-0 transition-[width] duration-200",
-          expanded ? "w-[860px]" : "w-[520px]"
+          expanded ? "w-full md:w-[860px]" : "w-full md:w-[520px]"
         )}
       >
         {/* ── Fixed header ───────────────────────────────────────────── */}
@@ -1295,7 +1297,7 @@ export function WorkflowSheet({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                className="h-11 w-11 md:h-8 md:w-8 text-muted-foreground hover:text-foreground"
                 onClick={() => setExpanded((v) => !v)}
                 title={expanded ? "Collapse panel" : "Expand panel"}
               >
@@ -1309,7 +1311,7 @@ export function WorkflowSheet({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  className="h-11 w-11 md:h-8 md:w-8 text-muted-foreground hover:text-foreground"
                   title="Close panel"
                 >
                   <X className="h-4 w-4" />
@@ -1401,7 +1403,7 @@ export function WorkflowSheet({
                 <Button
                   onClick={handleStart}
                   disabled={isPending || noSubsystemSelected}
-                  className="w-full gap-2 bg-emerald-600 hover:bg-emerald-500 text-white"
+                  className="w-full gap-2 bg-emerald-600 hover:bg-emerald-500 text-white min-h-11 md:min-h-0"
                 >
                   {isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -1423,7 +1425,7 @@ export function WorkflowSheet({
                 <Button
                   variant="outline"
                   onClick={handleReset}
-                  className="flex-1 gap-1.5"
+                  className="flex-1 gap-1.5 min-h-11 md:min-h-0"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   Run again
@@ -1441,7 +1443,7 @@ export function WorkflowSheet({
                   variant="outline"
                   onClick={handleCancel}
                   disabled={isCancelling}
-                  className="w-full gap-1.5 text-[#F44D4D] border-[#F44D4D]/30 hover:bg-[#F44D4D]/10 hover:text-[#F44D4D]"
+                  className="w-full gap-1.5 text-[#F44D4D] border-[#F44D4D]/30 hover:bg-[#F44D4D]/10 hover:text-[#F44D4D] min-h-11 md:min-h-0"
                 >
                   {isCancelling ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />

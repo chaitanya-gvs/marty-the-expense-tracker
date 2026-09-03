@@ -186,7 +186,7 @@ export function PdfViewer({ transactionId, open, onOpenChange }: PdfViewerProps)
                 size="sm"
                 onClick={handleDownload}
                 disabled={!pdfUrl}
-                className="h-8 gap-1.5 text-xs"
+                className="h-8 gap-1.5 text-xs min-h-11 md:min-h-0"
               >
                 <Download className="h-3.5 w-3.5" />
                 Download
@@ -194,7 +194,7 @@ export function PdfViewer({ transactionId, open, onOpenChange }: PdfViewerProps)
               <button
                 type="button"
                 onClick={handleCloseClick}
-                className="h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                className="h-11 w-11 md:h-8 md:w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
                 aria-label="Close"
               >
                 <X className="h-4 w-4" />
