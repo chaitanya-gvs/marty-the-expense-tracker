@@ -101,7 +101,7 @@ export function CategorySelector({
           variant="outline"
           size="sm"
           onClick={() => setShowCreateDialog(true)}
-          className="px-1.5 h-8 flex-shrink-0"
+          className="px-1.5 h-10 md:h-8 flex-shrink-0"
         >
           <Plus className="h-2.5 w-2.5" />
         </Button>
@@ -113,7 +113,7 @@ export function CategorySelector({
     <>
       <div className="flex gap-0.5 w-full max-w-full overflow-hidden">
         <Select value={value || ""} onValueChange={onValueChange} disabled={categoriesLoading}>
-          <SelectTrigger size="sm" className={cn("flex-1 min-w-0 h-8 text-xs", className)}>
+          <SelectTrigger size="sm" className={cn("flex-1 min-w-0 h-10 md:h-8 text-xs", className)}>
             <SelectValue placeholder={categoriesLoading ? "Loading..." : placeholder}>
               {selectedCategory && (
                 <div className="flex items-center gap-1 truncate">
@@ -156,7 +156,7 @@ export function CategorySelector({
           variant="outline"
           size="sm"
           onClick={() => setShowCreateDialog(true)}
-          className="px-1.5 h-8 flex-shrink-0"
+          className="px-1.5 h-10 md:h-8 flex-shrink-0"
         >
           <Plus className="h-2.5 w-2.5" />
         </Button>

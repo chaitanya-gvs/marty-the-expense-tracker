@@ -193,14 +193,14 @@ export function CategoriesManager() {
           </Dialog>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-4 md:px-6">
         <div className="space-y-4">
           {/* Filter Tabs */}
           <Tabs value={transactionTypeFilter} onValueChange={(value) => setTransactionTypeFilter(value as TransactionTypeFilter)}>
             <TabsList className="w-full grid grid-cols-3 h-auto md:inline-flex md:w-fit md:h-9">
-              <TabsTrigger value="all" className="min-h-11 md:min-h-0">All Categories</TabsTrigger>
-              <TabsTrigger value="debit" className="min-h-11 md:min-h-0">Debit Only</TabsTrigger>
-              <TabsTrigger value="credit" className="min-h-11 md:min-h-0">Credit Only</TabsTrigger>
+              <TabsTrigger value="all" className="min-h-11 md:min-h-0 px-1 md:px-2 text-xs md:text-sm">All Categories</TabsTrigger>
+              <TabsTrigger value="debit" className="min-h-11 md:min-h-0 px-1 md:px-2 text-xs md:text-sm">Debit Only</TabsTrigger>
+              <TabsTrigger value="credit" className="min-h-11 md:min-h-0 px-1 md:px-2 text-xs md:text-sm">Credit Only</TabsTrigger>
             </TabsList>
           </Tabs>
 
