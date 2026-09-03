@@ -67,7 +67,7 @@ function TransactionRow({
       type="button"
       {...longPress}
       className={cn(
-        "w-full flex items-center gap-2.5 py-2.5 px-1 text-left border-b border-border last:border-b-0 transition-colors min-h-11",
+        "w-full flex items-center gap-2.5 py-2.5 px-1 text-left border-b border-border last:border-b-0 transition-colors min-h-11 select-none touch-manipulation",
         selected && "bg-primary/[0.06]"
       )}
     >

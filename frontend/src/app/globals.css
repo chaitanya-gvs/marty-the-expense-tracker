@@ -184,3 +184,18 @@
 .scrollbar-none::-webkit-scrollbar {
   display: none;
 }
+
+/* Reduced motion: collapse tw-animate-css enter/exit animations and CSS transitions.
+   Modal (framer-motion) honours useReducedMotion() separately. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-in,
+  .animate-out {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+}
