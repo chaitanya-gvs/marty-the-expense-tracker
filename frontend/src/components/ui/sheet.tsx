@@ -35,12 +35,15 @@ interface SheetContentProps
   modal?: boolean
   onClose?: () => void
   hideCloseButton?: boolean
+  /** Render a drag-handle-style grabber at the top. Defaults to true for side="bottom". */
+  showGrabber?: boolean
 }
 
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, modal = true, onClose, hideCloseButton = false, ...props }, ref) => {
+>(({ side = "right", className, children, modal = true, onClose, hideCloseButton = false, showGrabber, ...props }, ref) => {
+  const grabber = showGrabber ?? side === "bottom"
   return (
   <SheetPortal>
       {modal ? (
@@ -55,7 +58,7 @@ const SheetContent = React.forwardRef<
         side === "top" &&
           "inset-x-0 top-0 border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
         side === "bottom" &&
-          "inset-x-0 bottom-0 border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+          "inset-x-0 bottom-0 border-t max-h-[92dvh] overflow-y-auto rounded-t-2xl pb-[env(safe-area-inset-bottom)] data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
         side === "left" &&
           "inset-y-0 left-0 h-full w-3/4 border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm",
         side === "right" &&
@@ -64,6 +67,9 @@ const SheetContent = React.forwardRef<
       )}
       {...props}
     >
+      {grabber && (
+        <div aria-hidden className="h-1 w-9 rounded-full bg-border mx-auto -mt-2 mb-3" />
+      )}
       {children}
       {!hideCloseButton && (
         <SheetPrimitive.Close

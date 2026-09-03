@@ -201,14 +201,8 @@ export function TransactionDetailsDrawer({
         <Sheet open={isOpen} onOpenChange={onClose}>
             <SheetContent
                 side={isMobile ? "bottom" : "right"}
-                className={cn(
-                    "w-full sm:w-[540px] overflow-y-auto",
-                    isMobile && "max-h-[90vh] rounded-t-xl"
-                )}
+                className="w-full sm:w-[540px] overflow-y-auto"
             >
-                {isMobile && (
-                    <div className="w-9 h-1 rounded-full bg-border mx-auto mb-3" />
-                )}
                 <SheetHeader>
                     <SheetTitle>{mode === "edit" ? "Edit Transaction" : "Transaction Details"}</SheetTitle>
                     <SheetDescription>
