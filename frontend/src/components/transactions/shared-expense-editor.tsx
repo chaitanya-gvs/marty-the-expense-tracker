@@ -420,6 +420,7 @@ export function SharedExpenseEditor({ transaction, isOpen, isLoading = false, on
               className="p-0 w-[var(--radix-popover-trigger-width)]"
               align="start"
               side="bottom"
+              title="Add participant"
               onInteractOutside={(e) => {
                 const target = e.target as HTMLElement;
                 if (target.closest('[role="dialog"]')) {
