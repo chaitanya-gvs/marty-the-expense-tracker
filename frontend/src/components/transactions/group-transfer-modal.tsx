@@ -270,7 +270,7 @@ export function GroupTransferModal({
                       <button
                         type="button"
                         onClick={() => onRemoveFromGroup(t.id)}
-                        className="p-1.5 rounded-full hover:bg-[var(--modal-danger)]/20 text-[var(--modal-muted)] hover:text-[var(--modal-danger)] transition-colors"
+                        className="flex items-center justify-center p-1.5 min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-full hover:bg-[var(--modal-danger)]/20 text-[var(--modal-muted)] hover:text-[var(--modal-danger)] transition-colors"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
