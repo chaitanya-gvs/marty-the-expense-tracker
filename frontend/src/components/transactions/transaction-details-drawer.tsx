@@ -152,6 +152,13 @@ export function TransactionDetailsDrawer({
     const unresolvedRef = useRef<string[]>(unresolvedTagNames);
     unresolvedRef.current = unresolvedTagNames;
 
+    // Mirrors `mode` for the re-sync effect below, so that effect can check
+    // the current mode without adding `mode` to its own deps (which would
+    // make it re-fire on every view/edit toggle, not just on direction/amount
+    // changes).
+    const modeRef = useRef(mode);
+    modeRef.current = mode;
+
     // Reset local edit state whenever a different transaction is opened, or
     // the drawer is asked to open directly into edit mode (from the
     // quick-actions panel's Edit tile). Deliberately does NOT depend on
@@ -192,6 +199,15 @@ export function TransactionDetailsDrawer({
         ]);
         setUnresolvedTagNames(unresolved);
     }, [allTags]);
+
+    // Re-sync direction/amount into the edit buffer when a card-list action
+    // (Flag/Swap ±) mutates the transaction in place while the drawer stays
+    // open. Only in view mode — an in-progress edit buffer must never be
+    // clobbered by a live update (C4).
+    useEffect(() => {
+        if (modeRef.current !== "view") return;
+        setForm((f) => (f ? { ...f, direction: transaction?.direction ?? f.direction, amount: transaction?.amount ?? f.amount } : f));
+    }, [transaction?.direction, transaction?.amount]);
 
     if (!transaction || !form) return null;
 
