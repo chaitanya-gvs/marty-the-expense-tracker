@@ -313,7 +313,7 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
                 <span className="text-xs font-mono text-muted-foreground/70 tabular-nums">{formatCurrency(group.dailyTotal)}</span>
               )}
             </div>
-            <div className="space-y-1.5 mb-3">
+            <div className="mb-3">
               {group.rows.map((t) => (
                 <TransactionRow
                   key={t.id}

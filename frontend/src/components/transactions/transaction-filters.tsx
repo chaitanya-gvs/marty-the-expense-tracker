@@ -1326,6 +1326,16 @@ export function TransactionFilters({
                     />
                   </button>
                 ))}
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={onClearFilters}
+                    className="shrink-0 rounded-full bg-muted text-muted-foreground px-2.5 py-1 text-[11px] font-medium flex items-center gap-1"
+                  >
+                    <X className="h-3 w-3" />
+                    Clear
+                  </button>
+                )}
               </div>
             )}
           </>
