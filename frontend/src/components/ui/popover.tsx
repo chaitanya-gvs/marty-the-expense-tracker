@@ -28,6 +28,8 @@ function PopoverContent({
 }) {
   return (
     <PopoverPrimitive.Portal container={container}>
+      {/* Popper tier: z-100, above Modal (60) and Dialog (70) — see the
+          overlay z-index scale in src/app/globals.css. */}
       <PopoverPrimitive.Content
         data-slot="popover-content"
         align={align}

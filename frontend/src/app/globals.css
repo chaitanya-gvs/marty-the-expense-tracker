@@ -3,13 +3,23 @@
 @import "tw-animate-css";
 
 /*
- * Overlay z-index scale (keep in sync when adding layers):
- *   40  mobile bottom nav          (components/layout/mobile-nav.tsx)
- *   50  Sheet overlay + content    (components/ui/sheet.tsx)
- *   55  long-press quick-actions   (components/transactions/transaction-quick-actions-panel.tsx)
- *   60  Modal                      (components/ui/modal/index.tsx)
- *   70  Dialog / AlertDialog       (components/ui/dialog.tsx, alert-dialog.tsx)
- *   sonner toasts render above all of these.
+ * Overlay z-index scale — the single source of truth. Keep in sync when
+ * adding a layer, and never introduce a bare `z-50` for a new overlay.
+ *
+ *    40  mobile bulk-action bar     (components/transactions/transaction-card-list.tsx)
+ *    40  mobile bottom nav          (components/layout/mobile-nav.tsx)
+ *    40  non-modal Sheet overlay    (components/ui/sheet.tsx, modal={false} — pointer-events-none)
+ *    50  desktop sidebar            (components/layout/navigation.tsx)
+ *    50  Sheet overlay + content    (components/ui/sheet.tsx, modal Sheet)
+ *    55  long-press quick-actions   (components/transactions/transaction-quick-actions-panel.tsx)
+ *    60  Modal                      (components/ui/modal/index.tsx)
+ *    70  Dialog / AlertDialog       (components/ui/dialog.tsx, alert-dialog.tsx)
+ *   100  poppers                    (components/ui/popover.tsx, select.tsx,
+ *                                    dropdown-menu.tsx, tooltip.tsx)
+ *
+ * Poppers sit above Dialog because they portal to <body> and must stay usable
+ * when opened from inside a Modal or a Dialog. Sonner toasts render above
+ * everything (the library hard-codes z-index: 999999999 on its container).
  */
 
 @custom-variant dark (&:is(.dark *));
