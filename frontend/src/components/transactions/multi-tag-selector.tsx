@@ -5,10 +5,10 @@ import { Check, ChevronsUpDown, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+  ResponsivePopover as Popover,
+  ResponsivePopoverContent as PopoverContent,
+  ResponsivePopoverTrigger as PopoverTrigger,
+} from "@/components/ui/responsive-popover";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useTags, useCreateTag } from "@/hooks/use-tags";
@@ -153,7 +153,7 @@ export function MultiTagSelector({
               <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-full p-0" align="start">
+          <PopoverContent className="w-full p-0" align="start" title="Select tags">
             <div className="p-2">
               {allTags.length === 0 && !tagsLoading ? (
                 <div className="p-2 text-sm text-muted-foreground">No tags found</div>

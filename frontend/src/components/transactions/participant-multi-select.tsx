@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+  ResponsivePopover as Popover,
+  ResponsivePopoverContent as PopoverContent,
+  ResponsivePopoverTrigger as PopoverTrigger,
+} from "@/components/ui/responsive-popover";
 import { useParticipants } from "@/hooks/use-participants";
 
 interface ParticipantMultiSelectProps {
@@ -107,6 +107,7 @@ export function ParticipantMultiSelect({
       <PopoverContent
         className="w-[var(--radix-popover-trigger-width)] p-0"
         align="start"
+        title="Select participants"
         container={container}
         onInteractOutside={(e) => {
           // Prevent closing when clicking on dialog

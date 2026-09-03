@@ -13,10 +13,10 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+  ResponsivePopover as Popover,
+  ResponsivePopoverContent as PopoverContent,
+  ResponsivePopoverTrigger as PopoverTrigger,
+} from "@/components/ui/responsive-popover";
 import { useParticipants } from "@/hooks/use-participants";
 
 interface ParticipantComboboxProps {
@@ -71,9 +71,10 @@ export function ParticipantCombobox({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent 
-        className="w-[300px] p-0" 
+      <PopoverContent
+        className="w-[300px] p-0"
         align="start"
+        title="Select participant"
         container={container}
         onInteractOutside={(e) => {
           // Prevent closing when clicking on dialog
