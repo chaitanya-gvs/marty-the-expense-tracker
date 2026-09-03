@@ -319,7 +319,7 @@ export function SplitTransactionModal({
                     className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                     style={{ backgroundColor: dotColor }}
                   />
-                  <div className="flex-1">
+                  <div className="flex-1 self-stretch md:self-auto">
                     <FieldAutocomplete
                       fieldName="description"
                       value={part.description}
