@@ -236,7 +236,7 @@ export function SharedExpenseEditor({ transaction, isOpen, isLoading = false, on
         {/* ── Split Mode Segmented Control ── */}
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Split Mode</p>
-          <div className="relative flex h-9 rounded-lg overflow-hidden border border-border bg-muted text-xs font-medium">
+          <div className="relative flex h-11 md:h-9 rounded-lg overflow-hidden border border-border bg-muted text-sm md:text-xs font-medium">
             <div
               className={cn(
                 "absolute inset-y-0 w-1/2 transition-[left] duration-200 ease-out bg-primary/15",
@@ -248,7 +248,7 @@ export function SharedExpenseEditor({ transaction, isOpen, isLoading = false, on
               whileTap={{ scale: 0.97 }}
               onClick={() => handleModeChange("equal")}
               className={cn(
-                "relative z-10 flex-1 flex items-center justify-center gap-1.5 transition-colors",
+                "relative z-10 flex-1 flex items-center justify-center gap-1.5 min-h-11 md:min-h-0 transition-colors",
                 mode === "equal" ? "text-primary font-semibold" : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -260,7 +260,7 @@ export function SharedExpenseEditor({ transaction, isOpen, isLoading = false, on
               whileTap={{ scale: 0.97 }}
               onClick={() => handleModeChange("custom")}
               className={cn(
-                "relative z-10 flex-1 flex items-center justify-center gap-1.5 transition-colors border-l border-border",
+                "relative z-10 flex-1 flex items-center justify-center gap-1.5 min-h-11 md:min-h-0 transition-colors border-l border-border",
                 mode === "custom" ? "text-primary font-semibold" : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -297,7 +297,7 @@ export function SharedExpenseEditor({ transaction, isOpen, isLoading = false, on
                     whileTap={{ scale: 0.95 }}
                     onClick={() => setPaidBy(entry.participant)}
                     className={cn(
-                      "flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+                      "flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full text-sm md:text-xs font-medium border min-h-11 md:min-h-0 transition-all",
                       isPaid
                         ? "border-primary/40 bg-primary/10 text-primary"
                         : "border-border bg-muted/40 text-muted-foreground hover:bg-muted/70 hover:text-foreground"
@@ -346,8 +346,8 @@ export function SharedExpenseEditor({ transaction, isOpen, isLoading = false, on
                   >
                     {/* Card content — slides left on hover to reveal trash */}
                     <div className={cn(
-                      "flex items-center gap-3 px-3 py-2.5 bg-muted/30 transition-transform duration-200 ease-out",
-                      canDelete && "group-hover:-translate-x-14"
+                      "flex items-center gap-3 px-3 py-3 md:py-2.5 min-h-11 md:min-h-0 bg-muted/30 transition-transform duration-200 ease-out",
+                      canDelete && "-translate-x-14 md:translate-x-0 md:group-hover:-translate-x-14"
                     )}>
                       <ParticipantAvatar name={entry.participant} />
 
@@ -372,10 +372,11 @@ export function SharedExpenseEditor({ transaction, isOpen, isLoading = false, on
                               <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-mono">₹</span>
                               <Input
                                 type="number"
+                                inputMode="decimal"
                                 step="0.01"
                                 value={entry.amount || ""}
                                 onChange={(e) => updateParticipantAmount(index, parseFloat(e.target.value) || 0)}
-                                className="w-28 pl-7 text-right font-mono tabular-nums h-8 text-sm bg-muted/60"
+                                className="w-28 pl-7 text-right font-mono tabular-nums h-11 md:h-8 text-base md:text-sm bg-muted/60"
                                 placeholder="0.00"
                               />
                             </div>
@@ -393,7 +394,7 @@ export function SharedExpenseEditor({ transaction, isOpen, isLoading = false, on
                       <button
                         type="button"
                         onClick={() => removeParticipant(index)}
-                        className="absolute right-0 inset-y-0 w-14 flex items-center justify-center bg-destructive/90 hover:bg-destructive translate-x-full group-hover:translate-x-0 transition-transform duration-200 ease-out rounded-r-lg"
+                        className="absolute right-0 inset-y-0 w-14 flex items-center justify-center bg-destructive/90 hover:bg-destructive translate-x-0 md:translate-x-full md:group-hover:translate-x-0 transition-transform duration-200 ease-out rounded-r-lg"
                       >
                         <Trash2 className="h-4 w-4 text-white" />
                       </button>
@@ -409,7 +410,7 @@ export function SharedExpenseEditor({ transaction, isOpen, isLoading = false, on
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className="mt-1 flex items-center gap-1.5 w-full px-3 py-2 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+                className="mt-1 flex items-center gap-1.5 w-full px-3 py-2 min-h-11 md:min-h-0 rounded-lg border border-dashed border-border text-sm md:text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
               >
                 <UserPlus className="h-3.5 w-3.5" />
                 Add participant…
@@ -431,7 +432,8 @@ export function SharedExpenseEditor({ transaction, isOpen, isLoading = false, on
                   placeholder="Search participants…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="border-0 focus-visible:ring-0 h-10 text-sm bg-transparent px-0 shadow-none"
+                  inputMode="search"
+                  className="border-0 focus-visible:ring-0 h-11 md:h-10 text-base md:text-sm bg-transparent px-0 shadow-none"
                 />
               </div>
               <div className="max-h-[220px] overflow-y-auto p-1">
@@ -454,7 +456,7 @@ export function SharedExpenseEditor({ transaction, isOpen, isLoading = false, on
                             setSelectedParticipants(prev => [...prev, p.name]);
                           }
                         }}
-                        className="flex items-center gap-2.5 px-2 py-1.5 rounded-sm cursor-pointer hover:bg-accent hover:text-accent-foreground select-none"
+                        className="flex items-center gap-2.5 px-2 py-3 md:py-1.5 min-h-11 md:min-h-0 rounded-sm cursor-pointer hover:bg-accent hover:text-accent-foreground select-none"
                       >
                         <div className={cn(
                           "flex h-4 w-4 items-center justify-center rounded-sm border flex-shrink-0",
@@ -477,7 +479,7 @@ export function SharedExpenseEditor({ transaction, isOpen, isLoading = false, on
                   <button
                     type="button"
                     onMouseDown={(e) => { e.preventDefault(); setAddOpen(false); setSearch(""); }}
-                    className="text-xs text-primary hover:underline"
+                    className="text-sm md:text-xs text-primary hover:underline inline-flex items-center min-h-11 md:min-h-0"
                   >
                     Done
                   </button>
@@ -586,18 +588,19 @@ export function SharedExpenseEditor({ transaction, isOpen, isLoading = false, on
         <div className="flex justify-between w-full">
           <div>
             {transaction.is_shared && onClearSplit && (
-              <Button variant="destructive" size="sm" onClick={onClearSplit} disabled={isLoading}>
+              <Button variant="destructive" size="sm" onClick={onClearSplit} disabled={isLoading} className="min-h-11 md:min-h-0">
                 Clear Split
               </Button>
             )}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} disabled={isLoading}>
+            <Button variant="outline" onClick={onClose} disabled={isLoading} className="min-h-11 md:min-h-0">
               Cancel
             </Button>
             <Button
               onClick={handleSave}
               disabled={!balanced || entries.length === 0 || isLoading}
+              className="min-h-11 md:min-h-0"
             >
               {isLoading ? "Saving…" : "Save Split"}
             </Button>
