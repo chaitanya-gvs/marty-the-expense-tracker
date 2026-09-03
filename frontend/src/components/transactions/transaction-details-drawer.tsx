@@ -14,7 +14,7 @@ import { Transaction, Tag } from "@/lib/types";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Layers, ChevronDown, Loader2 } from "lucide-react";
+import { Layers, ChevronDown, Loader2, X } from "lucide-react";
 import { Users, Split, RefreshCw, Mail, AlertTriangle, ArrowLeftRight, FileText } from "lucide-react";
 import { ActionTileGrid, type TransactionActionType } from "./action-tile-grid";
 import { useIsMobile } from "@/hooks/use-is-mobile";
@@ -88,6 +88,12 @@ function splitTags(names: string[] | undefined, allTags: Tag[]): { resolved: Tag
     return { resolved, unresolved };
 }
 
+// Stable empty-array reference for allTags while the tags query is pending
+// (or has no data). useTags() would otherwise default to a fresh `[]` on
+// every render, which — as a dependency of the hydration effect below —
+// would make that effect re-fire every render until the query settles.
+const EMPTY_TAGS: Tag[] = [];
+
 // Dedupes names across multiple lists, preserving first-seen order.
 function uniqueNames(...lists: string[][]): string[] {
     const seen = new Set<string>();
@@ -114,7 +120,8 @@ export function TransactionDetailsDrawer({
     const isMobile = useIsMobile();
     const categoryColorMap = useCategoryColorMap();
     const updateTransaction = useUpdateTransaction();
-    const { data: allTags = [] } = useTags();
+    const { data: tagsData } = useTags();
+    const allTags = tagsData ?? EMPTY_TAGS;
 
     const [mode, setMode] = useState<"view" | "edit">(initialMode);
     const [form, setForm] = useState<EditFormState | null>(null);
@@ -162,6 +169,10 @@ export function TransactionDetailsDrawer({
     useEffect(() => {
         if (unresolvedRef.current.length === 0) return;
         const { resolved, unresolved } = splitTags(unresolvedRef.current, allTags);
+        // Nothing newly resolved (allTags is still EMPTY_TAGS, or none of the
+        // still-unresolved names matched) — skip the setState calls entirely
+        // so this doesn't create new array references and re-trigger itself.
+        if (resolved.length === 0) return;
         setSelectedTags((prev) => [
             ...prev,
             ...resolved.filter((t) => !prev.some((p) => p.id === t.id)),
@@ -403,9 +414,31 @@ export function TransactionDetailsDrawer({
                                 onTagsChange={setSelectedTags}
                             />
                             {unresolvedTagNames.length > 0 && (
-                                <p className="text-xs text-muted-foreground mt-1.5">
-                                    {unresolvedTagNames.length} tag{unresolvedTagNames.length === 1 ? "" : "s"} will be kept: {unresolvedTagNames.join(", ")}
-                                </p>
+                                <div className="mt-1.5">
+                                    <p className="text-xs text-muted-foreground mb-1">
+                                        {unresolvedTagNames.length} tag{unresolvedTagNames.length === 1 ? "" : "s"} will be kept:
+                                    </p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {unresolvedTagNames.map((name) => (
+                                            <span
+                                                key={name}
+                                                className="inline-flex items-center gap-1 min-h-7 pl-2 pr-1 rounded-full bg-muted text-muted-foreground text-xs"
+                                            >
+                                                {name}
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setUnresolvedTagNames((prev) => prev.filter((n) => n !== name))
+                                                    }
+                                                    className="rounded-full p-0.5 hover:bg-background/60"
+                                                    aria-label={`Remove tag ${name}`}
+                                                >
+                                                    <X className="h-3 w-3" />
+                                                </button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
                             )}
                         </div>
 
