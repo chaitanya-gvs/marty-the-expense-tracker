@@ -17,11 +17,25 @@ import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/
  * See docs/superpowers/specs/2026-08-14-mobile-pickers-design.md.
  */
 
+/**
+ * Renders the desktop (Popover) variant until after hydration, matching what
+ * the server emitted. Without it the first client paint on a phone swaps
+ * Popover→Dialog, remounting the whole subtree (and losing any open state).
+ */
+function useMounted() {
+  const [mounted, setMounted] = React.useState(false)
+  React.useEffect(() => {
+    setMounted(true)
+  }, [])
+  return mounted
+}
+
 type RootProps = React.ComponentProps<typeof PopoverPrimitive.Root>
 
 function ResponsivePopover({ modal, ...props }: RootProps) {
   const isMobile = useIsMobile()
-  if (isMobile) {
+  const mounted = useMounted()
+  if (mounted && isMobile) {
     // Always modal on mobile: the sheet needs its scrim and focus trap.
     return <Dialog {...props} />
   }
@@ -32,7 +46,8 @@ type TriggerProps = React.ComponentProps<typeof PopoverPrimitive.Trigger>
 
 function ResponsivePopoverTrigger(props: TriggerProps) {
   const isMobile = useIsMobile()
-  if (isMobile) {
+  const mounted = useMounted()
+  if (mounted && isMobile) {
     return <DialogTrigger {...(props as React.ComponentProps<typeof DialogPrimitive.Trigger>)} />
   }
   return <PopoverTrigger {...props} />
@@ -63,8 +78,9 @@ function ResponsivePopoverContent({
   ...rest
 }: ContentProps) {
   const isMobile = useIsMobile()
+  const mounted = useMounted()
 
-  if (isMobile) {
+  if (mounted && isMobile) {
     const {
       onOpenAutoFocus,
       onCloseAutoFocus,
@@ -92,7 +108,12 @@ function ResponsivePopoverContent({
         )}
       >
         <DialogTitle className="sr-only">{title}</DialogTitle>
-        {children}
+        {/*
+          Consumers pass `p-0`, which tailwind-merge strips DialogContent's own
+          `pb-[max(1.5rem,env(safe-area-inset-bottom))]` along with. Re-add the
+          bottom inset here so the last row never sits under the home indicator.
+        */}
+        <div className="pb-[max(0.5rem,env(safe-area-inset-bottom))]">{children}</div>
       </DialogContent>
     )
   }
