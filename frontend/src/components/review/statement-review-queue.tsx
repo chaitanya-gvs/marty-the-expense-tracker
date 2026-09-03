@@ -83,7 +83,7 @@ export function StatementReviewQueue() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2 md:flex-nowrap">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">Ambiguous</span>
           {items.length > 0 && (
@@ -93,6 +93,7 @@ export function StatementReviewQueue() {
         <Button
           variant="outline"
           size="sm"
+          className="min-h-11 md:min-h-0"
           onClick={() => runIngestion.mutate(undefined)}
           disabled={runIngestion.isPending}
         >
@@ -250,7 +251,7 @@ function AmbiguousItem({
             return (
               <div
                 key={txId}
-                className="rounded-md border px-3 py-2.5 flex items-center gap-3 animate-pulse"
+                className="rounded-md border px-3 py-2.5 flex items-center gap-3 animate-pulse min-h-11 md:min-h-0"
               >
                 <div className="flex-1 space-y-1.5">
                   <div className="h-3.5 bg-muted rounded w-3/4" />
@@ -266,14 +267,14 @@ function AmbiguousItem({
             return (
               <div
                 key={txId}
-                className="rounded-md border px-3 py-2.5 flex items-center gap-3 text-xs text-muted-foreground"
+                className="rounded-md border px-3 py-2.5 flex items-center gap-3 text-xs text-muted-foreground min-h-11 md:min-h-0"
               >
                 <span className="flex-1">
                   Could not load transaction{" "}
                   <code className="font-mono">{txId.slice(0, 8)}…</code>
                 </span>
                 {!isSingleCandidate && (
-                  <Button size="sm" variant="outline" onClick={() => onLink(item.id, txId)}>
+                  <Button size="sm" variant="outline" className="min-h-11 md:min-h-0" onClick={() => onLink(item.id, txId)}>
                     <Link2 className="h-3.5 w-3.5 mr-1.5" />
                     Link anyway
                   </Button>
@@ -286,7 +287,7 @@ function AmbiguousItem({
             <div
               key={txId}
               className={cn(
-                "rounded-md border px-3 py-2.5 flex items-center gap-3 transition-colors",
+                "rounded-md border px-3 py-2.5 flex items-center gap-3 transition-colors min-h-11 md:min-h-0",
                 isBest
                   ? "border-primary/40 bg-primary/5 hover:bg-primary/10"
                   : "hover:bg-muted/40"
@@ -329,7 +330,7 @@ function AmbiguousItem({
                 <Button
                   size="sm"
                   onClick={() => onLink(item.id, txId)}
-                  className="shrink-0"
+                  className="shrink-0 min-h-11 md:min-h-0"
                   variant={isBest ? "default" : "outline"}
                 >
                   <ArrowRight className="h-3.5 w-3.5 mr-1.5" />
@@ -346,7 +347,7 @@ function AmbiguousItem({
               <Button
                 size="sm"
                 variant="default"
-                className="h-7 px-3 text-xs"
+                className="h-7 px-3 text-sm md:text-xs min-h-11 md:min-h-0"
                 onClick={() => onLink(item.id, candidateIds[0])}
               >
                 <ArrowRight className="h-3.5 w-3.5 mr-1.5" />
@@ -355,7 +356,7 @@ function AmbiguousItem({
               <Button
                 size="sm"
                 variant="ghost"
-                className="text-muted-foreground hover:text-foreground text-xs h-7 px-2"
+                className="text-muted-foreground hover:text-foreground text-sm md:text-xs h-7 px-2 min-h-11 md:min-h-0"
                 onClick={() => onReject(item.id)}
               >
                 <Ban className="h-3 w-3 mr-1.5" />
@@ -366,7 +367,7 @@ function AmbiguousItem({
             <Button
               size="sm"
               variant="ghost"
-              className="text-muted-foreground hover:text-foreground text-xs h-7 px-2"
+              className="text-muted-foreground hover:text-foreground text-sm md:text-xs h-7 px-2 min-h-11 md:min-h-0"
               onClick={() => onNoneMatch(item.id)}
             >
               <Ban className="h-3 w-3 mr-1.5" />
