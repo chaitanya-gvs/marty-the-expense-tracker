@@ -58,8 +58,28 @@ const variantColors: Record<string, { bg: string; text: string }> = {
   share: { bg: "bg-[#6366f1]/20", text: "text-[#6366f1]" },
 };
 
-// Lets Header/Body/Footer adapt to the housing without consumers passing props.
-const PresentationContext = React.createContext<ResolvedPresentation>("center");
+interface ModalContextValue {
+  /** Resolved housing, so Header/Body/Footer adapt without consumers passing props. */
+  presentation: ResolvedPresentation;
+  /** Id the panel points `aria-labelledby` at; ModalHeader owns the matching <h2>. */
+  titleId: string;
+}
+
+const PresentationContext = React.createContext<ModalContextValue>({
+  presentation: "center",
+  titleId: "",
+});
+
+/** Focusable descendants used for initial focus and the Tab trap. */
+const FOCUSABLE_SELECTOR =
+  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+function getFocusable(panel: HTMLElement | null): HTMLElement[] {
+  if (!panel) return [];
+  return Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (el) => !el.hasAttribute("disabled") && el.getAttribute("aria-hidden") !== "true"
+  );
+}
 
 function resolvePresentation(
   presentation: ModalPresentation,
@@ -87,37 +107,55 @@ export function Modal({
   const isMobile = useIsMobile();
   const reduceMotion = useReducedMotion();
   const resolved = resolvePresentation(presentation, size, isMobile);
+  const titleId = React.useId();
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    if (open) {
-      previousFocus.current = document.activeElement as HTMLElement;
-
-      // Focus initial element or first focusable element
-      const focusTarget = initialFocusRef?.current || modalRef.current?.querySelector<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      );
-
-      focusTarget?.focus();
-    } else {
+    if (!open) {
       // Restore focus when modal closes
       previousFocus.current?.focus();
+      return;
     }
+
+    previousFocus.current = document.activeElement as HTMLElement;
+
+    // Focus initial element or first focusable element
+    const focus = () => {
+      const target = initialFocusRef?.current || getFocusable(modalRef.current)[0];
+      target?.focus();
+    };
+
+    focus();
+
+    // A Sheet closing underneath this Modal restores focus to its own trigger
+    // when its exit animation finishes, which steals the focus we just set.
+    // Re-assert once that window has passed, unless focus is already inside.
+    const timer = window.setTimeout(() => {
+      const panel = modalRef.current;
+      if (!panel) return; // modal closed in the meantime
+      if (!panel.contains(document.activeElement)) focus();
+    }, 350);
+
+    return () => window.clearTimeout(timer);
   }, [open, initialFocusRef]);
 
   useEffect(() => {
     if (!open) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      // Radix dismissable layers (Select/Popover/Dialog nested inside this
+      // Modal) call preventDefault on their capture-phase document listener;
+      // honouring that keeps Escape from closing the whole Modal as well.
+      if (e.key === "Escape" && !e.defaultPrevented) onClose();
     };
 
-    // Save whatever lock is already in place (e.g. Radix's, when this Modal is
-    // opened over an open Sheet) and restore *that* on close — clearing to ""
-    // used to break the underlying Sheet's scroll lock.
+    // Save whatever lock is already in place (e.g. an inline lock set by an
+    // outer Modal) and restore *that* on close, so Modal-over-Modal does not
+    // leave the page unlocked. Harmless otherwise: Radix locks scrolling with
+    // a `data-scroll-locked` stylesheet, not an inline body style.
     const previousOverflow = document.body.style.overflow;
     document.addEventListener("keydown", handleKeyDown);
     document.body.style.overflow = "hidden";
@@ -132,25 +170,54 @@ export function Modal({
 
   const isCenter = resolved === "center";
 
-  const panelMotion = isCenter
-    ? {
-        initial: { opacity: 0, y: 8 },
-        animate: { opacity: 1, y: 0 },
-        exit: { opacity: 0, y: 8 },
-        transition: { duration: 0.2 },
-      }
-    : reduceMotion
+  // Reduced motion wins over every presentation, centre included.
+  const panelMotion = reduceMotion
     ? {
         initial: { opacity: 0 },
         animate: { opacity: 1 },
         exit: { opacity: 0 },
         transition: { duration: 0.15 },
       }
+    : isCenter
+    ? {
+        initial: { opacity: 0, y: 8 },
+        animate: { opacity: 1, y: 0 },
+        exit: { opacity: 0, y: 8 },
+        transition: { duration: 0.2 },
+      }
     : {
         initial: { y: "100%" },
         animate: { y: 0, transition: { type: "spring" as const, stiffness: 380, damping: 34 } },
         exit: { y: "100%", transition: { type: "tween" as const, duration: 0.18, ease: "easeIn" as const } },
       };
+
+  // Minimal focus trap: cycle Tab / Shift+Tab among the panel's focusables.
+  const handlePanelKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab") return;
+    const panel = modalRef.current;
+    if (!panel) return;
+    // Radix poppers opened from inside the Modal portal to <body> but still
+    // bubble through the React tree — leave their own Tab handling alone.
+    if (!panel.contains(e.target as Node)) return;
+
+    const focusable = getFocusable(panel);
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement as HTMLElement | null;
+    const inside = !!active && panel.contains(active);
+
+    if (e.shiftKey) {
+      if (!inside || active === first) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (!inside || active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
 
   return createPortal(
     <AnimatePresence>
@@ -160,8 +227,6 @@ export function Modal({
             "fixed inset-0 z-[60]",
             isCenter && "flex items-start justify-center"
           )}
-          role={role}
-          aria-modal="true"
         >
           {/* Backdrop */}
           <motion.div
@@ -176,6 +241,10 @@ export function Modal({
           {/* Panel */}
           <motion.div
             ref={modalRef}
+            role={role}
+            aria-modal="true"
+            aria-labelledby={titleId}
+            onKeyDown={handlePanelKeyDown}
             {...panelMotion}
             className={cn(
               "bg-[var(--modal-panel)] border-[var(--modal-border)]",
@@ -189,10 +258,14 @@ export function Modal({
                 "absolute inset-x-0 bottom-0 flex flex-col overflow-hidden",
                 "max-h-[92dvh] rounded-t-2xl border-t shadow-[0_-10px_40px_rgba(0,0,0,0.45)]",
                 "pb-[env(safe-area-inset-bottom)]",
+                // Several consumers wrap Body+Footer in a <form>; a block box
+                // there would break the flex chain and stop Body scrolling.
+                "[&>form]:flex [&>form]:flex-col [&>form]:flex-1 [&>form]:min-h-0",
               ],
               resolved === "fullscreen" && [
                 "absolute inset-0 flex flex-col overflow-hidden",
                 "pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]",
+                "[&>form]:flex [&>form]:flex-col [&>form]:flex-1 [&>form]:min-h-0",
               ],
               className
             )}
@@ -200,7 +273,7 @@ export function Modal({
             {resolved === "sheet" && (
               <div aria-hidden className="h-1 w-9 shrink-0 rounded-full bg-border mx-auto mt-2 mb-1" />
             )}
-            <PresentationContext.Provider value={resolved}>
+            <PresentationContext.Provider value={{ presentation: resolved, titleId }}>
               {children}
             </PresentationContext.Provider>
           </motion.div>
@@ -220,8 +293,11 @@ function ModalHeader({
   className,
 }: ModalHeaderProps) {
   const colors = variantColors[variant] || variantColors.split;
-  const headerId = React.useId();
-  const compact = useContext(PresentationContext) !== "center";
+  const { presentation, titleId } = useContext(PresentationContext);
+  const fallbackId = React.useId();
+  // The panel points aria-labelledby at the Modal's titleId; own the <h2> for it.
+  const headerId = titleId || fallbackId;
+  const compact = presentation !== "center";
 
   return (
     <div
@@ -278,8 +354,19 @@ function ModalHeader({
   );
 }
 
+/**
+ * Scrollable region of the panel.
+ *
+ * In the mobile presentations (`sheet` / `fullscreen`) the Body is
+ * `flex-1 min-h-0 overflow-y-auto`, so it only scrolls when it is a **flex
+ * child of the panel** — either a direct child of `Modal`, or a child of a
+ * single `<form>` placed directly under `Modal` (the panel gives that form
+ * `flex flex-col flex-1 min-h-0`). Any other wrapper element between the panel
+ * and the Body breaks the chain: the Body grows unbounded and the Footer is
+ * pushed off-screen.
+ */
 function ModalBody({ children, className }: ModalBodyProps) {
-  const compact = useContext(PresentationContext) !== "center";
+  const compact = useContext(PresentationContext).presentation !== "center";
 
   return (
     <div
@@ -296,7 +383,7 @@ function ModalBody({ children, className }: ModalBodyProps) {
 }
 
 function ModalFooter({ children, className }: ModalFooterProps) {
-  const compact = useContext(PresentationContext) !== "center";
+  const compact = useContext(PresentationContext).presentation !== "center";
 
   return (
     <div
