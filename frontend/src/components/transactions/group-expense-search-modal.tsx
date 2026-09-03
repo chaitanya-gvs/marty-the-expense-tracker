@@ -248,8 +248,9 @@ export function GroupExpenseSearchModal({
             placeholder="Search by description, amount, account..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
+            className="pl-9 h-11 md:h-9 text-base md:text-sm"
             autoFocus
+            inputMode="search"
           />
         </div>
 
@@ -287,7 +288,7 @@ export function GroupExpenseSearchModal({
               <label
                 key={t.id}
                 className={cn(
-                  "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
+                  "flex items-center gap-3 p-3 min-h-11 md:min-h-0 rounded-lg border cursor-pointer transition-colors",
                   selectedIds.has(t.id)
                     ? "border-primary bg-primary/5"
                     : "border-border hover:bg-muted/50"
@@ -318,7 +319,7 @@ export function GroupExpenseSearchModal({
       </Modal.Body>
 
       <Modal.Footer>
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="outline" onClick={onClose} className="min-h-11 md:min-h-0">
           Cancel
         </Button>
         {isViewExistingGroup && onUngroup && (
@@ -326,7 +327,7 @@ export function GroupExpenseSearchModal({
             <AlertDialogTrigger asChild>
               <Button
                 variant="outline"
-                className="border-destructive/50 text-destructive hover:bg-destructive/10"
+                className="border-destructive/50 text-destructive hover:bg-destructive/10 min-h-11 md:min-h-0"
                 disabled={ungrouping}
               >
                 {ungrouping ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Ungroup className="h-4 w-4 mr-2" />}
@@ -339,10 +340,10 @@ export function GroupExpenseSearchModal({
                 This will remove the group link between these transactions. They will remain in your records but will no longer be grouped together.
               </AlertDialogDescription>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel className="min-h-11 md:min-h-0">Cancel</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={handleUngroup}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90 min-h-11 md:min-h-0"
                 >
                   Ungroup
                 </AlertDialogAction>
@@ -350,7 +351,7 @@ export function GroupExpenseSearchModal({
             </AlertDialogContent>
           </AlertDialog>
         )}
-        <Button onClick={handleGroupSelected} disabled={!canGroup}>
+        <Button onClick={handleGroupSelected} disabled={!canGroup} className="min-h-11 md:min-h-0">
           <Layers className="h-4 w-4 mr-2" />
           {isViewExistingGroup
             ? `Group (${effectiveGroupMembers.length + selectedIds.size})`

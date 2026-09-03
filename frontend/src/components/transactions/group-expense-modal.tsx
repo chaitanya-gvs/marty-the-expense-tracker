@@ -106,7 +106,7 @@ export function GroupExpenseModal({
       <Modal.Body className="space-y-6">
         {/* Net Amount Summary */}
         <div className="rounded-xl bg-muted/40 border border-border/60 p-4">
-          <div className="grid grid-cols-3 divide-x divide-border/60">
+          <div className="grid grid-cols-2 md:grid-cols-3 divide-x divide-border/60">
             <div className="pr-4">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Credits</p>
               <p className="font-mono text-sm font-semibold text-emerald-500 tabular-nums">
@@ -160,6 +160,7 @@ export function GroupExpenseModal({
             onValueChange={setDescription}
             placeholder="Enter a description for the grouped expense"
             onSave={async (val) => setDescription(val ?? "")}
+            className="h-11 md:h-9 text-base md:text-sm"
           />
         </FieldRow>
 
@@ -173,6 +174,7 @@ export function GroupExpenseModal({
             onSave={async (val) => setCategory(val ?? "")}
             onCancel={() => {}}
             autoFocus={false}
+            className="h-11 md:h-8 text-base md:text-xs"
           />
           {selectedTransactions[0]?.category && !category && (
             <p className="text-xs text-muted-foreground">
@@ -246,12 +248,13 @@ export function GroupExpenseModal({
       </Modal.Body>
 
       <Modal.Footer>
-        <Button variant="outline" onClick={onClose} disabled={isLoading}>
+        <Button variant="outline" onClick={onClose} disabled={isLoading} className="min-h-11 md:min-h-0">
           Cancel
         </Button>
-        <Button 
-          onClick={handleGroupExpense} 
+        <Button
+          onClick={handleGroupExpense}
           disabled={isLoading || !description.trim()}
+          className="min-h-11 md:min-h-0"
         >
           {isLoading ? (
             <>
