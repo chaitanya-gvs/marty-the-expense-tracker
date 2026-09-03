@@ -65,6 +65,18 @@ function toFormState(t: Transaction): EditFormState {
     };
 }
 
+// Resolves a transaction's tag names against the loaded tag list. Shared by
+// the reset effect, the late-hydration effect, and handleCancel so there's
+// a single place that defines what "this transaction's tags" means.
+function deriveTags(transaction: Transaction, allTags: Tag[]): Tag[] {
+    if (!transaction.tags || transaction.tags.length === 0 || allTags.length === 0) {
+        return [];
+    }
+    return transaction.tags
+        .map((name) => allTags.find((tag) => tag.name === name))
+        .filter((tag): tag is Tag => tag !== undefined);
+}
+
 export function TransactionDetailsDrawer({
     transaction,
     isOpen,
@@ -115,14 +127,7 @@ export function TransactionDetailsDrawer({
         // loading) — without this, selectedTags silently becomes [] and a
         // subsequent Save would wipe the transaction's tags (I3 / Minor #4).
         // Mirrors transaction-edit-modal.tsx's tag-derivation guard.
-        if (transaction.tags && transaction.tags.length > 0 && allTags.length > 0) {
-            const tagObjects = transaction.tags
-                .map((name) => allTags.find((tag) => tag.name === name))
-                .filter((tag): tag is Tag => tag !== undefined);
-            setSelectedTags(tagObjects);
-        } else {
-            setSelectedTags([]);
-        }
+        setSelectedTags(deriveTags(transaction, allTags));
         tagsHydratedRef.current = allTags.length > 0;
         setAdvancedOpen(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -137,10 +142,7 @@ export function TransactionDetailsDrawer({
         const currentTransaction = transactionRef.current;
         if (!currentTransaction || modeRef.current === "edit") return;
         if (currentTransaction.tags?.length && allTags.length > 0) {
-            const tagObjects = currentTransaction.tags
-                .map((name) => allTags.find((tag) => tag.name === name))
-                .filter((tag): tag is Tag => tag !== undefined);
-            setSelectedTags(tagObjects);
+            setSelectedTags(deriveTags(currentTransaction, allTags));
             tagsHydratedRef.current = true;
         }
     }, [allTags, transaction?.id]);
@@ -182,6 +184,17 @@ export function TransactionDetailsDrawer({
         } catch {
             toast.error("Failed to update transaction");
         }
+    };
+
+    // View mode renders editable fields straight from form/selectedTags
+    // (deliberate — Slice 1's stale-post-save fix), so simply switching back
+    // to view mode would leave unsaved edits looking committed. Reset the
+    // edit buffer back to the transaction's actual persisted state first.
+    const handleCancel = () => {
+        setForm(toFormState(transaction));
+        setSelectedTags(deriveTags(transaction, allTags));
+        setAdvancedOpen(false);
+        setMode("view");
     };
 
     return (
@@ -368,7 +381,14 @@ export function TransactionDetailsDrawer({
 
                         <div>
                             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Tags</label>
-                            <MultiTagSelector selectedTags={selectedTags} onTagsChange={setSelectedTags} />
+                            <MultiTagSelector
+                                selectedTags={selectedTags}
+                                onTagsChange={(tags) => {
+                                    // user edited tags → always send them
+                                    tagsHydratedRef.current = true;
+                                    setSelectedTags(tags);
+                                }}
+                            />
                         </div>
 
                         <div>
@@ -452,7 +472,7 @@ export function TransactionDetailsDrawer({
                         )}
 
                         <div className="flex gap-2 pt-2">
-                            <Button variant="outline" className="flex-1" onClick={() => setMode("view")} disabled={updateTransaction.isPending}>
+                            <Button variant="outline" className="flex-1" onClick={handleCancel} disabled={updateTransaction.isPending}>
                                 Cancel
                             </Button>
                             <Button className="flex-1" onClick={handleSave} disabled={updateTransaction.isPending}>
