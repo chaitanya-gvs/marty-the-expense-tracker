@@ -15,8 +15,11 @@ export type TransactionActionType =
   | "pdf"
   | "delete";
 
+/** Tile identity used as the React key. Includes the two panel-only tiles that don't map to a TransactionActionType. */
+export type ActionTileKey = TransactionActionType | "edit" | "select";
+
 export interface ActionTile {
-  key: TransactionActionType;
+  key: ActionTileKey;
   label: string;
   icon: LucideIcon;
   onClick: () => void;

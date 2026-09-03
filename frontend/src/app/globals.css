@@ -2,6 +2,16 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/*
+ * Overlay z-index scale (keep in sync when adding layers):
+ *   40  mobile bottom nav          (components/layout/mobile-nav.tsx)
+ *   50  Sheet overlay + content    (components/ui/sheet.tsx)
+ *   55  long-press quick-actions   (components/transactions/transaction-quick-actions-panel.tsx)
+ *   60  Modal                      (components/ui/modal/index.tsx)
+ *   70  Dialog / AlertDialog       (components/ui/dialog.tsx, alert-dialog.tsx)
+ *   sonner toasts render above all of these.
+ */
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
