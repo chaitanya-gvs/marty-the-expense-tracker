@@ -111,6 +111,7 @@ export function TransactionEditModal({
   if (transactionLoading) {
     return (
       <Modal open={isOpen} onClose={onClose} size="lg">
+        <Modal.Header title="Edit Transaction" onClose={onClose} />
         <div className="flex items-center justify-center py-16">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           <span className="ml-3 text-sm text-muted-foreground">Loading transaction…</span>
@@ -122,6 +123,7 @@ export function TransactionEditModal({
   if (!transaction) {
     return (
       <Modal open={isOpen} onClose={onClose} size="lg">
+        <Modal.Header title="Edit Transaction" onClose={onClose} />
         <div className="text-center py-16">
           <p className="text-muted-foreground">Transaction not found</p>
         </div>

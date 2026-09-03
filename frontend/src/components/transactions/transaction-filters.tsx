@@ -1393,7 +1393,7 @@ export function TransactionFilters({
       {/* Expanded Panel */}
       {isMobile ? (
         <Sheet open={expanded} onOpenChange={setExpanded}>
-          <SheetContent side="bottom" className="w-full sm:max-w-full max-h-[85vh] overflow-y-auto rounded-t-xl">
+          <SheetContent side="bottom" className="w-full sm:max-w-full">
             <SheetHeader>
               <SheetTitle>Filters</SheetTitle>
             </SheetHeader>

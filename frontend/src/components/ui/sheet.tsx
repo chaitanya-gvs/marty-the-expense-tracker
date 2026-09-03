@@ -67,8 +67,18 @@ const SheetContent = React.forwardRef<
       )}
       {...props}
     >
+      {/*
+        side="bottom" makes the content itself the scroll container, so the
+        grabber has to stick to the top of the scrollport or it scrolls away.
+        The opaque band covers the content sliding underneath it.
+      */}
       {grabber && (
-        <div aria-hidden className="h-1 w-9 rounded-full bg-border mx-auto -mt-2 mb-3" />
+        <div
+          aria-hidden
+          className="sticky top-0 z-10 -mt-2 mb-2 bg-card pt-2 pb-2"
+        >
+          <div className="h-1 w-9 rounded-full bg-border mx-auto" />
+        </div>
       )}
       {children}
       {!hideCloseButton && (

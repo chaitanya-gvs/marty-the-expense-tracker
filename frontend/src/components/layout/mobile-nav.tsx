@@ -85,7 +85,7 @@ export function MobileNav() {
       </nav>
 
       <Sheet open={isMoreOpen} onOpenChange={setIsMoreOpen}>
-        <SheetContent side="bottom" className="w-full sm:max-w-full rounded-t-xl">
+        <SheetContent side="bottom" className="w-full sm:max-w-full">
           <SheetHeader>
             <SheetTitle>More</SheetTitle>
           </SheetHeader>
