@@ -6,7 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Modal } from "@/components/ui/modal";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  ResponsivePopover as Popover,
+  ResponsivePopoverContent as PopoverContent,
+  ResponsivePopoverTrigger as PopoverTrigger,
+} from "@/components/ui/responsive-popover";
 import { motion, AnimatePresence } from "framer-motion";
 import { UserPlus, Calculator, Users, Check, CheckCircle2, Trash2 } from "lucide-react";
 import { Transaction, SplitBreakdown, SplitEntry } from "@/lib/types";

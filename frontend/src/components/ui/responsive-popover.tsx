@@ -18,9 +18,13 @@ import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/
  */
 
 /**
- * Renders the desktop (Popover) variant until after hydration, matching what
- * the server emitted. Without it the first client paint on a phone swaps
- * Popover→Dialog, remounting the whole subtree (and losing any open state).
+ * Gates rendering on client mount before consulting `isMobile`. This does NOT
+ * currently prevent a Popover→Dialog remount on first client paint: `useIsMobile`
+ * is itself false-first (matching desktop) until its own effect runs, and both
+ * effects batch into the same re-render, so `mounted && isMobile` behaves
+ * identically to `isMobile` alone. The gate is kept anyway because it's
+ * harmless and guarantees SSR/desktop parity if `useIsMobile`'s initial-value
+ * behavior ever changes.
  */
 function useMounted() {
   const [mounted, setMounted] = React.useState(false)

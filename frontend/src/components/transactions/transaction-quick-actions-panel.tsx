@@ -18,8 +18,8 @@ interface TransactionQuickActionsPanelProps {
 /**
  * Long-press quick-action panel: anchors below the pressed row (viewport
  * space), scrims the rest of the screen including the bottom nav (z-[55] sits
- * above the nav's z-40 and below Sheet/Modal/Dialog). Deliberately a reduced
- * action set vs. the drawer's full grid — see
+ * above the bottom nav (40) and Sheet (50), below Modal (60) and Dialog (70)).
+ * Deliberately a reduced action set vs. the drawer's full grid — see
  * 2026-08-14-mobile-transactions-list-design.md Component 5.
  */
 export function TransactionQuickActionsPanel({

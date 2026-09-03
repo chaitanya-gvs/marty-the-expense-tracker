@@ -16,6 +16,11 @@
  *    70  Dialog / AlertDialog       (components/ui/dialog.tsx, alert-dialog.tsx)
  *   100  poppers                    (components/ui/popover.tsx, select.tsx,
  *                                    dropdown-menu.tsx, tooltip.tsx)
+ *   200  create-tag DialogContent   (components/transactions/inline-tag-dropdown.tsx,
+ *                                    desktop table only) — outlier, sits above the
+ *                                    popper tier by design so it can open from within
+ *                                    a popover-based dropdown; any popper placed
+ *                                    INSIDE it would need z-[210]+
  *
  * Poppers sit above Dialog because they portal to <body> and must stay usable
  * when opened from inside a Modal or a Dialog. Sonner toasts render above
