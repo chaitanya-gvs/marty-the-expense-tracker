@@ -98,23 +98,23 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
           <div className="space-y-3">
 
             {/* ── Row 1: Date · Amount · Direction ── */}
-            <div className="grid grid-cols-[auto_1fr_160px] gap-3 items-end">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-[auto_1fr_160px] md:items-end">
 
               {/* Date */}
-              <FieldRow label="Date">
+              <FieldRow label="Date" className="order-3 md:order-1">
                 <Input
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-auto text-sm"
+                  className="w-full md:w-auto h-11 md:h-9 text-base md:text-sm"
                   required
                 />
               </FieldRow>
 
               {/* Amount */}
-              <FieldRow label="Amount" required>
+              <FieldRow label="Amount" required className="order-1 md:order-2">
                 <div className="relative">
-                  <span className="pointer-events-none select-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-mono">
+                  <span className="pointer-events-none select-none absolute left-3 top-1/2 -translate-y-1/2 text-base md:text-sm text-muted-foreground font-mono">
                     ₹
                   </span>
                   <Input
@@ -124,15 +124,16 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="0.00"
-                    className="pl-7 font-mono text-sm tabular-nums"
+                    className="pl-7 font-mono tabular-nums h-12 text-xl md:h-9 md:text-sm"
+                    inputMode="decimal"
                     required
                   />
                 </div>
               </FieldRow>
 
               {/* Direction toggle */}
-              <FieldRow label="Direction">
-                <div className="relative flex h-9 rounded-md overflow-hidden border border-border bg-muted text-xs font-medium">
+              <FieldRow label="Direction" className="order-2 md:order-3">
+                <div className="relative flex h-11 md:h-9 rounded-md overflow-hidden border border-border bg-muted text-sm md:text-xs font-medium">
                   {/* sliding bg */}
                   <div
                     className={cn(
@@ -178,7 +179,7 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
                 value={account}
                 onValueChange={setAccount}
                 placeholder="Select or type account name…"
-                className="w-full"
+                className="w-full h-11 md:h-9 text-base md:text-sm"
               />
             </FieldRow>
 
@@ -188,13 +189,13 @@ export function AddTransactionModal({ isOpen, onClose }: AddTransactionModalProp
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Enter transaction description…"
-                className="text-sm"
+                className="h-11 md:h-9 text-base md:text-sm"
                 required
               />
             </FieldRow>
 
             {/* ── Row 4: Category + Tags ── */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <FieldRow label="Category">
                 <CategorySelector
                   value={category}
