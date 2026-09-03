@@ -114,11 +114,11 @@ export function CategoriesManager() {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2 md:flex-nowrap md:gap-0">
           <CardTitle>Categories</CardTitle>
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
+              <Button className="min-h-11 md:min-h-0">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Category
               </Button>
@@ -135,6 +135,7 @@ export function CategoriesManager() {
                     value={newCategory.name}
                     onChange={(e) => setNewCategory({ ...newCategory, name: e.target.value })}
                     placeholder="Enter category name"
+                    className="h-11 md:h-9 text-base md:text-sm"
                   />
                 </div>
                 <div className="space-y-2">
@@ -145,12 +146,13 @@ export function CategoriesManager() {
                       type="color"
                       value={newCategory.color}
                       onChange={(e) => setNewCategory({ ...newCategory, color: e.target.value })}
-                      className="w-16 h-10"
+                      className="w-16 h-11 md:h-10"
                     />
                     <Input
                       value={newCategory.color}
                       onChange={(e) => setNewCategory({ ...newCategory, color: e.target.value })}
                       placeholder="#3b82f6"
+                      className="h-11 md:h-9 text-base md:text-sm"
                     />
                   </div>
                 </div>
@@ -165,7 +167,7 @@ export function CategoriesManager() {
                       })
                     }
                   >
-                    <SelectTrigger id="category-transaction-type">
+                    <SelectTrigger id="category-transaction-type" className="h-11 md:h-9 text-base md:text-sm">
                       <SelectValue placeholder="Select transaction type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -179,10 +181,10 @@ export function CategoriesManager() {
                   </p>
                 </div>
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                  <Button variant="outline" className="min-h-11 md:min-h-0" onClick={() => setIsCreateDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button onClick={handleCreateCategory} disabled={!newCategory.name}>
+                  <Button className="min-h-11 md:min-h-0" onClick={handleCreateCategory} disabled={!newCategory.name}>
                     Create Category
                   </Button>
                 </DialogFooter>
@@ -195,10 +197,10 @@ export function CategoriesManager() {
         <div className="space-y-4">
           {/* Filter Tabs */}
           <Tabs value={transactionTypeFilter} onValueChange={(value) => setTransactionTypeFilter(value as TransactionTypeFilter)}>
-            <TabsList>
-              <TabsTrigger value="all">All Categories</TabsTrigger>
-              <TabsTrigger value="debit">Debit Only</TabsTrigger>
-              <TabsTrigger value="credit">Credit Only</TabsTrigger>
+            <TabsList className="w-full grid grid-cols-3 md:inline-flex md:w-fit">
+              <TabsTrigger value="all" className="min-h-11 md:min-h-0">All Categories</TabsTrigger>
+              <TabsTrigger value="debit" className="min-h-11 md:min-h-0">Debit Only</TabsTrigger>
+              <TabsTrigger value="credit" className="min-h-11 md:min-h-0">Credit Only</TabsTrigger>
             </TabsList>
           </Tabs>
 
@@ -216,7 +218,7 @@ export function CategoriesManager() {
                   key={category.id}
                   className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between min-h-11 md:min-h-0">
                     <div className="flex items-center gap-3">
                       <div
                         className="w-4 h-4 rounded-full flex-shrink-0"
@@ -228,6 +230,7 @@ export function CategoriesManager() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      className="min-h-11 min-w-11 md:min-h-0 md:min-w-0"
                       onClick={() => setEditingCategory(category)}
                     >
                       <Edit className="h-4 w-4" />
@@ -259,6 +262,7 @@ export function CategoriesManager() {
                 value={editCategory.name}
                 onChange={(e) => setEditCategory({ ...editCategory, name: e.target.value })}
                 placeholder="Enter category name"
+                className="h-11 md:h-9 text-base md:text-sm"
               />
             </div>
             <div className="space-y-2">
@@ -269,12 +273,13 @@ export function CategoriesManager() {
                   type="color"
                   value={editCategory.color}
                   onChange={(e) => setEditCategory({ ...editCategory, color: e.target.value })}
-                  className="w-16 h-10"
+                  className="w-16 h-11 md:h-10"
                 />
                 <Input
                   value={editCategory.color}
                   onChange={(e) => setEditCategory({ ...editCategory, color: e.target.value })}
                   placeholder="#3b82f6"
+                  className="h-11 md:h-9 text-base md:text-sm"
                 />
               </div>
             </div>
@@ -289,7 +294,7 @@ export function CategoriesManager() {
                   })
                 }
               >
-                <SelectTrigger id="edit-category-transaction-type">
+                <SelectTrigger id="edit-category-transaction-type" className="h-11 md:h-9 text-base md:text-sm">
                   <SelectValue placeholder="Select transaction type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -303,13 +308,13 @@ export function CategoriesManager() {
               </p>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => {
+              <Button variant="outline" className="min-h-11 md:min-h-0" onClick={() => {
                 setIsEditDialogOpen(false);
                 setEditingCategory(null);
               }}>
                 Cancel
               </Button>
-              <Button onClick={handleUpdateCategory} disabled={!editCategory.name}>
+              <Button className="min-h-11 md:min-h-0" onClick={handleUpdateCategory} disabled={!editCategory.name}>
                 Save Changes
               </Button>
             </DialogFooter>

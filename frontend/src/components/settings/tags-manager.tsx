@@ -63,7 +63,7 @@ export function TagsManager() {
           <CardTitle>Tags</CardTitle>
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
+              <Button className="min-h-11 md:min-h-0">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Tag
               </Button>
@@ -80,6 +80,7 @@ export function TagsManager() {
                     value={newTag.name}
                     onChange={(e) => setNewTag({ ...newTag, name: e.target.value })}
                     placeholder="Enter tag name"
+                    className="h-11 md:h-9 text-base md:text-sm"
                   />
                 </div>
                 <div className="space-y-2">
@@ -90,20 +91,21 @@ export function TagsManager() {
                       type="color"
                       value={newTag.color}
                       onChange={(e) => setNewTag({ ...newTag, color: e.target.value })}
-                      className="w-16 h-10"
+                      className="w-16 h-11 md:h-10"
                     />
                     <Input
                       value={newTag.color}
                       onChange={(e) => setNewTag({ ...newTag, color: e.target.value })}
                       placeholder="#6b7280"
+                      className="h-11 md:h-9 text-base md:text-sm"
                     />
                   </div>
                 </div>
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                  <Button variant="outline" className="min-h-11 md:min-h-0" onClick={() => setIsCreateDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button onClick={handleCreateTag} disabled={!newTag.name}>
+                  <Button className="min-h-11 md:min-h-0" onClick={handleCreateTag} disabled={!newTag.name}>
                     Create Tag
                   </Button>
                 </div>
@@ -138,7 +140,7 @@ export function TagsManager() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                          className="h-11 w-11 md:h-8 md:w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -157,10 +159,10 @@ export function TagsManager() {
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogCancel className="min-h-11 md:min-h-0">Cancel</AlertDialogCancel>
                           <AlertDialogAction
                             onClick={() => handleDeleteTag(tag.id, tag.name)}
-                            className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+                            className="min-h-11 md:min-h-0 bg-red-600 hover:bg-red-700 focus:ring-red-600"
                           >
                             Delete Tag
                           </AlertDialogAction>
