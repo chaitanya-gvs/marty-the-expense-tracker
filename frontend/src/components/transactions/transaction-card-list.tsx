@@ -281,7 +281,11 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
   };
 
   if (error) {
-    return <p className="text-sm text-destructive">Error loading transactions: {error.message || "Unknown error"}</p>;
+    return (
+      <p className="text-sm text-destructive text-center py-10">
+        Error loading transactions: {error.message || "Unknown error"}
+      </p>
+    );
   }
 
   if (isLoading) {

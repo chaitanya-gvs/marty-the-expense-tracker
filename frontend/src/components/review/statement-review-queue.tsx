@@ -131,7 +131,7 @@ function AmbiguousList({
   onReject: (itemId: string) => void;
 }) {
   if (isLoading)
-    return <div className="text-muted-foreground text-sm py-6">Loading…</div>;
+    return <div className="text-muted-foreground text-sm text-center py-8 md:text-left md:py-6">Loading…</div>;
 
   if (items.length === 0)
     return (
