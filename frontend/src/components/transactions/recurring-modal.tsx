@@ -101,7 +101,7 @@ export function RecurringModal({ transaction, open, onClose }: RecurringModalPro
                 type="button"
                 onClick={() => setSelectedPeriod(p.value)}
                 className={cn(
-                  "flex items-center gap-2.5 px-3 py-2.5 rounded-lg border text-left transition-all",
+                  "flex items-center gap-2.5 px-3 py-3 md:py-2.5 min-h-11 md:min-h-0 rounded-lg border text-left transition-all",
                   selectedPeriod === p.value
                     ? "border-indigo-500 bg-indigo-500/15 text-indigo-300"
                     : "border-border bg-muted/40 text-muted-foreground hover:border-indigo-500/50 hover:bg-indigo-500/5"
@@ -148,7 +148,7 @@ export function RecurringModal({ transaction, open, onClose }: RecurringModalPro
               <button
                 type="button"
                 onClick={() => setEditingKey(true)}
-                className="text-xs font-mono text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 px-2 py-0.5 rounded transition-colors"
+                className="text-sm md:text-xs font-mono text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 px-2 py-0.5 rounded transition-colors min-h-11 md:min-h-0"
               >
                 {recurringKey || "auto"}
               </button>
@@ -167,7 +167,7 @@ export function RecurringModal({ transaction, open, onClose }: RecurringModalPro
             size="sm"
             onClick={handleRemove}
             disabled={isPending}
-            className="mr-auto text-destructive border border-destructive/30 hover:bg-destructive/10 text-xs"
+            className="mr-auto text-destructive border border-destructive/30 hover:bg-destructive/10 text-sm md:text-xs min-h-11 md:min-h-0"
           >
             ✕ Remove Recurring
           </Button>
@@ -177,6 +177,7 @@ export function RecurringModal({ transaction, open, onClose }: RecurringModalPro
           size="sm"
           onClick={onClose}
           disabled={isPending}
+          className="min-h-11 md:min-h-0"
         >
           Cancel
         </Button>
@@ -184,7 +185,7 @@ export function RecurringModal({ transaction, open, onClose }: RecurringModalPro
           size="sm"
           onClick={handleSave}
           disabled={isPending}
-          className="bg-indigo-600 hover:bg-indigo-500 text-white"
+          className="bg-indigo-600 hover:bg-indigo-500 text-white min-h-11 md:min-h-0"
         >
           {isPending ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -223,7 +224,7 @@ export function RecurringModalTrigger({
           setOpen(true);
         }}
         className={cn(
-          "h-7 w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center",
+          "h-11 w-11 md:h-7 md:w-7 p-0 rounded-full transition-all duration-200 flex items-center justify-center",
           isRecurring
             ? "bg-indigo-400/15 text-indigo-300 hover:bg-indigo-400/20 shadow-[0_0_12px_rgba(129,140,248,0.2)]"
             : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground"

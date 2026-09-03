@@ -166,7 +166,7 @@ export function RelatedTransactionsDrawer({
             {t.account && <span className="text-muted-foreground font-sans"> · {t.account.split(" ").slice(0, -2).join(" ") || t.account}</span>}
           </div>
           {(t.category || t.subcategory) && (
-            <div className="flex items-center gap-1 pt-0.5">
+            <div className="flex items-center gap-1 flex-wrap pt-0.5">
               {t.category && <Badge variant="secondary" className="text-xs">{t.category}</Badge>}
               {t.subcategory && <Badge variant="outline" className="text-xs">{t.subcategory}</Badge>}
             </div>
@@ -209,7 +209,7 @@ export function RelatedTransactionsDrawer({
             label="Net Amount Spent"
             sub={`${formatCurrency(Math.abs(parentTransaction.amount))} − ${formatCurrency(Math.abs(transaction.amount))}`}
           />
-          <Button variant="outline" onClick={handleUnlink} className="w-full text-muted-foreground">
+          <Button variant="outline" onClick={handleUnlink} className="w-full text-muted-foreground min-h-11 md:min-h-0">
             <Unlink className="h-4 w-4 mr-2" />
             Unlink Refund
           </Button>
@@ -231,7 +231,7 @@ export function RelatedTransactionsDrawer({
               <TxCard key={child.id} t={child}>
                 {onUnlinkChild && (
                   <div className="pt-2 mt-2 border-t border-border">
-                    <Button variant="outline" size="sm" onClick={() => handleUnlinkChild(child.id)} className="w-full text-muted-foreground">
+                    <Button variant="outline" size="sm" onClick={() => handleUnlinkChild(child.id)} className="w-full text-muted-foreground min-h-11 md:min-h-0">
                       <Unlink className="h-3 w-3 mr-2" />
                       Unlink Refund
                     </Button>
@@ -296,7 +296,7 @@ export function RelatedTransactionsDrawer({
               <TxCard t={t}>
                 {t.id !== transaction.id && (
                   <div className="pt-2 mt-2 border-t border-border">
-                    <Button variant="ghost" size="sm" onClick={() => handleRemoveFromGroup(t.id)} className="w-full text-muted-foreground hover:text-destructive h-7">
+                    <Button variant="ghost" size="sm" onClick={() => handleRemoveFromGroup(t.id)} className="w-full text-muted-foreground hover:text-destructive h-7 min-h-11 md:min-h-0">
                       <Trash2 className="h-3 w-3 mr-2" />
                       Remove from group
                     </Button>
@@ -318,7 +318,7 @@ export function RelatedTransactionsDrawer({
         </div>
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="outline" className="w-full border-destructive/50 text-destructive hover:bg-destructive/10">
+            <Button variant="outline" className="w-full border-destructive/50 text-destructive hover:bg-destructive/10 min-h-11 md:min-h-0">
               <Trash2 className="h-4 w-4 mr-2" />
               Remove Entire Group
             </Button>
@@ -329,8 +329,8 @@ export function RelatedTransactionsDrawer({
               This will unlink all transactions in this group. They will remain in your records but will no longer be grouped together.
             </AlertDialogDescription>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleUngroup} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              <AlertDialogCancel className="min-h-11 md:min-h-0">Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleUngroup} className="bg-destructive text-destructive-foreground hover:bg-destructive/90 min-h-11 md:min-h-0">
                 Remove Group
               </AlertDialogAction>
             </AlertDialogFooter>
@@ -473,7 +473,7 @@ export function RelatedTransactionsDrawer({
                         {t.description}
                       </div>
                       {(t.category || t.subcategory) && (
-                        <div className="flex items-center gap-1 mt-1">
+                        <div className="flex items-center gap-1 flex-wrap mt-1">
                           {t.category && (
                             <Badge variant="secondary" className="text-xs">
                               {t.category}
@@ -550,7 +550,7 @@ export function RelatedTransactionsDrawer({
             <AlertDialogTrigger asChild>
               <Button
                 variant="outline"
-                className="mr-auto border-destructive/50 text-destructive hover:bg-destructive/10"
+                className="mr-auto border-destructive/50 text-destructive hover:bg-destructive/10 min-h-11 md:min-h-0"
               >
                 <Unlink className="h-4 w-4 mr-2" />
                 Ungroup
@@ -562,10 +562,10 @@ export function RelatedTransactionsDrawer({
                 This will remove the group link between these transactions. They will remain in your records but will no longer be grouped together.
               </AlertDialogDescription>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel className="min-h-11 md:min-h-0">Cancel</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={handleUngroup}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90 min-h-11 md:min-h-0"
                 >
                   Ungroup
                 </AlertDialogAction>
@@ -578,7 +578,7 @@ export function RelatedTransactionsDrawer({
             <AlertDialogTrigger asChild>
               <Button
                 variant="outline"
-                className="mr-auto border-destructive/50 text-destructive hover:bg-destructive/10"
+                className="mr-auto border-destructive/50 text-destructive hover:bg-destructive/10 min-h-11 md:min-h-0"
               >
                 <Trash2 className="h-4 w-4 mr-2" />
                 Remove Split
@@ -590,10 +590,10 @@ export function RelatedTransactionsDrawer({
                 This will remove all split parts and restore the original transaction. This cannot be undone.
               </AlertDialogDescription>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel className="min-h-11 md:min-h-0">Cancel</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={handleUngroup}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90 min-h-11 md:min-h-0"
                 >
                   Remove Split
                 </AlertDialogAction>
@@ -601,7 +601,7 @@ export function RelatedTransactionsDrawer({
             </AlertDialogContent>
           </AlertDialog>
         )}
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="outline" onClick={onClose} className="min-h-11 md:min-h-0">
           Close
         </Button>
       </Modal.Footer>
