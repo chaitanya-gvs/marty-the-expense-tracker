@@ -76,10 +76,10 @@ export function AnalyticsFilters({ filters, onFiltersChange }: AnalyticsFiltersP
   return (
     <div className="flex flex-col">
       {/* Row 1: Period + Date Range + Direction */}
-      <div className="flex items-center justify-between gap-3 px-5 py-3">
+      <div className="flex flex-col gap-2 px-5 py-3 md:flex-row md:items-center md:justify-between md:gap-3">
 
         {/* Date preset segmented group */}
-        <div className="flex items-center bg-muted/50 rounded-md p-0.5 gap-0.5 shrink-0">
+        <div className="flex items-center bg-muted/50 rounded-md p-0.5 gap-0.5 overflow-x-auto max-w-full md:overflow-visible [&>*]:shrink-0">
           {DATE_PRESETS.map((preset) => (
             <button
               key={preset.value}
@@ -89,7 +89,7 @@ export function AnalyticsFilters({ filters, onFiltersChange }: AnalyticsFiltersP
                 setShowCustomDates(false);
               }}
               className={cn(
-                "px-2.5 h-6 text-xs font-medium rounded transition-all duration-150 whitespace-nowrap",
+                "px-2.5 min-h-9 md:min-h-0 h-6 text-xs font-medium rounded transition-all duration-150 whitespace-nowrap",
                 activePreset === preset.value
                   ? "bg-foreground/10 text-foreground"
                   : "text-muted-foreground hover:text-foreground"
@@ -101,12 +101,12 @@ export function AnalyticsFilters({ filters, onFiltersChange }: AnalyticsFiltersP
         </div>
 
         {/* Right side: date display + direction */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 flex-wrap md:flex-nowrap">
           {/* Date range display / toggle custom dates */}
           <button
             onClick={() => setShowCustomDates((v) => !v)}
             className={cn(
-              "flex items-center gap-1.5 h-7 px-2.5 rounded-md text-xs transition-colors border",
+              "flex items-center gap-1.5 min-h-9 md:min-h-0 h-7 px-2.5 rounded-md text-xs transition-colors border",
               showCustomDates
                 ? "border-border bg-muted/50 text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground hover:border-border hover:bg-muted/30"
@@ -127,7 +127,7 @@ export function AnalyticsFilters({ filters, onFiltersChange }: AnalyticsFiltersP
             <button
               onClick={() => onFiltersChange({ direction: "debit" })}
               className={cn(
-                "flex items-center gap-1 px-2.5 h-6 text-xs font-medium rounded transition-all duration-150",
+                "flex items-center gap-1 px-2.5 min-h-9 md:min-h-0 h-6 text-xs font-medium rounded transition-all duration-150",
                 filters.direction === "debit"
                   ? "bg-foreground/10 text-foreground"
                   : "text-muted-foreground hover:text-foreground"
@@ -139,7 +139,7 @@ export function AnalyticsFilters({ filters, onFiltersChange }: AnalyticsFiltersP
             <button
               onClick={() => onFiltersChange({ direction: "credit" })}
               className={cn(
-                "flex items-center gap-1 px-2.5 h-6 text-xs font-medium rounded transition-all duration-150",
+                "flex items-center gap-1 px-2.5 min-h-9 md:min-h-0 h-6 text-xs font-medium rounded transition-all duration-150",
                 filters.direction === "credit"
                   ? "bg-foreground/10 text-foreground"
                   : "text-muted-foreground hover:text-foreground"
@@ -154,12 +154,12 @@ export function AnalyticsFilters({ filters, onFiltersChange }: AnalyticsFiltersP
 
       {/* Expandable custom date inputs */}
       {showCustomDates && (
-        <div className="flex items-center gap-3 px-5 pb-3 pt-0">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center px-5 pb-3 pt-0">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="w-10 shrink-0">Start</span>
             <input
               type="date"
-              className="bg-muted/40 border border-border/60 rounded-md px-2.5 h-7 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              className="bg-muted/40 border border-border/60 rounded-md px-2.5 h-11 md:h-7 text-base md:text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               value={filters.date_range?.start || ""}
               onChange={(e) => {
                 setActivePreset(null);
@@ -174,7 +174,7 @@ export function AnalyticsFilters({ filters, onFiltersChange }: AnalyticsFiltersP
             <span className="w-10 shrink-0">End</span>
             <input
               type="date"
-              className="bg-muted/40 border border-border/60 rounded-md px-2.5 h-7 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              className="bg-muted/40 border border-border/60 rounded-md px-2.5 h-11 md:h-7 text-base md:text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               value={filters.date_range?.end || ""}
               onChange={(e) => {
                 setActivePreset(null);

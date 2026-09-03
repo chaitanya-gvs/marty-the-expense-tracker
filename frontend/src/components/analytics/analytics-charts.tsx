@@ -25,6 +25,7 @@ import {
 import { formatCurrency } from "@/lib/format-utils";
 import { BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 
 const COLORS = [
   "#DC2626", // red
@@ -50,6 +51,7 @@ interface AnalyticsChartsProps {
 }
 
 export function AnalyticsCharts({ analytics, analyticsFilters }: AnalyticsChartsProps) {
+  const isMobile = useIsMobile();
   const { data, group_by } = analytics;
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [activeBar, setActiveBar] = useState<number | null>(null);
@@ -516,7 +518,7 @@ export function AnalyticsCharts({ analytics, analyticsFilters }: AnalyticsCharts
             </div>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={420}>
+            <ResponsiveContainer width="100%" height={isMobile ? 300 : 420}>
               <BarChart data={stackedBarData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
                 <XAxis dataKey="name" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
@@ -551,7 +553,7 @@ export function AnalyticsCharts({ analytics, analyticsFilters }: AnalyticsCharts
             </div>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={380}>
+            <ResponsiveContainer width="100%" height={isMobile ? 280 : 380}>
               <LineChart data={lineChartData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
                 <XAxis dataKey="month" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
