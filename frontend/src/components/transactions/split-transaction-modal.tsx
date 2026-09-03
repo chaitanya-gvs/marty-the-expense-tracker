@@ -298,7 +298,7 @@ export function SplitTransactionModal({
             type="button"
             whileTap={{ scale: 0.97 }}
             onClick={autoDistribute}
-            className="rounded-lg bg-muted hover:bg-muted/70 text-foreground px-3 py-1 text-xs font-medium transition-colors"
+            className="rounded-lg bg-muted hover:bg-muted/70 text-foreground px-3 py-1 min-h-11 md:min-h-0 text-sm md:text-xs font-medium transition-colors inline-flex items-center"
           >
             Auto Distribute
           </motion.button>
@@ -314,7 +314,7 @@ export function SplitTransactionModal({
                 className="space-y-2 pb-4 border-b border-border/30 last:border-0 last:pb-0"
               >
                 {/* Row 1: dot · description · amount · [trash] */}
-                <div className="flex items-center gap-2.5">
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-2.5 min-h-11 md:min-h-0">
                   <div
                     className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                     style={{ backgroundColor: dotColor }}
@@ -326,21 +326,22 @@ export function SplitTransactionModal({
                       onValueChange={(val) => updatePart(part.id, "description", val)}
                       onSave={(val) => updatePart(part.id, "description", val ?? "")}
                       placeholder={`Part ${index + 1} description`}
-                      className="h-9 bg-muted/50 border-border/50 text-sm"
+                      className="h-11 md:h-9 bg-muted/50 border-border/50 text-base md:text-sm"
                     />
                   </div>
                   <div className="w-28 flex-shrink-0">
                     <MoneyInput
                       value={part.amount || ""}
                       onValueChange={(val) => updatePart(part.id, "amount", val)}
-                      className="h-9"
+                      inputMode="decimal"
+                      className="h-11 md:h-9 text-base md:text-sm"
                     />
                   </div>
                   {parts.length > 2 && (
                     <button
                       type="button"
                       onClick={() => removePart(part.id)}
-                      className="flex-shrink-0 p-1.5 rounded text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                      className="flex-shrink-0 flex items-center justify-center p-1.5 min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -362,7 +363,7 @@ export function SplitTransactionModal({
           <button
             type="button"
             onClick={addPart}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground/40 hover:text-muted-foreground transition-colors pl-[18px]"
+            className="flex items-center gap-1.5 min-h-11 md:min-h-0 text-sm md:text-xs text-muted-foreground/40 hover:text-muted-foreground transition-colors pl-[18px]"
           >
             <Plus className="h-3 w-3" />
             Add part
@@ -374,13 +375,14 @@ export function SplitTransactionModal({
       </Modal.Body>
 
       <Modal.Footer>
-        <Button type="button" variant="outline" onClick={onClose}>
+        <Button type="button" variant="outline" onClick={onClose} className="min-h-11 md:min-h-0">
           Cancel
         </Button>
         <Button
           type="button"
           onClick={handleSplit}
           disabled={!isValid || splitTransaction.isPending}
+          className="min-h-11 md:min-h-0"
         >
           {splitTransaction.isPending ? "Splitting…" : `Split into ${parts.length} Parts`}
         </Button>
