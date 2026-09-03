@@ -1,12 +1,15 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 
 export type ModalSize = "sm" | "md" | "lg";
+export type ModalPresentation = "auto" | "sheet" | "fullscreen" | "center";
+type ResolvedPresentation = Exclude<ModalPresentation, "auto">;
 
 export interface ModalProps {
   open: boolean;
@@ -16,6 +19,11 @@ export interface ModalProps {
   initialFocusRef?: React.RefObject<HTMLElement>;
   children: React.ReactNode;
   className?: string;
+  /**
+   * How the panel is housed. "auto" (default): desktop → centred panel;
+   * mobile → bottom sheet for sm/md, full-screen for lg.
+   */
+  presentation?: ModalPresentation;
 }
 
 export interface ModalHeaderProps {
@@ -50,6 +58,19 @@ const variantColors: Record<string, { bg: string; text: string }> = {
   share: { bg: "bg-[#6366f1]/20", text: "text-[#6366f1]" },
 };
 
+// Lets Header/Body/Footer adapt to the housing without consumers passing props.
+const PresentationContext = React.createContext<ResolvedPresentation>("center");
+
+function resolvePresentation(
+  presentation: ModalPresentation,
+  size: ModalSize,
+  isMobile: boolean
+): ResolvedPresentation {
+  if (presentation !== "auto") return presentation;
+  if (!isMobile) return "center";
+  return size === "lg" ? "fullscreen" : "sheet";
+}
+
 export function Modal({
   open,
   onClose,
@@ -58,10 +79,14 @@ export function Modal({
   initialFocusRef,
   children,
   className,
+  presentation = "auto",
 }: ModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
   const [mounted, setMounted] = useState(false);
+  const isMobile = useIsMobile();
+  const reduceMotion = useReducedMotion();
+  const resolved = resolvePresentation(presentation, size, isMobile);
 
   useEffect(() => {
     setMounted(true);
@@ -84,30 +109,57 @@ export function Modal({
   }, [open, initialFocusRef]);
 
   useEffect(() => {
+    if (!open) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && open) {
-        onClose();
-      }
+      if (e.key === "Escape") onClose();
     };
 
-    if (open) {
-      document.addEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "hidden";
-    }
+    // Save whatever lock is already in place (e.g. Radix's, when this Modal is
+    // opened over an open Sheet) and restore *that* on close — clearing to ""
+    // used to break the underlying Sheet's scroll lock.
+    const previousOverflow = document.body.style.overflow;
+    document.addEventListener("keydown", handleKeyDown);
+    document.body.style.overflow = "hidden";
 
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "";
+      document.body.style.overflow = previousOverflow;
     };
   }, [open, onClose]);
 
   if (!mounted) return null;
 
+  const isCenter = resolved === "center";
+
+  const panelMotion = isCenter
+    ? {
+        initial: { opacity: 0, y: 8 },
+        animate: { opacity: 1, y: 0 },
+        exit: { opacity: 0, y: 8 },
+        transition: { duration: 0.2 },
+      }
+    : reduceMotion
+    ? {
+        initial: { opacity: 0 },
+        animate: { opacity: 1 },
+        exit: { opacity: 0 },
+        transition: { duration: 0.15 },
+      }
+    : {
+        initial: { y: "100%" },
+        animate: { y: 0, transition: { type: "spring" as const, stiffness: 380, damping: 34 } },
+        exit: { y: "100%", transition: { type: "tween" as const, duration: 0.18, ease: "easeIn" as const } },
+      };
+
   return createPortal(
     <AnimatePresence>
       {open && (
         <div
-          className="fixed inset-0 z-40 flex items-start justify-center"
+          className={cn(
+            "fixed inset-0 z-[60]",
+            isCenter && "flex items-start justify-center"
+          )}
           role={role}
           aria-modal="true"
         >
@@ -121,23 +173,36 @@ export function Modal({
             onClick={onClose}
           />
 
-          {/* Modal Panel */}
+          {/* Panel */}
           <motion.div
             ref={modalRef}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            transition={{ duration: 0.2 }}
+            {...panelMotion}
             className={cn(
-              "relative my-10 max-h-[calc(100vh-5rem)] overflow-hidden",
-              "rounded-2xl border shadow-[0_10px_40px_rgba(0,0,0,0.45)]",
               "bg-[var(--modal-panel)] border-[var(--modal-border)]",
-              sizeClasses[size],
-              "max-md:w-[calc(100vw-24px)]",
+              isCenter && [
+                "relative my-10 max-h-[calc(100vh-5rem)] overflow-hidden",
+                "rounded-2xl border shadow-[0_10px_40px_rgba(0,0,0,0.45)]",
+                sizeClasses[size],
+                "max-md:w-[calc(100vw-24px)]",
+              ],
+              resolved === "sheet" && [
+                "absolute inset-x-0 bottom-0 flex flex-col overflow-hidden",
+                "max-h-[92dvh] rounded-t-2xl border-t shadow-[0_-10px_40px_rgba(0,0,0,0.45)]",
+                "pb-[env(safe-area-inset-bottom)]",
+              ],
+              resolved === "fullscreen" && [
+                "absolute inset-0 flex flex-col overflow-hidden",
+                "pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]",
+              ],
               className
             )}
           >
-            {children}
+            {resolved === "sheet" && (
+              <div aria-hidden className="h-1 w-9 shrink-0 rounded-full bg-border mx-auto mt-2 mb-1" />
+            )}
+            <PresentationContext.Provider value={resolved}>
+              {children}
+            </PresentationContext.Provider>
           </motion.div>
         </div>
       )}
@@ -156,12 +221,14 @@ function ModalHeader({
 }: ModalHeaderProps) {
   const colors = variantColors[variant] || variantColors.split;
   const headerId = React.useId();
+  const compact = useContext(PresentationContext) !== "center";
 
   return (
     <div
       className={cn(
-        "sticky top-0 z-10 flex items-start justify-between gap-4",
-        "border-b px-6 py-4",
+        "sticky top-0 z-10 flex items-start justify-between gap-4 shrink-0",
+        "border-b",
+        compact ? "px-4 py-3" : "px-6 py-4",
         "bg-[var(--modal-panel-header)] border-[var(--modal-border)]",
         className
       )}
@@ -181,7 +248,10 @@ function ModalHeader({
           )}
           <h2
             id={headerId}
-            className="text-lg font-semibold text-[var(--modal-text)] truncate"
+            className={cn(
+              "font-semibold text-[var(--modal-text)] truncate",
+              compact ? "text-base" : "text-lg"
+            )}
           >
             {title}
           </h2>
@@ -209,11 +279,13 @@ function ModalHeader({
 }
 
 function ModalBody({ children, className }: ModalBodyProps) {
+  const compact = useContext(PresentationContext) !== "center";
+
   return (
     <div
       className={cn(
-        "overflow-y-auto px-6 py-4",
-        "max-h-[calc(70vh)]",
+        "overflow-y-auto",
+        compact ? "flex-1 min-h-0 px-4 py-3" : "px-6 py-4 max-h-[calc(70vh)]",
         "scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent",
         className
       )}
@@ -224,13 +296,15 @@ function ModalBody({ children, className }: ModalBodyProps) {
 }
 
 function ModalFooter({ children, className }: ModalFooterProps) {
+  const compact = useContext(PresentationContext) !== "center";
+
   return (
     <div
       className={cn(
-        "sticky bottom-0 flex items-center justify-end gap-3",
-        "border-t px-6 py-3",
-        "bg-gradient-to-t from-[var(--modal-panel)] to-transparent",
-        "border-[var(--modal-border)]",
+        "flex items-center border-t border-[var(--modal-border)]",
+        compact
+          ? "shrink-0 gap-2 px-4 py-3 bg-[var(--modal-panel)] [&>*]:flex-1"
+          : "sticky bottom-0 justify-end gap-3 px-6 py-3 bg-gradient-to-t from-[var(--modal-panel)] to-transparent",
         className
       )}
     >
@@ -242,4 +316,3 @@ function ModalFooter({ children, className }: ModalFooterProps) {
 Modal.Header = ModalHeader;
 Modal.Body = ModalBody;
 Modal.Footer = ModalFooter;
-
