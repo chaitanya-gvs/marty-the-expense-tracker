@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useInfiniteTransactions,
   useBulkDeleteTransactions,
@@ -15,6 +16,7 @@ import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
 import { SharedExpenseEditor } from "./shared-expense-editor";
 import { SplitTransactionModal } from "./split-transaction-modal";
 import { GroupExpenseSearchModal } from "./group-expense-search-modal";
+import { GroupExpenseModal } from "./group-expense-modal";
 import { RecurringModal } from "./recurring-modal";
 import { EmailLinksDrawer } from "./email-links-drawer";
 import { PdfViewer } from "./pdf-viewer";
@@ -27,6 +29,7 @@ import { useLongPress } from "@/hooks/use-long-press";
 import { TransactionQuickActionsPanel } from "./transaction-quick-actions-panel";
 import type { TransactionActionType } from "./action-tile-grid";
 import type { Transaction, TransactionFilters as TransactionFiltersType, TransactionSort } from "@/lib/types";
+import { apiClient } from "@/lib/api/client";
 import { toast } from "sonner";
 
 interface TransactionCardListProps {
@@ -41,7 +44,6 @@ function TransactionRow({
   selectMode,
   onTap,
   onLongPress,
-  onToggleSelected,
 }: {
   transaction: Transaction;
   dotColor: string;
@@ -49,7 +51,6 @@ function TransactionRow({
   selectMode: boolean;
   onTap: () => void;
   onLongPress: (rowEl: HTMLButtonElement) => void;
-  onToggleSelected: () => void;
 }) {
   const rowRef = useRef<HTMLButtonElement>(null);
   const longPress = useLongPress({
@@ -71,7 +72,11 @@ function TransactionRow({
       )}
     >
       {selectMode && (
-        <Checkbox checked={selected} onCheckedChange={onToggleSelected} onClick={(e) => e.stopPropagation()} />
+        // Purely presentational here: the row's own tap handler (useLongPress's
+        // onClick → onTap → handleCardTap) already calls toggleSelected when
+        // selectMode is true. A live onCheckedChange would double-toggle since
+        // pointer events already reach the row underneath (I4).
+        <Checkbox checked={selected} className="pointer-events-none" />
       )}
       <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
       <p className="flex-1 min-w-0 text-[12.5px] font-medium text-foreground truncate">
@@ -95,6 +100,7 @@ function TransactionRow({
 export function TransactionCardList({ filters, sort }: TransactionCardListProps) {
   const { data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useInfiniteTransactions(filters, sort);
+  const queryClient = useQueryClient();
   const bulkDeleteTransactions = useBulkDeleteTransactions();
   const categoryColorMap = useCategoryColorMap();
   const updateTransactionSplit = useUpdateTransactionSplit();
@@ -104,7 +110,10 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
 
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [openTransaction, setOpenTransaction] = useState<Transaction | null>(null);
+  // Holds only the id, not a snapshot — the actual transaction object is
+  // derived reactively below so the drawer picks up mutations (flag/swap/etc)
+  // without needing to be re-opened (I2).
+  const [openTransactionId, setOpenTransactionId] = useState<string | null>(null);
   const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [panelTransaction, setPanelTransaction] = useState<Transaction | null>(null);
@@ -113,11 +122,21 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
   const [activeSubModal, setActiveSubModal] = useState<TransactionActionType | null>(null);
   const [subModalTransaction, setSubModalTransaction] = useState<Transaction | null>(null);
   const [singleDeleteTransaction, setSingleDeleteTransaction] = useState<Transaction | null>(null);
+  // Group-expense flow: GroupExpenseSearchModal only selects candidates, the
+  // real apiClient.groupExpense() call happens in GroupExpenseModal — mirrors
+  // TransactionsTable's groupExpenseFromTransaction/isGroupExpenseModalOpen (C2).
+  const [groupExpensePreselectedTransactions, setGroupExpensePreselectedTransactions] = useState<Transaction[] | null>(null);
+  const [isGroupExpenseModalOpen, setIsGroupExpenseModalOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const allTransactions = useMemo(
     () => data?.pages?.flatMap((page) => page.data || []) || [],
     [data]
+  );
+
+  const openTransaction = useMemo(
+    () => allTransactions.find((t) => t.id === openTransactionId) ?? null,
+    [allTransactions, openTransactionId]
   );
 
   // Same 400px-from-bottom threshold as TransactionsTable's fetchMoreOnBottomReached.
@@ -173,23 +192,34 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
       return;
     }
     setDrawerInitialMode("view");
-    setOpenTransaction(t);
+    setOpenTransactionId(t.id);
   };
 
+  // rowRect (from getBoundingClientRect()) is already viewport-relative, and
+  // the panel renders as position:absolute inside a `fixed inset-0` overlay
+  // (viewport space) — so the anchor must stay in pure viewport-space math,
+  // no listRect/scrollTop mixed in (C3).
   const handleLongPress = (t: Transaction, rowEl: HTMLButtonElement) => {
     if (selectMode) {
       toggleSelected(t.id);
       return;
     }
-    const listEl = scrollRef.current;
-    if (!listEl) return;
     const rowRect = rowEl.getBoundingClientRect();
-    const listRect = listEl.getBoundingClientRect();
-    setPanelAnchorTop(rowRect.bottom - listRect.top + listEl.scrollTop + 6);
+    const estimatedPanelHeight = 340; // 8 tiles + delete row + header
+    let anchorTop = rowRect.bottom + 6;
+    if (anchorTop + estimatedPanelHeight > window.innerHeight) {
+      // Not enough room below — clamp so the panel never renders off-screen.
+      anchorTop = Math.max(12, window.innerHeight - estimatedPanelHeight - 12);
+    }
+    setPanelAnchorTop(anchorTop);
     setPanelTransaction(t);
   };
 
   const handleAction = (type: TransactionActionType, t: Transaction) => {
+    // The quick-actions panel is an ephemeral popup — every action tap
+    // dismisses it, not just Edit/Select (I1).
+    setPanelTransaction(null);
+
     if (type === "flag") {
       updateTransaction.mutate(
         { id: t.id, updates: { is_flagged: !(t.is_flagged === true) } },
@@ -211,6 +241,14 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
       );
       return;
     }
+    // Every remaining action type opens a sub-modal (or the delete-confirm
+    // dialog) on top of the drawer. The shared Modal primitive those
+    // sub-modals use renders at z-40, below the drawer Sheet's z-50 overlay,
+    // so it's invisible unless the drawer closes first (C1). Flag/direction
+    // above are deliberately excluded — I2 requires the drawer to stay open
+    // and reflect those mutations live (openTransaction is now reactive).
+    setOpenTransactionId(null);
+
     if (type === "delete") {
       setSingleDeleteTransaction(t);
       return;
@@ -285,7 +323,6 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
                   selectMode={selectMode}
                   onTap={() => handleCardTap(t)}
                   onLongPress={(rowEl) => handleLongPress(t, rowEl)}
-                  onToggleSelected={() => toggleSelected(t.id)}
                 />
               ))}
             </div>
@@ -314,7 +351,7 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
         onEdit={(t) => {
           setPanelTransaction(null);
           setDrawerInitialMode("edit");
-          setOpenTransaction(t);
+          setOpenTransactionId(t.id);
         }}
         onSelect={(t) => {
           setPanelTransaction(null);
@@ -326,7 +363,7 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
       <TransactionDetailsDrawer
         transaction={openTransaction}
         isOpen={openTransaction !== null}
-        onClose={() => setOpenTransaction(null)}
+        onClose={() => setOpenTransactionId(null)}
         initialMode={drawerInitialMode}
         onAction={handleAction}
       />
@@ -386,15 +423,45 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
               ? allTransactions.filter((tx) => tx.transaction_group_id === subModalTransaction.transaction_group_id)
               : undefined
           }
-          onSelectTransactions={() => closeSubModal()}
-          onUngroup={async () => {
-            // Grouping/ungrouping mutations live behind GroupExpenseSearchModal's
-            // own flow; this slice only wires the entry point per the design
-            // spec's explicit deferral of Group modal internals to its own slice.
+          onSelectTransactions={(txs) => {
+            // GroupExpenseSearchModal only selects candidates — the real
+            // apiClient.groupExpense() call happens in GroupExpenseModal,
+            // mirroring desktop's chained search → group modal flow (C2).
+            setGroupExpensePreselectedTransactions(txs);
+            setIsGroupExpenseModalOpen(true);
             closeSubModal();
+          }}
+          onUngroup={async (transactionGroupId) => {
+            try {
+              await apiClient.ungroupExpense(transactionGroupId);
+              toast.success("Expense ungrouped successfully");
+              // Same cache-clear pattern as TransactionsTable's
+              // handleUngroupExpense: the infinite-query cache can otherwise
+              // keep a stale collapsed group row around.
+              queryClient.removeQueries({ queryKey: ["transactions-infinite"] });
+              queryClient.invalidateQueries({ queryKey: ["transactions"] });
+            } catch {
+              toast.error("Failed to ungroup expense");
+            } finally {
+              closeSubModal();
+            }
           }}
         />
       )}
+      <GroupExpenseModal
+        selectedTransactions={groupExpensePreselectedTransactions ?? []}
+        isOpen={isGroupExpenseModalOpen}
+        onClose={() => {
+          setIsGroupExpenseModalOpen(false);
+          setGroupExpensePreselectedTransactions(null);
+        }}
+        onGroupSuccess={() => {
+          setIsGroupExpenseModalOpen(false);
+          setGroupExpensePreselectedTransactions(null);
+          queryClient.invalidateQueries({ queryKey: ["transactions"] });
+          queryClient.invalidateQueries({ queryKey: ["transactions-infinite"] });
+        }}
+      />
 
       {subModalTransaction && activeSubModal === "recurring" && (
         <RecurringModal
@@ -410,7 +477,15 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
           transaction={subModalTransaction}
           isOpen={true}
           onClose={closeSubModal}
-          onTransactionUpdate={() => closeSubModal()}
+          onTransactionUpdate={(updatedTransaction) => {
+            // Fired after EACH link/unlink — must not close the modal (mirrors
+            // desktop's onTransactionUpdate handler in transactions-table.tsx).
+            // Only onClose (the drawer's own X / Close button) dismisses it.
+            updateTransaction.mutate({
+              id: updatedTransaction.id,
+              updates: { related_mails: updatedTransaction.related_mails },
+            });
+          }}
         />
       )}
 

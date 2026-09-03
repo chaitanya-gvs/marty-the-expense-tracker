@@ -90,13 +90,21 @@ export function TransactionDetailsDrawer({
         if (!transaction) return;
         setMode(isOpen ? initialMode : "view");
         setForm(toFormState(transaction));
-        const tagObjects = (transaction.tags || [])
-            .map((name) => allTags.find((tag) => tag.name === name))
-            .filter((tag): tag is Tag => tag !== undefined);
-        setSelectedTags(tagObjects);
+        // Guard against allTags not having resolved yet (useTags() still
+        // loading) — without this, selectedTags silently becomes [] and a
+        // subsequent Save would wipe the transaction's tags (I3 / Minor #4).
+        // Mirrors transaction-edit-modal.tsx's tag-derivation guard.
+        if (transaction.tags && transaction.tags.length > 0 && allTags.length > 0) {
+            const tagObjects = transaction.tags
+                .map((name) => allTags.find((tag) => tag.name === name))
+                .filter((tag): tag is Tag => tag !== undefined);
+            setSelectedTags(tagObjects);
+        } else {
+            setSelectedTags([]);
+        }
         setAdvancedOpen(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [transaction?.id, isOpen, initialMode]);
+    }, [transaction?.id, isOpen, initialMode, allTags]);
 
     if (!transaction || !form) return null;
 
@@ -154,9 +162,13 @@ export function TransactionDetailsDrawer({
                         <div className="flex flex-col gap-2">
                             <h2 className="text-2xl font-bold">{form.description}</h2>
                             <div className="flex items-center gap-2">
-                                <span className={`text-xl font-semibold ${form.direction === 'debit' ? 'text-destructive' : 'text-emerald-500'
+                                {/* Reads transaction.* directly (not form.*) so this reflects a
+                                    Flag/Swap ± mutation immediately — form only re-derives when
+                                    transaction.id changes, but the drawer's transaction prop is
+                                    now reactive to live cache updates (I2). */}
+                                <span className={`text-xl font-semibold ${transaction.direction === 'debit' ? 'text-destructive' : 'text-emerald-500'
                                     }`}>
-                                    {form.direction === 'debit' ? '-' : '+'}{formatCurrency(form.amount)}
+                                    {transaction.direction === 'debit' ? '-' : '+'}{formatCurrency(transaction.amount)}
                                 </span>
                                 <Badge variant="outline">{form.account}</Badge>
                             </div>
