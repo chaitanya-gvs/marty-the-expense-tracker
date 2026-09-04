@@ -34,24 +34,39 @@ function useMounted() {
   return mounted
 }
 
+/**
+ * The Root decides the mode and publishes it via context. Trigger/Content MUST
+ * read this context instead of calling useIsMobile/useMounted themselves: when
+ * the Root switches from <Popover> to <Dialog> its children are remounted, which
+ * resets any hook state they own to the false-first initial value, so a child
+ * would render <PopoverTrigger> inside a <Dialog> and crash
+ * ("PopoverTrigger must be used within Popover").
+ */
+const MobileModeContext = React.createContext(false)
+
 type RootProps = React.ComponentProps<typeof PopoverPrimitive.Root>
 
 function ResponsivePopover({ modal, ...props }: RootProps) {
   const isMobile = useIsMobile()
   const mounted = useMounted()
-  if (mounted && isMobile) {
-    // Always modal on mobile: the sheet needs its scrim and focus trap.
-    return <Dialog {...props} />
-  }
-  return <Popover modal={modal} {...props} />
+  const mobile = mounted && isMobile
+  return (
+    <MobileModeContext.Provider value={mobile}>
+      {mobile ? (
+        // Always modal on mobile: the sheet needs its scrim and focus trap.
+        <Dialog {...props} />
+      ) : (
+        <Popover modal={modal} {...props} />
+      )}
+    </MobileModeContext.Provider>
+  )
 }
 
 type TriggerProps = React.ComponentProps<typeof PopoverPrimitive.Trigger>
 
 function ResponsivePopoverTrigger(props: TriggerProps) {
-  const isMobile = useIsMobile()
-  const mounted = useMounted()
-  if (mounted && isMobile) {
+  const mobile = React.useContext(MobileModeContext)
+  if (mobile) {
     return <DialogTrigger {...(props as React.ComponentProps<typeof DialogPrimitive.Trigger>)} />
   }
   return <PopoverTrigger {...props} />
@@ -81,10 +96,8 @@ function ResponsivePopoverContent({
   container,
   ...rest
 }: ContentProps) {
-  const isMobile = useIsMobile()
-  const mounted = useMounted()
-
-  if (mounted && isMobile) {
+  const mobile = React.useContext(MobileModeContext)
+  if (mobile) {
     const {
       onOpenAutoFocus,
       onCloseAutoFocus,
