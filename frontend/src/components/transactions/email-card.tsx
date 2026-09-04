@@ -200,6 +200,7 @@ export function EmailCard({
           <button
             type="button"
             onClick={handleToggleExpand}
+            aria-label={isExpanded ? "Collapse email" : "Expand email"}
             className="h-11 w-11 md:h-6 md:w-6 flex items-center justify-center rounded text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted/60 transition-colors flex-shrink-0"
           >
             {isExpanded ? (

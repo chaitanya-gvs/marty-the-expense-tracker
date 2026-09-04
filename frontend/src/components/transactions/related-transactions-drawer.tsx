@@ -166,7 +166,7 @@ export function RelatedTransactionsDrawer({
             {t.account && <span className="text-muted-foreground font-sans"> · {t.account.split(" ").slice(0, -2).join(" ") || t.account}</span>}
           </div>
           {(t.category || t.subcategory) && (
-            <div className="flex items-center gap-1 flex-wrap pt-0.5">
+            <div className="flex items-center gap-1 flex-wrap md:flex-nowrap pt-0.5">
               {t.category && <Badge variant="secondary" className="text-xs">{t.category}</Badge>}
               {t.subcategory && <Badge variant="outline" className="text-xs">{t.subcategory}</Badge>}
             </div>
@@ -473,7 +473,7 @@ export function RelatedTransactionsDrawer({
                         {t.description}
                       </div>
                       {(t.category || t.subcategory) && (
-                        <div className="flex items-center gap-1 flex-wrap mt-1">
+                        <div className="flex items-center gap-1 flex-wrap md:flex-nowrap mt-1">
                           {t.category && (
                             <Badge variant="secondary" className="text-xs">
                               {t.category}

@@ -66,14 +66,11 @@ frontend/
     │   │   ├── category-selector.tsx
     │   │   ├── category-autocomplete.tsx
     │   │   ├── inline-category-dropdown.tsx
-    │   │   ├── tag-selector.tsx
     │   │   ├── multi-tag-selector.tsx
     │   │   ├── compact-tag-selector.tsx
     │   │   ├── inline-tag-editor.tsx
     │   │   ├── inline-tag-dropdown.tsx
     │   │   ├── tag-pill.tsx
-    │   │   ├── participant-combobox.tsx
-    │   │   ├── participant-multi-select.tsx
     │   │   ├── field-autocomplete.tsx
     │   │   ├── transfer-popover.tsx
     │   │   ├── transfer-chip.tsx

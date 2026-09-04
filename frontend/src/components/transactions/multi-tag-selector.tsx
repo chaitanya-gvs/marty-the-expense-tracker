@@ -144,7 +144,7 @@ export function MultiTagSelector({
               variant="outline"
               role="combobox"
               aria-expanded={open}
-              className={cn("flex-1 min-w-0 h-8 text-xs justify-between", className)}
+              className={cn("flex-1 min-w-0 h-10 md:h-8 text-xs justify-between", className)}
               disabled={tagsLoading}
             >
               {selectedTags.length === 0
@@ -199,7 +199,7 @@ export function MultiTagSelector({
           variant="outline"
           size="sm"
           onClick={() => setShowCreateForm(v => !v)}
-          className="px-1.5 h-8 flex-shrink-0"
+          className="px-1.5 h-10 md:h-8 flex-shrink-0"
         >
           <Plus className="h-2.5 w-2.5" />
         </Button>

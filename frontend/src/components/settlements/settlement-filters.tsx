@@ -258,7 +258,7 @@ export function SettlementFilters({
                   {dateLabel}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-72" align="start" title="Filter settlements">
+              <PopoverContent className="w-full md:w-72" align="start" title="Filter settlements">
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Quick Presets</p>
@@ -332,10 +332,10 @@ export function SettlementFilters({
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs text-muted-foreground">Active:</span>
           {activeFilterBadges.map(badge => (
-            <Badge key={badge.key} variant="secondary" className="gap-1 text-xs h-6 px-2 overflow-visible">
+            <Badge key={badge.key} variant="secondary" className="gap-1 text-xs h-6 px-2 overflow-visible md:overflow-hidden">
               {badge.label}
               <button
-                className="relative ml-0.5 opacity-60 hover:opacity-100 transition-opacity before:absolute before:-inset-2.5 before:content-['']"
+                className="relative ml-0.5 opacity-60 hover:opacity-100 transition-opacity before:absolute before:-inset-3 before:content-[''] md:before:hidden"
                 onClick={() => {
                   if (badge.key === "participant") updateFilter("participant", undefined);
                   else if (badge.key === "date_range") {
