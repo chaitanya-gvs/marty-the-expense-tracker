@@ -352,7 +352,7 @@ export function SharedExpenseEditor({ transaction, isOpen, isLoading = false, on
                     {/* Card content — slides left on hover to reveal trash */}
                     <div className={cn(
                       "flex items-center gap-3 pl-3 pr-3 py-3 md:py-2.5 min-h-11 md:min-h-0 bg-muted/30 transition-transform duration-200 ease-out",
-                      canDelete && "pr-14 md:pr-3 md:group-hover:-translate-x-14"
+                      canDelete && "pr-16 md:pr-3 md:group-hover:-translate-x-14"
                     )}>
                       <ParticipantAvatar name={entry.participant} />
 
