@@ -1297,7 +1297,7 @@ export function WorkflowSheet({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-11 w-11 md:h-8 md:w-8 text-muted-foreground hover:text-foreground"
+                className="hidden md:inline-flex h-11 w-11 md:h-8 md:w-8 text-muted-foreground hover:text-foreground"
                 onClick={() => setExpanded((v) => !v)}
                 title={expanded ? "Collapse panel" : "Expand panel"}
               >

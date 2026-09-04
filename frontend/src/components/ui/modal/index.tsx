@@ -77,7 +77,14 @@ const FOCUSABLE_SELECTOR =
 function getFocusable(panel: HTMLElement | null): HTMLElement[] {
   if (!panel) return [];
   return Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-    (el) => !el.hasAttribute("disabled") && el.getAttribute("aria-hidden") !== "true"
+    (el) =>
+      !el.hasAttribute("disabled") &&
+      el.getAttribute("aria-hidden") !== "true" &&
+      !(el instanceof HTMLInputElement && el.type === "hidden") &&
+      // Exclude elements not actually rendered (display:none ancestor, etc.);
+      // offsetParent is null for fixed-position elements too, so fall back to
+      // getClientRects() which is unaffected by position:fixed.
+      (el.offsetParent !== null || el.getClientRects().length > 0)
   );
 }
 
@@ -136,6 +143,10 @@ export function Modal({
     const timer = window.setTimeout(() => {
       const panel = modalRef.current;
       if (!panel) return; // modal closed in the meantime
+      // A Radix popper (Select/Popover/DropdownMenu) opened from inside this
+      // Modal portals its content to <body>, outside `panel`, so don't steal
+      // focus back from it here.
+      if (document.activeElement?.closest('[data-radix-popper-content-wrapper]')) return;
       if (!panel.contains(document.activeElement)) focus();
     }, 350);
 

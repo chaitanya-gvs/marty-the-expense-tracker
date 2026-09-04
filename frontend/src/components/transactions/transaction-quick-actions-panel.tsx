@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Edit, Split, Layers, AlertTriangle, Mail, FileText, RefreshCw, CheckSquare } from "lucide-react";
 import { Transaction } from "@/lib/types";
 import { formatCurrency } from "@/lib/format-utils";
@@ -13,6 +14,22 @@ interface TransactionQuickActionsPanelProps {
   onEdit: (transaction: Transaction) => void;
   onSelect: (transaction: Transaction) => void;
   onAction: (type: TransactionActionType, transaction: Transaction) => void;
+}
+
+/** Focusable descendants used for initial focus and the Tab trap. Mirrors
+ * the shared Modal's FOCUSABLE_SELECTOR/getFocusable (src/components/ui/modal/index.tsx). */
+const FOCUSABLE_SELECTOR =
+  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+function getFocusable(panel: HTMLElement | null): HTMLElement[] {
+  if (!panel) return [];
+  return Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (el) =>
+      !el.hasAttribute("disabled") &&
+      el.getAttribute("aria-hidden") !== "true" &&
+      !(el instanceof HTMLInputElement && el.type === "hidden") &&
+      (el.offsetParent !== null || el.getClientRects().length > 0)
+  );
 }
 
 /**
@@ -31,6 +48,8 @@ export function TransactionQuickActionsPanel({
   onAction,
 }: TransactionQuickActionsPanelProps) {
   const isOpen = transaction !== null && anchorTop !== null;
+  const panelRef = useRef<HTMLDivElement>(null);
+  const previousFocus = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -44,6 +63,64 @@ export function TransactionQuickActionsPanel({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [isOpen, onClose]);
+
+  // Focus management: remember what was focused before opening, move focus
+  // into the panel on open (first focusable tile, falling back to the panel
+  // root's tabIndex={-1}), and restore focus on close — mirrors the shared
+  // Modal's approach.
+  useEffect(() => {
+    if (!isOpen) {
+      previousFocus.current?.focus();
+      return;
+    }
+
+    previousFocus.current = document.activeElement as HTMLElement;
+
+    const raf = requestAnimationFrame(() => {
+      const target = getFocusable(panelRef.current)[0] || panelRef.current;
+      target?.focus();
+    });
+
+    return () => cancelAnimationFrame(raf);
+  }, [isOpen]);
+
+  // Lock body scroll while open — same previous-value restore as the shared
+  // Modal, so nesting under an already-locked ancestor (e.g. a Modal opened
+  // from this panel) doesn't unlock it prematurely.
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
+
+  // Minimal focus trap: cycle Tab / Shift+Tab among the panel's focusables.
+  // Mirrors the shared Modal's handlePanelKeyDown.
+  const handlePanelKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab") return;
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const focusable = getFocusable(panel);
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement as HTMLElement | null;
+    const inside = !!active && panel.contains(active);
+
+    if (e.shiftKey) {
+      if (!inside || active === first) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (!inside || active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
 
   if (!transaction || anchorTop === null) return null;
 
@@ -64,9 +141,12 @@ export function TransactionQuickActionsPanel({
     <div className="fixed inset-0 z-[55]" onClick={onClose}>
       <div className="absolute inset-0 bg-black/55" />
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label="Transaction actions"
+        tabIndex={-1}
+        onKeyDown={handlePanelKeyDown}
         className="absolute left-3 right-3 rounded-xl bg-card border border-border shadow-2xl overflow-hidden"
         style={{ top: anchorTop }}
         onClick={(e) => e.stopPropagation()}

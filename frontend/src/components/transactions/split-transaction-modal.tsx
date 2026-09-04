@@ -11,7 +11,7 @@ import { Transaction } from "@/lib/types";
 import { toast } from "sonner";
 import { Plus, Trash2, Split, Check } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
-import { motion } from "framer-motion";
+import { motion, MotionConfig } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { FieldAutocomplete } from "@/components/transactions/field-autocomplete";
 
@@ -211,6 +211,7 @@ export function SplitTransactionModal({
     : null;
 
   return (
+    <MotionConfig reducedMotion="user">
     <Modal open={isOpen} onClose={onClose} size="lg">
       <Modal.Header
         icon={<Split className="h-4 w-4" />}
@@ -388,5 +389,6 @@ export function SplitTransactionModal({
         </Button>
       </Modal.Footer>
     </Modal>
+    </MotionConfig>
   );
 }

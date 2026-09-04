@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Transaction, EmailMetadata, EmailDetails, EmailSearchFilters } from "@/lib/types";
 import { apiClient } from "@/lib/api/client";
 import { EmailCard } from "./email-card";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import { Search, Loader2, Mail, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { format, addDays, subDays } from "date-fns";
@@ -237,6 +237,7 @@ export function EmailLinksDrawer({
     : null;
 
   return (
+    <MotionConfig reducedMotion="user">
     <Modal open={isOpen} onClose={onClose} size="lg">
       <Modal.Header
         icon={<Mail className="h-4 w-4" />}
@@ -495,5 +496,6 @@ export function EmailLinksDrawer({
         </Button>
       </Modal.Footer>
     </Modal>
+    </MotionConfig>
   );
 }

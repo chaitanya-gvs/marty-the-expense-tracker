@@ -11,7 +11,7 @@ import {
   ResponsivePopoverContent as PopoverContent,
   ResponsivePopoverTrigger as PopoverTrigger,
 } from "@/components/ui/responsive-popover";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import { UserPlus, Calculator, Users, Check, CheckCircle2, Trash2 } from "lucide-react";
 import { Transaction, SplitBreakdown, SplitEntry } from "@/lib/types";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
@@ -208,6 +208,7 @@ export function SharedExpenseEditor({ transaction, isOpen, isLoading = false, on
   const remaining = getRemainingAmount();
 
   return (
+    <MotionConfig reducedMotion="user">
     <Modal open={isOpen} onClose={onClose} size="lg">
       <Modal.Header
         icon={<Users className="h-4 w-4" />}
@@ -613,5 +614,6 @@ export function SharedExpenseEditor({ transaction, isOpen, isLoading = false, on
         </div>
       </Modal.Footer>
     </Modal>
+    </MotionConfig>
   );
 }
