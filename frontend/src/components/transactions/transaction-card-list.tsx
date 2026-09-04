@@ -50,9 +50,9 @@ function TransactionRow({
   selected: boolean;
   selectMode: boolean;
   onTap: () => void;
-  onLongPress: (rowEl: HTMLButtonElement) => void;
+  onLongPress: (rowEl: HTMLElement) => void;
 }) {
-  const rowRef = useRef<HTMLButtonElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
   const longPress = useLongPress({
     onLongPress: () => {
       if (rowRef.current) onLongPress(rowRef.current);
@@ -62,12 +62,23 @@ function TransactionRow({
   const amount = t.is_shared && t.split_share_amount ? t.split_share_amount : t.amount;
 
   return (
-    <button
+    // A div with role="button", not a <button>: in select mode the row contains
+    // a Radix Checkbox (itself a <button>), and nested buttons are invalid HTML
+    // that React reports as a hydration error.
+    <div
       ref={rowRef}
-      type="button"
+      role="button"
+      tabIndex={0}
+      aria-pressed={selectMode ? selected : undefined}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onTap();
+        }
+      }}
       {...longPress}
       className={cn(
-        "w-full flex items-center gap-2.5 py-2.5 px-1 text-left border-b border-border last:border-b-0 transition-colors min-h-11 select-none touch-manipulation",
+        "w-full flex items-center gap-2.5 py-2.5 px-1 text-left border-b border-border last:border-b-0 transition-colors min-h-11 select-none touch-manipulation cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
         selected && "bg-primary/[0.06]"
       )}
     >
@@ -93,7 +104,7 @@ function TransactionRow({
           {t.category}{t.is_shared ? " · Split" : ""}
         </p>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -199,7 +210,7 @@ export function TransactionCardList({ filters, sort }: TransactionCardListProps)
   // the panel renders as position:absolute inside a `fixed inset-0` overlay
   // (viewport space) — so the anchor must stay in pure viewport-space math,
   // no listRect/scrollTop mixed in (C3).
-  const handleLongPress = (t: Transaction, rowEl: HTMLButtonElement) => {
+  const handleLongPress = (t: Transaction, rowEl: HTMLElement) => {
     if (selectMode) {
       toggleSelected(t.id);
       return;

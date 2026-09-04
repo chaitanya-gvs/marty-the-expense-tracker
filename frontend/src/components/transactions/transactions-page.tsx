@@ -171,7 +171,7 @@ export function TransactionsPage() {
           <Button
             size="sm"
             variant="outline"
-            className="gap-1.5 text-xs h-8 w-8 md:w-auto p-0 md:px-3"
+            className="gap-1.5 text-xs h-10 w-10 md:h-8 md:w-auto p-0 md:px-3"
             onClick={() => setIsWorkflowOpen(true)}
           >
             <Upload className="h-3.5 w-3.5" />
@@ -179,7 +179,7 @@ export function TransactionsPage() {
           </Button>
           <Button
             size="sm"
-            className="gap-1.5 text-xs h-8 w-8 md:w-auto p-0 md:px-3 bg-primary hover:bg-primary/90 text-primary-foreground border border-transparent shadow-[0_0_12px_color-mix(in_oklch,var(--color-primary)_35%,transparent)] hover:shadow-[0_0_20px_color-mix(in_oklch,var(--color-primary)_50%,transparent)] transition-shadow duration-200"
+            className="gap-1.5 text-xs h-10 w-10 md:h-8 md:w-auto p-0 md:px-3 bg-primary hover:bg-primary/90 text-primary-foreground border border-transparent shadow-[0_0_12px_color-mix(in_oklch,var(--color-primary)_35%,transparent)] hover:shadow-[0_0_20px_color-mix(in_oklch,var(--color-primary)_50%,transparent)] transition-shadow duration-200"
             onClick={() => setIsAddModalOpen(true)}
           >
             <Plus className="h-3.5 w-3.5" />

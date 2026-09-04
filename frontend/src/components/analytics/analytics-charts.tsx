@@ -422,7 +422,7 @@ export function AnalyticsCharts({ analytics, analyticsFilters }: AnalyticsCharts
                       />
                       {/* Name */}
                       <span className={cn(
-                        "text-xs w-28 flex-shrink-0 truncate transition-colors",
+                        "text-xs w-20 md:w-28 flex-shrink-0 truncate transition-colors",
                         activeBar === i ? "text-foreground font-medium" : "text-muted-foreground"
                       )}>
                         {item.name}
@@ -443,7 +443,7 @@ export function AnalyticsCharts({ analytics, analyticsFilters }: AnalyticsCharts
                         {formatCurrency(item.value)}
                       </span>
                       {/* Txns */}
-                      <span className="text-xs font-mono text-muted-foreground/50 tabular-nums w-7 text-right flex-shrink-0">
+                      <span className="hidden md:inline text-xs font-mono text-muted-foreground/50 tabular-nums w-7 text-right flex-shrink-0">
                         {item.count}
                       </span>
                       {/* % */}

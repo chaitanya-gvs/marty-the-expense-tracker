@@ -204,7 +204,7 @@ export function AnalyticsFilters({ filters, onFiltersChange }: AnalyticsFiltersP
                 key={opt.value}
                 onClick={() => onFiltersChange({ group_by: opt.value as ExpenseAnalyticsFilters["group_by"] })}
                 className={cn(
-                  "px-3.5 h-6 text-xs rounded transition-all duration-150 whitespace-nowrap font-medium",
+                  "px-3.5 min-h-9 md:min-h-0 h-6 text-xs rounded transition-all duration-150 whitespace-nowrap font-medium",
                   isActive
                     ? "bg-primary/15 text-primary"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
